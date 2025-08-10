@@ -126,27 +126,6 @@ const ThemeableChatbot = () => {
     const isBlack = l === 0;
     const isWhite = l === 100;
     const isGrey = s < 20;
-
-    const fixedLightThemeStyles = {
-      bodyBg: "#ffffff",
-      headerText: "#18181b",
-      aiMsgBg: "transparent",
-      aiMsgText: "#18181b",
-      inputBg: "#ffffff",
-      inputText: "#18181b",
-      inputBorder: "#d4d4d8",
-    };
-
-    const fixedDarkThemeStyles = {
-      bodyBg: "#212121",
-      headerText: "#ffffff",
-      aiMsgBg: "transparent",
-      aiMsgText: "#ffffff",
-      inputBg: "#303030",
-      inputText: "#ffffff",
-      inputBorder: "#52525b",
-    };
-
     const lightTheme = {
       primary: mainColorHex,
       "submit-btn-bg": mainColorHex,
@@ -160,7 +139,6 @@ const ThemeableChatbot = () => {
       "secondary-btn-text":
         isNearBlack || isGrey ? `hsl(0, 0%, 15%)` : `hsl(${h}, 100%, 15%)`,
       "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.35)`,
-      ...fixedLightThemeStyles,
     };
 
     const darkTheme = {
@@ -173,7 +151,6 @@ const ThemeableChatbot = () => {
       "secondary-btn-bg": `hsl(${h}, ${s}%, ${l * 0.6}%)`,
       "secondary-btn-text": "#ffffff",
       "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`,
-      ...fixedDarkThemeStyles,
     };
 
     if (isBlack) {
@@ -187,7 +164,6 @@ const ThemeableChatbot = () => {
         "secondary-btn-bg": `hsl(${h}, ${s}%, ${l * 0.6}%)`,
         "secondary-btn-text": "#ffffff",
         "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`,
-        ...fixedLightThemeStyles,
       };
       return { light: lightThemeBlack, dark: darkTheme };
     }
@@ -204,7 +180,6 @@ const ThemeableChatbot = () => {
         "user-selection-bg": `rgba(${rgb.r - 20}, ${rgb.g - 20}, ${
           rgb.b - 20
         }, 0.6)`,
-        ...fixedLightThemeStyles,
       };
       const darkThemeWhite = {
         primary: mainColorHex,
@@ -215,7 +190,6 @@ const ThemeableChatbot = () => {
         "secondary-btn-bg": `hsl(${h}, ${s}%, ${l}%)`,
         "secondary-btn-text": "#000",
         "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`,
-        ...fixedDarkThemeStyles,
       };
       return { light: lightThemeWhite, dark: darkThemeWhite };
     }
@@ -228,14 +202,21 @@ const ThemeableChatbot = () => {
     getInitialDarkMode(setIsDarkMode);
     try {
       if (chrome?.storage?.local) {
-        chrome.storage.local.get(
-          ["themeColor", "isScriptingEnabled"],
-          (result) => {
-            if (result.themeColor) setThemeColor(result.themeColor);
-            // Set scripting toggle based on stored value or default to false
-            setIsScriptingEnabled(!!result.isScriptingEnabled);
-          }
-        );
+        chrome.storage.local.get(["themeColor"], (result) => {
+          if (result.themeColor) setThemeColor(result.themeColor);
+        });
+        // Check to see if script exists
+        try {
+          chrome.scripting.getRegisteredContentScripts(
+            { ids: ["ChatGPT"] },
+            (result) => {
+              setIsScriptingEnabled(result.length > 0);
+            }
+          );
+        } catch (e) {
+          console.log("No script found", e);
+          setIsScriptingEnabled(false);
+        }
       }
     } catch (error) {
       console.error("Error reading from chrome.storage on init:", error);
@@ -243,21 +224,33 @@ const ThemeableChatbot = () => {
   }, []);
 
   useEffect(() => {
-    // Save theme and dark mode changes to storage
     const newThemeObject = generateFullThemeObject(themeColor);
     setThemeObject(newThemeObject);
-    try {
-      if (chrome?.storage?.local && newThemeObject) {
-        chrome.storage.local.set({
+
+    if (chrome?.storage?.local && newThemeObject) {
+      chrome.storage.local.set(
+        {
           themeColor,
           isDarkMode,
           themeObject: newThemeObject,
-        });
-      }
-    } catch (error) {
-      console.error("Error writing to chrome.storage:", error);
+        },
+        () => {
+          if (chrome.runtime.lastError) {
+            console.error("Storage error:", chrome.runtime.lastError);
+          } else {
+            console.log("Theme saved to storage");
+          }
+        }
+      );
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeColor, isDarkMode]);
+
+  useEffect(() => {
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({ isScriptingEnabled });
+    }
+  }, [isScriptingEnabled]);
 
   useEffect(() => {
     // Auto-scroll chat
@@ -308,7 +301,6 @@ const ThemeableChatbot = () => {
         } else {
           console.log("Scripting permissions denied.");
           setIsScriptingEnabled(false); // Revert UI if denied
-          chrome.storage.local.set({ isScriptingEnabled: false });
         }
       } else {
         // Remove permissions when disabling
@@ -320,7 +312,6 @@ const ThemeableChatbot = () => {
         }
         await chrome.permissions.remove(scriptingPermissions);
         console.log("Scripting permissions removed.");
-        chrome.storage.local.set({ isScriptingEnabled: false });
       }
     } catch (error) {
       console.error("Error handling scripting permissions:", error);
@@ -393,45 +384,45 @@ const ThemeableChatbot = () => {
 
   const DynamicGlobalStyles = () => (
     <style>{`
-      .theme-root {
-        --submit-btn-bg: ${currentTheme["submit-btn-bg"]};
-        --submit-btn-text: ${currentTheme["submit-btn-text"]};
-        --user-msg-bg: ${currentTheme["user-msg-bg"]};
-        --user-msg-text: ${currentTheme["user-msg-text"]};
-        --secondary-btn-bg: ${currentTheme["secondary-btn-bg"]};
-        --secondary-btn-text: ${currentTheme["secondary-btn-text"]};
-        --body-bg: ${currentTheme.bodyBg};
-        --header-text: ${currentTheme.headerText};
-        --ai-msg-bg: ${currentTheme.aiMsgBg};
-        --ai-msg-text: ${currentTheme.aiMsgText};
-        --input-bg: ${currentTheme.inputBg};
-        --input-text: ${currentTheme.inputText};
-        --input-border: ${currentTheme.inputBorder};
-      }
-      /* Fix placeholder color for theme switching */
-      .theme-root textarea::placeholder {
-        color: ${currentTheme.inputText};
-        opacity: 0.5;
-      }
-      .theme-root textarea::-webkit-input-placeholder {
-        color: ${currentTheme.inputText};
-        opacity: 0.5;
-      }
-      .theme-root textarea::-moz-placeholder {
-        color: ${currentTheme.inputText};
-        opacity: 0.5;
-      }
-      .theme-root textarea:-ms-input-placeholder {
-        color: ${currentTheme.inputText};
-        opacity: 0.5;
-      }
-      ::selection { background-color: ${currentTheme["user-selection-bg"]}; }
-      ::-moz-selection { background-color: ${currentTheme["user-selection-bg"]}; }
-      @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-      .animate-bounce-dot { animation: bounce 1s infinite; }
-      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-      .fade-in { animation: fadeIn 0.5s ease-out forwards; }
-    `}</style>
+    .theme-root {
+      --submit-btn-bg: ${currentTheme["submit-btn-bg"]};
+      --submit-btn-text: ${currentTheme["submit-btn-text"]};
+      --user-msg-bg: ${currentTheme["user-msg-bg"]};
+      --user-msg-text: ${currentTheme["user-msg-text"]};
+      --secondary-btn-bg: ${currentTheme["secondary-btn-bg"]};
+      --secondary-btn-text: ${currentTheme["secondary-btn-text"]};
+      --header-text: ${isDarkMode ? "#ffffff" : "#18181b"};
+      --ai-msg-bg: transparent;
+      --ai-msg-text: ${isDarkMode ? "#ffffff" : "#18181b"};
+      --input-bg: ${isDarkMode ? "#ffffff0d" : "#ffffff"};
+      --input-text: ${isDarkMode ? "#ffffff" : "#18181b"};
+      --input-border: ${isDarkMode ? "#ffffff0d" : "#0000000d"};
+      --body-bg: ${isDarkMode ? "#212121" : "#ffffff0d"};
+    }
+    /* Fix placeholder color for theme switching */
+    .theme-root textarea::placeholder {
+      color: var(--input-text);
+      opacity: 0.5;
+    }
+    .theme-root textarea::-webkit-input-placeholder {
+      color: var(--input-text);
+      opacity: 0.5;
+    }
+    .theme-root textarea::-moz-placeholder {
+      color: var(--input-text);
+      opacity: 0.5;
+    }
+    .theme-root textarea:-ms-input-placeholder {
+      color: var(--input-text);
+      opacity: 0.5;
+    }
+    ::selection { background-color: ${currentTheme["user-selection-bg"]}; }
+    ::-moz-selection { background-color: ${currentTheme["user-selection-bg"]}; }
+    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    .animate-bounce-dot { animation: bounce 1s infinite; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+  `}</style>
   );
 
   return (

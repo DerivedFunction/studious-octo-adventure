@@ -7,7 +7,7 @@
 const applyTheme = async () => {
   // Determine the host's color scheme, defaulting to 'light'
   const hostScheme = document.documentElement.style.colorScheme || "light";
-  chrome.storage.local.set({ isDarkMode:  hostScheme === "dark" })
+  chrome.storage.local.set({ isDarkMode: hostScheme === "dark" });
   console.log("Applying theme for host scheme:", hostScheme);
 
   try {
@@ -40,34 +40,11 @@ const applyTheme = async () => {
       }
 
       // Apply the theme by setting CSS variables on the root element
-      document.documentElement.style.setProperty(
-        "--theme-user-msg-bg",
-        currentTheme["user-msg-bg"]
-      );
-      document.documentElement.style.setProperty(
-        "--theme-user-msg-text",
-        currentTheme["user-msg-text"]
-      );
-      document.documentElement.style.setProperty(
-        "--theme-submit-btn-bg",
-        currentTheme["submit-btn-bg"]
-      );
-      document.documentElement.style.setProperty(
-        "--theme-submit-btn-text",
-        currentTheme["submit-btn-text"]
-      );
-      document.documentElement.style.setProperty(
-        "--theme-secondary-btn-bg",
-        currentTheme["secondary-btn-bg"]
-      );
-      document.documentElement.style.setProperty(
-        "--theme-secondary-btn-text",
-        currentTheme["secondary-btn-text"]
-      );
-      document.documentElement.style.setProperty(
-        "--theme-user-selection-bg",
-        currentTheme["user-selection-bg"]
-      );
+      const keys = Object.keys(currentTheme);
+      const values = Object.values(currentTheme);
+      for (let i = 0; i < keys.length; i++) {
+        document.documentElement.style.setProperty(`--theme-${keys[i]}`, values[i]);
+      }
 
       console.log("Theme successfully applied.");
     });
@@ -90,7 +67,7 @@ const observeHostSchemeChanges = () => {
   };
 
   // Callback function to execute when mutations are observed
-  const callback = (mutationsList, observer) => {
+  const callback = (mutationsList) => {
     for (const mutation of mutationsList) {
       if (
         mutation.type === "attributes" &&
