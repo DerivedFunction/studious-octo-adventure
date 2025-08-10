@@ -129,7 +129,7 @@ const ThemeableChatbot = () => {
     const lightTheme = {
       primary: mainColorHex,
       "submit-btn-bg": mainColorHex,
-      "submit-btn-text": l > 65 ? "#000000" : "#ffffff",
+      "submit-btn-text": "#ffffff",
       "user-msg-bg": isNearBlack ? `hsl(0, 0%, 95%)` : `hsl(${h}, ${s}%, 95%)`,
       "user-msg-text":
         isNearBlack || isGrey ? `hsl(0, 0%, 15%)` : `hsl(${h}, 100%, 15%)`,
@@ -152,7 +152,7 @@ const ThemeableChatbot = () => {
     const darkTheme = {
       primary: mainColorHex,
       "submit-btn-bg": mainColorHex,
-      "submit-btn-text": l > 65 ? "#000000" : "#ffffff",
+      "submit-btn-text": "#ffffff",
       "user-msg-bg": isNearBlack
         ? `hsl(0, 0%, 20%)`
         : `hsl(${h}, ${s}%, ${l * 0.5}%)`,
@@ -161,8 +161,7 @@ const ThemeableChatbot = () => {
       "secondary-btn-bg": isNearBlack
         ? `hsl(0, 0%, 25%)`
         : `hsl(${h}, ${s}%, ${l * 0.6}%)`,
-      "secondary-btn-text":
-        isNearBlack || isGrey ? `hsl(0, 0%, 98%)` : `hsl(${h}, ${s}%, 98%)`,
+      "secondary-btn-text": "#ffffff",
       "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`,
       bodyBg: "#18181b",
       headerText: "#f4f4f5",
