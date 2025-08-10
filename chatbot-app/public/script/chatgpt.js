@@ -4,7 +4,7 @@
  * Applies the correct theme (light or dark) based on stored settings
  * and the host page's current color scheme.
  */
-const applyTheme = () => {
+const applyTheme = async () => {
   // Determine the host's color scheme, defaulting to 'light'
   const hostScheme = document.documentElement.style.colorScheme || "light";
   console.log("Applying theme for host scheme:", hostScheme);
@@ -14,7 +14,10 @@ const applyTheme = () => {
       console.warn("Theme Extension: chrome.storage.local API not available.");
       return;
     }
-
+    const { isScriptingEnabled } = await chrome.storage.local.get(
+      "isScriptingEnabled"
+    );
+    if (!isScriptingEnabled) return;
     const keysToGet = ["themeObject"];
     chrome.storage.local.get(keysToGet, (result) => {
       if (chrome.runtime.lastError) {
@@ -111,6 +114,19 @@ const observeHostSchemeChanges = () => {
   console.log("MutationObserver is now watching for color scheme changes.");
 };
 
+// Function to remove custom styles
+const removeStyles = () => {
+  console.log("Removing styles...");
+  // Remove custom CSS variables
+  document.documentElement.style.removeProperty("--theme-user-msg-bg");
+  document.documentElement.style.removeProperty("--theme-user-msg-text");
+  document.documentElement.style.removeProperty("--theme-submit-btn-bg");
+  document.documentElement.style.removeProperty("--theme-submit-btn-text");
+  document.documentElement.style.removeProperty("--theme-secondary-btn-bg");
+  document.documentElement.style.removeProperty("--theme-secondary-btn-text");
+  document.documentElement.style.removeProperty("--theme-user-selection-bg");
+};
+
 // --- SCRIPT INITIALIZATION ---
 
 // 1. Apply the theme immediately when the script is injected.
@@ -121,8 +137,15 @@ observeHostSchemeChanges();
 
 // 3. Listen for changes from the extension's storage (e.g., user changes theme in the popup).
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === "local" && changes.themeObject) {
+  console.log(changes);
+  if (
+    namespace === "local" &&
+    (changes.themeObject || changes.isScriptingEnabled.newValue)
+  ) {
     console.log("Theme object in storage changed. Re-applying styles...");
     applyTheme();
+  }
+  if (namespace === "local" && changes.isScriptingEnabled.newValue === false) {
+    removeStyles();
   }
 });

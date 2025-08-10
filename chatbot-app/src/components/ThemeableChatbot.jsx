@@ -33,8 +33,7 @@ const ThemeableChatbot = () => {
     {
       id: 2,
       type: "ai",
-      content:
-        "Choose a theme. If you pick a very dark color, the theme will adjust to neutral grays.",
+      content: "Choose a theme with theme picker.",
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");
@@ -124,7 +123,30 @@ const ThemeableChatbot = () => {
     if (!rgb) return null;
     const { h, s, l } = hsl;
     const isNearBlack = l < 15;
+    const isBlack = l === 0;
+    const isWhite = l === 100;
     const isGrey = s < 20;
+
+    const fixedLightThemeStyles = {
+      bodyBg: "#ffffff",
+      headerText: "#18181b",
+      aiMsgBg: "transparent",
+      aiMsgText: "#18181b",
+      inputBg: "#ffffff",
+      inputText: "#18181b",
+      inputBorder: "#d4d4d8",
+    };
+
+    const fixedDarkThemeStyles = {
+      bodyBg: "#18181b",
+      headerText: "#f4f4f5",
+      aiMsgBg: "transparent",
+      aiMsgText: "#f4f4f5",
+      inputBg: "#18181b",
+      inputText: "#f4f4f5",
+      inputBorder: "#52525b",
+    };
+
     const lightTheme = {
       primary: mainColorHex,
       "submit-btn-bg": mainColorHex,
@@ -138,36 +160,65 @@ const ThemeableChatbot = () => {
       "secondary-btn-text":
         isNearBlack || isGrey ? `hsl(0, 0%, 15%)` : `hsl(${h}, 100%, 15%)`,
       "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.35)`,
-      bodyBg: "#ffffff",
-      headerText: "#18181b",
-      aiMsgBg: "transparent",
-      aiMsgText: "#18181b",
-      inputBg: "#ffffff",
-      inputText: "#18181b",
-      inputBorder: "#d4d4d8",
+      ...fixedLightThemeStyles,
     };
+
     const darkTheme = {
       primary: mainColorHex,
       "submit-btn-bg": mainColorHex,
       "submit-btn-text": "#ffffff",
-      "user-msg-bg": isNearBlack
-        ? `hsl(0, 0%, 20%)`
-        : `hsl(${h}, ${s}%, ${l * 0.5}%)`,
+      "user-msg-bg": `hsl(${h}, ${s}%, ${l * 0.5}%)`,
       "user-msg-text":
         isNearBlack || isGrey ? `hsl(0, 0%, 98%)` : `hsl(${h}, ${s}%, 98%)`,
-      "secondary-btn-bg": isNearBlack
-        ? `hsl(0, 0%, 25%)`
-        : `hsl(${h}, ${s}%, ${l * 0.6}%)`,
+      "secondary-btn-bg": `hsl(${h}, ${s}%, ${l * 0.6}%)`,
       "secondary-btn-text": "#ffffff",
       "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`,
-      bodyBg: "#18181b",
-      headerText: "#f4f4f5",
-      aiMsgBg: "transparent",
-      aiMsgText: "#f4f4f5",
-      inputBg: "#18181b",
-      inputText: "#f4f4f5",
-      inputBorder: "#52525b",
+      ...fixedDarkThemeStyles,
     };
+
+    if (isBlack) {
+      const lightThemeBlack = {
+        primary: mainColorHex,
+        "submit-btn-bg": mainColorHex,
+        "submit-btn-text": "#ffffff",
+        "user-msg-bg": `hsl(${h}, ${s}%, ${l * 0.5}%)`,
+        "user-msg-text":
+          isNearBlack || isGrey ? `hsl(0, 0%, 98%)` : `hsl(${h}, ${s}%, 98%)`,
+        "secondary-btn-bg": `hsl(${h}, ${s}%, ${l * 0.6}%)`,
+        "secondary-btn-text": "#ffffff",
+        "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`,
+        ...fixedLightThemeStyles,
+      };
+      return { light: lightThemeBlack, dark: darkTheme };
+    }
+
+    if (isWhite) {
+      const lightThemeWhite = {
+        primary: mainColorHex,
+        "submit-btn-bg": mainColorHex,
+        "submit-btn-text": "#000",
+        "user-msg-bg": `hsl(${h}, ${s}%, 98%)`,
+        "user-msg-text": `hsl(0, 0%, 0%)`,
+        "secondary-btn-bg": `hsl(${h}, ${s}%, 94%)`,
+        "secondary-btn-text": "#000",
+        "user-selection-bg": `rgba(${rgb.r - 20}, ${rgb.g - 20}, ${
+          rgb.b - 20
+        }, 0.6)`,
+        ...fixedLightThemeStyles,
+      };
+      const darkThemeWhite = {
+        primary: mainColorHex,
+        "submit-btn-bg": mainColorHex,
+        "submit-btn-text": "#000",
+        "user-msg-bg": `hsl(${h}, ${s}%, 98%)`,
+        "user-msg-text": `hsl(0, 0%, 0%)`,
+        "secondary-btn-bg": `hsl(${h}, ${s}%, ${l}%)`,
+        "secondary-btn-text": "#000",
+        "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`,
+        ...fixedDarkThemeStyles,
+      };
+      return { light: lightThemeWhite, dark: darkThemeWhite };
+    }
     return { light: lightTheme, dark: darkTheme };
   };
 
@@ -236,16 +287,23 @@ const ThemeableChatbot = () => {
         // Request permissions when enabling
         const granted = await chrome.permissions.request(scriptingPermissions);
         if (granted) {
-          await chrome.scripting.registerContentScripts([
-            {
-              id: "ChatGPT",
-              matches: ["https://chat.openai.com/*", "https://*.chatgpt.com/*"],
-              js: ["./script/chatgpt.js"],
-              runAt: "document_end",
-              allFrames: true,
-            },
-          ]);
-          console.log("Scripting permissions granted.");
+          try {
+            await chrome.scripting.registerContentScripts([
+              {
+                id: "ChatGPT",
+                matches: [
+                  "https://chat.openai.com/*",
+                  "https://*.chatgpt.com/*",
+                ],
+                js: ["./script/chatgpt.js"],
+                runAt: "document_end",
+                allFrames: true,
+              },
+            ]);
+            console.log("Scripting permissions granted.");
+          } catch (e) {
+            console.log("Scripting error.", e);
+          }
           chrome.storage.local.set({ isScriptingEnabled: true });
         } else {
           console.log("Scripting permissions denied.");
@@ -310,10 +368,11 @@ const ThemeableChatbot = () => {
   };
 
   const handleColorChange = (e) => {
+    const CAP = 70;
     const newColorHex = e.target.value;
     const hsl = hexToHsl(newColorHex);
-    if (hsl.l > 70) {
-      hsl.l = 70;
+    if (hsl.l > CAP && hsl.l != 100) {
+      hsl.l = CAP;
       const cappedColorHex = hslToHex(hsl.h, hsl.s, hsl.l);
       setThemeColor(cappedColorHex);
     } else {
