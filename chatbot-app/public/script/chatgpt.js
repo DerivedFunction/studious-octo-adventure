@@ -7,6 +7,7 @@
 const applyTheme = async () => {
   // Determine the host's color scheme, defaulting to 'light'
   const hostScheme = document.documentElement.style.colorScheme || "light";
+  chrome.storage.local.set({ isDarkMode:  hostScheme === "dark" })
   console.log("Applying theme for host scheme:", hostScheme);
 
   try {
