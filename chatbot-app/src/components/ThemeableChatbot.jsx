@@ -11,21 +11,18 @@ const getInitialDarkMode = (callback) => {
           callback(result.isDarkMode);
         } else {
           callback(
-            window.matchMedia &&
-              window.matchMedia("(prefers-color-scheme: dark)").matches
+            window.matchMedia?.("(prefers-color-scheme: dark)").matches || false
           );
         }
       });
     } else {
-      // Fallback for non-extension environment
       callback(
-        window.matchMedia &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches
+        window.matchMedia?.("(prefers-color-scheme: dark)").matches || false
       );
     }
   } catch (error) {
     console.error("Error getting initial dark mode:", error);
-    callback(false); // Default to light mode on error
+    callback(false);
   }
 };
 
@@ -37,12 +34,12 @@ const ThemeableChatbot = () => {
       id: 2,
       type: "ai",
       content:
-        "Choose a theme. Select text. Supporting light and dark modes!",
+        "Choose a theme. If you pick a very dark color, the theme will adjust to neutral grays.",
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");
   const [themeColor, setThemeColor] = useState("#0285FF");
-  const [themeColors, setThemeColors] = useState(null);
+  const [themeObject, setThemeObject] = useState(null); // Will hold { light: {...}, dark: {...} }
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isMultiLine, setIsMultiLine] = useState(false);
@@ -50,6 +47,20 @@ const ThemeableChatbot = () => {
   const textareaRef = useRef(null);
 
   // --- COLOR CONVERSION UTILITIES ---
+
+  const hslToHex = (h, s, l) => {
+    l /= 100;
+    const a = (s * Math.min(l, 1 - l)) / 100;
+    const f = (n) => {
+      const k = (n + h / 30) % 12;
+      const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+      return Math.round(255 * color)
+        .toString(16)
+        .padStart(2, "0"); // Convert to Hex and pad with a zero if needed
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+  };
+
   const hexToHsl = (hex) => {
     let r = 0,
       g = 0,
@@ -102,65 +113,76 @@ const ThemeableChatbot = () => {
   };
 
   // --- THEME GENERATION LOGIC ---
-  const getThemeColors = (mainColorHex, isDark) => {
+  const generateFullThemeObject = (mainColorHex) => {
     const hsl = hexToHsl(mainColorHex);
     const rgb = hexToRgb(mainColorHex);
     if (!rgb) return null;
 
     const { h, s, l } = hsl;
 
-    if (isDark) {
-      const submitBtnText = l * 0.8 > 65 ? "#000000" : "#ffffff";
-      return {
-        isDark,
-        primary: mainColorHex,
-        submitBtnBg: `hsl(${h}, ${s}%, ${l * 0.8}%)`,
-        submitBtnText,
-        userBg: `hsl(${h}, ${s}%, ${l * 0.5}%)`,
-        userText: `hsl(${h}, ${s}%, 98%)`,
-        secondaryBtnBg: `hsl(${h}, ${s}%, ${l * 0.6}%)`,
-        selectionBg: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`,
-        bodyBg: "#18181b",
-        headerText: "#f4f4f5",
-        aiMsgBg: "#303033",
-        aiMsgText: "#f4f4f5",
-        inputBg: "#18181b",
-        inputText: "#f4f4f5",
-        inputBorder: "#52525b",
-      };
-    } else {
-      const submitBtnText = l > 65 ? "#000000" : "#ffffff";
-      return {
-        isDark,
-        primary: mainColorHex,
-        submitBtnBg: mainColorHex,
-        submitBtnText,
-        userBg: `hsl(${h}, ${s}%, 95%)`,
-        userText: `hsl(${h}, 100%, 15%)`,
-        secondaryBtnBg: `hsl(${h}, ${s}%, 95%)`,
-        selectionBg: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.35)`,
-        bodyBg: "#ffffff",
-        headerText: "#18181b",
-        aiMsgBg: "#f1f2f3",
-        aiMsgText: "#18181b",
-        inputBg: "#ffffff",
-        inputText: "#18181b",
-        inputBorder: "#d4d4d8",
-      };
-    }
+    // Check if the color is very dark (near black) to switch to neutral colors
+    const isNearBlack = l < 15;
+    // Check if the color is desaturated (grey)
+    const isGrey = s < 20;
+
+    // Light Mode Palette
+    const lightTheme = {
+      primary: mainColorHex,
+      "submit-btn-bg": mainColorHex,
+      "submit-btn-text": l > 65 ? "#000000" : "#ffffff",
+      "user-msg-bg": isNearBlack ? `hsl(0, 0%, 95%)` : `hsl(${h}, ${s}%, 95%)`,
+      "user-msg-text":
+        isNearBlack || isGrey ? `hsl(0, 0%, 15%)` : `hsl(${h}, 100%, 15%)`,
+      "secondary-btn-bg": isNearBlack
+        ? `hsl(0, 0%, 95%)`
+        : `hsl(${h}, ${s}%, 95%)`,
+      "secondary-btn-text":
+        isNearBlack || isGrey ? `hsl(0, 0%, 15%)` : `hsl(${h}, 100%, 15%)`,
+      "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.35)`,
+      bodyBg: "#ffffff",
+      headerText: "#18181b",
+      aiMsgBg: "transparent",
+      aiMsgText: "#18181b",
+      inputBg: "#ffffff",
+      inputText: "#18181b",
+      inputBorder: "#d4d4d8",
+    };
+
+    // Dark Mode Palette
+    const darkTheme = {
+      primary: mainColorHex,
+      "submit-btn-bg": mainColorHex,
+      "submit-btn-text": l > 65 ? "#000000" : "#ffffff",
+      "user-msg-bg": isNearBlack
+        ? `hsl(0, 0%, 20%)`
+        : `hsl(${h}, ${s}%, ${l * 0.5}%)`,
+      "user-msg-text":
+        isNearBlack || isGrey ? `hsl(0, 0%, 98%)` : `hsl(${h}, ${s}%, 98%)`,
+      "secondary-btn-bg": isNearBlack
+        ? `hsl(0, 0%, 25%)`
+        : `hsl(${h}, ${s}%, ${l * 0.6}%)`,
+      "secondary-btn-text":
+        isNearBlack || isGrey ? `hsl(0, 0%, 98%)` : `hsl(${h}, ${s}%, 98%)`,
+      "user-selection-bg": `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6)`,
+      bodyBg: "#18181b",
+      headerText: "#f4f4f5",
+      aiMsgBg: "transparent",
+      aiMsgText: "#f4f4f5",
+      inputBg: "#18181b",
+      inputText: "#f4f4f5",
+      inputBorder: "#52525b",
+    };
+
+    return { light: lightTheme, dark: darkTheme };
   };
 
   // --- SIDE EFFECTS ---
-
-  // Initialize theme and dark mode from storage on first load
   useEffect(() => {
     getInitialDarkMode(setIsDarkMode);
     try {
       if (chrome?.storage?.local) {
         chrome.storage.local.get(["themeColor"], (result) => {
-          if (result.themeColor) {
-            setThemeColor(result.themeColor);
-          }
+          if (result.themeColor) setThemeColor(result.themeColor);
         });
       }
     } catch (error) {
@@ -168,21 +190,22 @@ const ThemeableChatbot = () => {
     }
   }, []);
 
-  // Update theme colors and save to storage when dependencies change
   useEffect(() => {
-    const newThemeColors = getThemeColors(themeColor, isDarkMode);
-    setThemeColors(newThemeColors);
-
+    const newThemeObject = generateFullThemeObject(themeColor);
+    setThemeObject(newThemeObject);
     try {
-      if (chrome?.storage?.local) {
-        chrome.storage.local.set({ themeColor, isDarkMode });
+      if (chrome?.storage?.local && newThemeObject) {
+        chrome.storage.local.set({
+          themeColor,
+          isDarkMode,
+          themeObject: newThemeObject,
+        });
       }
     } catch (error) {
       console.error("Error writing to chrome.storage:", error);
     }
   }, [themeColor, isDarkMode]);
 
-  // Scroll to bottom of chat
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop =
@@ -190,19 +213,26 @@ const ThemeableChatbot = () => {
     }
   }, [messages, isTyping]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = `${textarea.scrollHeight}px`;
-      setIsMultiLine(textarea.scrollHeight > textarea.clientHeight); // Check if content wraps
+      setIsMultiLine(textarea.value.length > 110);
     }
   }, [inputMessage]);
 
   // --- EVENT HANDLERS ---
   const handleSendMessage = () => {
-    if (!inputMessage.trim()) return;
+    if (inputMessage.trim().length > 0) {
+      window.open(
+        `https://www.chatgpt.com/?prompt=${encodeURIComponent(
+          inputMessage.trim()
+        )}`,
+        "_blank"
+      );
+    } else {
+      window.open("https://www.chatgpt.com/?mode=voice", "_blank");
+      return;
+    }
     const newMessage = {
       id: Date.now(),
       type: "user",
@@ -210,7 +240,7 @@ const ThemeableChatbot = () => {
     };
     setMessages((prev) => [...prev, newMessage]);
     setInputMessage("");
-
+    setTimeout(() => setIsMultiLine(false), 0);
     setIsTyping(true);
     setTimeout(() => {
       const aiMessage = {
@@ -230,33 +260,50 @@ const ThemeableChatbot = () => {
     }
   };
 
+  const handleColorChange = (e) => {
+    const newColorHex = e.target.value;
+    const hsl = hexToHsl(newColorHex);
+
+    // If the lightness is greater than 70, cap it at 70.
+    if (hsl.l > 70) {
+      hsl.l = 70;
+      const cappedColorHex = hslToHex(hsl.h, hsl.s, hsl.l);
+      setThemeColor(cappedColorHex);
+    } else {
+      setThemeColor(newColorHex);
+    }
+  };
+
   // --- RENDER LOGIC ---
-  if (!themeColors) {
+  if (!themeObject) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-full w-full">
         Loading...
       </div>
     );
   }
 
+  const currentTheme = themeObject[isDarkMode ? "dark" : "light"];
+
   const DynamicGlobalStyles = () => (
     <style>{`
       .theme-root {
-        --submit-btn-bg: ${themeColors.submitBtnBg};
-        --submit-btn-text: ${themeColors.submitBtnText};
-        --user-msg-bg: ${themeColors.userBg};
-        --user-msg-text: ${themeColors.userText};
-        --body-bg: ${themeColors.bodyBg};
-        --header-text: ${themeColors.headerText};
-        --ai-msg-bg: ${themeColors.aiMsgBg};
-        --ai-msg-text: ${themeColors.aiMsgText};
-        --input-bg: ${themeColors.inputBg};
-        --input-text: ${themeColors.inputText};
-        --input-border: ${themeColors.inputBorder};
+        --submit-btn-bg: ${currentTheme["submit-btn-bg"]};
+        --submit-btn-text: ${currentTheme["submit-btn-text"]};
+        --user-msg-bg: ${currentTheme["user-msg-bg"]};
+        --user-msg-text: ${currentTheme["user-msg-text"]};
+        --secondary-btn-bg: ${currentTheme["secondary-btn-bg"]};
+        --secondary-btn-text: ${currentTheme["secondary-btn-text"]};
+        --body-bg: ${currentTheme.bodyBg};
+        --header-text: ${currentTheme.headerText};
+        --ai-msg-bg: ${currentTheme.aiMsgBg};
+        --ai-msg-text: ${currentTheme.aiMsgText};
+        --input-bg: ${currentTheme.inputBg};
+        --input-text: ${currentTheme.inputText};
+        --input-border: ${currentTheme.inputBorder};
       }
-      ::selection { background-color: ${themeColors.selectionBg}; }
-      ::-moz-selection { background-color: ${themeColors.selectionBg}; }
-      
+      ::selection { background-color: ${currentTheme["user-selection-bg"]}; }
+      ::-moz-selection { background-color: ${currentTheme["user-selection-bg"]}; }
       @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
       .animate-bounce-dot { animation: bounce 1s infinite; }
       @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -272,10 +319,9 @@ const ThemeableChatbot = () => {
         style={{ backgroundColor: "var(--body-bg)" }}
       >
         <div
-          className="theme-root w-full h-full mx-auto shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] flex flex-col transition-colors duration-300"
+          className="theme-root w-full h-full mx-auto shadow-lg flex flex-col transition-colors duration-300"
           style={{ backgroundColor: "var(--body-bg)" }}
         >
-          {/* Header */}
           <header
             className="flex items-center justify-between p-4 border-b transition-colors duration-300"
             style={{ borderColor: "var(--input-border)" }}
@@ -300,7 +346,7 @@ const ThemeableChatbot = () => {
                   type="color"
                   id="theme-color-picker"
                   value={themeColor}
-                  onChange={(e) => setThemeColor(e.target.value)}
+                  onChange={handleColorChange}
                   className="w-8 h-8 p-0 bg-transparent border-none rounded-md cursor-pointer"
                 />
               </div>
@@ -335,11 +381,9 @@ const ThemeableChatbot = () => {
               </div>
             </div>
           </header>
-
-          {/* Chat Area */}
           <main
             ref={chatContainerRef}
-            className="flex-1 p-6 overflow-y-auto min-h-[450px] flex flex-col gap-6"
+            className="flex-1 p-6 overflow-y-auto min-h-0 flex flex-col gap-6"
           >
             {messages.map((msg) => (
               <div
@@ -358,11 +402,11 @@ const ThemeableChatbot = () => {
                     style={{
                       backgroundColor:
                         msg.type === "user"
-                          ? themeColors.userBg
+                          ? "var(--user-msg-bg)"
                           : "var(--ai-msg-bg)",
                       color:
                         msg.type === "user"
-                          ? themeColors.userText
+                          ? "var(--user-msg-text)"
                           : "var(--ai-msg-text)",
                     }}
                   >
@@ -395,11 +439,9 @@ const ThemeableChatbot = () => {
               </div>
             )}
           </main>
-
-          {/* Footer */}
           <footer className="p-4">
             <div
-              className={`flex items-center gap-4 border p-1 rounded-[28px] w-full shadow-md transition-colors duration-300`}
+              className={`flex items-center gap-4 border p-1 rounded-[28px] w-full shadow-md transition-colors duration-300 ${isMultiLine ? "flex-col" : "flex-row"}`}
               style={{
                 borderColor: "var(--input-border)",
                 backgroundColor: "var(--input-bg)",
@@ -419,17 +461,19 @@ const ThemeableChatbot = () => {
                   color: "var(--input-text)",
                 }}
               />
-              <div className={`pr-1 ${isMultiLine ? "self-end" : ""}`}>
+              <div className={`pr-1 ${isMultiLine ? "self-end pb-1" : ""}`}>
                 <button
                   onClick={handleSendMessage}
                   className="font-semibold h-[36px] w-[36px] rounded-full transition-colors flex items-center justify-center"
                   style={{
                     backgroundColor:
                       inputMessage.length > 0
-                        ? themeColors.primary
-                        : themeColors.userBg,
+                        ? currentTheme["submit-btn-bg"]
+                        : currentTheme["secondary-btn-bg"],
                     color:
-                      inputMessage.length > 0 ? "white" : themeColors.userText,
+                      inputMessage.length > 0
+                        ? currentTheme["submit-btn-text"]
+                        : currentTheme["secondary-btn-text"],
                   }}
                 >
                   {inputMessage.length > 0 ? (

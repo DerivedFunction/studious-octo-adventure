@@ -1,42 +1,128 @@
 /* eslint-disable no-undef */
-(() => {
-  console.log("Attempting to read from storage in Script 1...");
+
+/**
+ * Applies the correct theme (light or dark) based on stored settings
+ * and the host page's current color scheme.
+ */
+const applyTheme = () => {
+  // Determine the host's color scheme, defaulting to 'light'
+  const hostScheme = document.documentElement.style.colorScheme || "light";
+  console.log("Applying theme for host scheme:", hostScheme);
+
   try {
-    // Check if the chrome.storage API is available
-    if (chrome.storage?.local) {
-      // Keys to retrieve from storage
-      const keysToGet = ["themeColor", "isDarkMode"];
-
-      // Use the chrome.storage.local.get method
-      chrome.storage.local.get(keysToGet, (result) => {
-        // This callback function executes once the data is retrieved.
-
-        // Check for any runtime errors during the API call
-        if (chrome.runtime.lastError) {
-          console.error(
-            "Script 1: Error retrieving data:",
-            chrome.runtime.lastError
-          );
-          return;
-        }
-
-        // Log the retrieved data
-        console.log(
-          "Script 1: Data retrieved successfully from chrome.storage.local:"
-        );
-        console.log(result);
-
-        // You can now use the retrieved data, for example:
-        const { themeColor, isDarkMode } = result;
-        console.log(`Script 1: Theme Color is ${themeColor}`);
-        console.log(`Script 1: Is Dark Mode? ${isDarkMode}`);
-      });
-    } else {
-      console.warn(
-        "Script 1: chrome.storage.local API not available. Are you in an extension context?"
-      );
+    if (!chrome.storage?.local) {
+      console.warn("Theme Extension: chrome.storage.local API not available.");
+      return;
     }
+
+    const keysToGet = ["themeObject"];
+    chrome.storage.local.get(keysToGet, (result) => {
+      if (chrome.runtime.lastError) {
+        console.error("Error retrieving theme:", chrome.runtime.lastError);
+        return;
+      }
+
+      const { themeObject } = result;
+      if (!themeObject) {
+        console.warn("Theme object not found in storage.");
+        return;
+      }
+
+      // Select the correct theme palette (light or dark)
+      const currentTheme = themeObject[hostScheme];
+      if (!currentTheme) {
+        console.warn(`No theme found for scheme: "${hostScheme}"`);
+        return;
+      }
+
+      // Apply the theme by setting CSS variables on the root element
+      document.documentElement.style.setProperty(
+        "--theme-user-msg-bg",
+        currentTheme["user-msg-bg"]
+      );
+      document.documentElement.style.setProperty(
+        "--theme-user-msg-text",
+        currentTheme["user-msg-text"]
+      );
+      document.documentElement.style.setProperty(
+        "--theme-submit-btn-bg",
+        currentTheme["submit-btn-bg"]
+      );
+      document.documentElement.style.setProperty(
+        "--theme-submit-btn-text",
+        currentTheme["submit-btn-text"]
+      );
+      document.documentElement.style.setProperty(
+        "--theme-secondary-btn-bg",
+        currentTheme["secondary-btn-bg"]
+      );
+      document.documentElement.style.setProperty(
+        "--theme-secondary-btn-text",
+        currentTheme["secondary-btn-text"]
+      );
+      document.documentElement.style.setProperty(
+        "--theme-user-selection-bg",
+        currentTheme["user-selection-bg"]
+      );
+
+      console.log("Theme successfully applied.");
+    });
   } catch (error) {
-    console.error("Script 1: An unexpected error occurred:", error);
+    console.error("An unexpected error occurred in applyTheme:", error);
   }
-})();
+};
+
+/**
+ * Sets up a MutationObserver to watch for changes to the <html> element's style,
+ * which is where the color-scheme is often set.
+ */
+const observeHostSchemeChanges = () => {
+  const targetNode = document.documentElement;
+
+  // Configuration for the observer
+  const config = {
+    attributes: true, // Watch for attribute changes
+    attributeFilter: ["style", "class"], // Specifically watch the 'style' and 'class' attributes
+  };
+
+  // Callback function to execute when mutations are observed
+  const callback = (mutationsList, observer) => {
+    for (const mutation of mutationsList) {
+      if (
+        mutation.type === "attributes" &&
+        (mutation.attributeName === "style" ||
+          mutation.attributeName === "class")
+      ) {
+        console.log(
+          "Host page style or class attribute changed. Re-applying theme."
+        );
+        applyTheme();
+        // No need to break, as we want to re-apply once per mutation batch.
+        return;
+      }
+    }
+  };
+
+  // Create an observer instance linked to the callback function
+  const observer = new MutationObserver(callback);
+
+  // Start observing the target node for configured mutations
+  observer.observe(targetNode, config);
+  console.log("MutationObserver is now watching for color scheme changes.");
+};
+
+// --- SCRIPT INITIALIZATION ---
+
+// 1. Apply the theme immediately when the script is injected.
+applyTheme();
+
+// 2. Set up the observer to watch for dynamic changes on the page.
+observeHostSchemeChanges();
+
+// 3. Listen for changes from the extension's storage (e.g., user changes theme in the popup).
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === "local" && changes.themeObject) {
+    console.log("Theme object in storage changed. Re-applying styles...");
+    applyTheme();
+  }
+});
