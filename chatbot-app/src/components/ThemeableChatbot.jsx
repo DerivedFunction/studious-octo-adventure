@@ -37,7 +37,7 @@ const ThemeableChatbot = () => {
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");
-  const [themeColor, setThemeColor] = useState("#0285FF");
+  const [themeColor, setThemeColor] = useState("#B3B3B3");
   const [themeObject, setThemeObject] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -138,12 +138,12 @@ const ThemeableChatbot = () => {
     };
 
     const fixedDarkThemeStyles = {
-      bodyBg: "#18181b",
-      headerText: "#f4f4f5",
+      bodyBg: "#212121",
+      headerText: "#ffffff",
       aiMsgBg: "transparent",
-      aiMsgText: "#f4f4f5",
-      inputBg: "#18181b",
-      inputText: "#f4f4f5",
+      aiMsgText: "#ffffff",
+      inputBg: "#303030",
+      inputText: "#ffffff",
       inputBorder: "#52525b",
     };
 
@@ -271,7 +271,7 @@ const ThemeableChatbot = () => {
     // Adjust textarea for multi-line input
     const textarea = textareaRef.current;
     if (textarea) {
-      setIsMultiLine(textarea.value.length > 110);
+      setIsMultiLine(textarea.value.length > 50);
     }
   }, [inputMessage]);
 
@@ -408,6 +408,23 @@ const ThemeableChatbot = () => {
         --input-text: ${currentTheme.inputText};
         --input-border: ${currentTheme.inputBorder};
       }
+      /* Fix placeholder color for theme switching */
+      .theme-root textarea::placeholder {
+        color: ${currentTheme.inputText};
+        opacity: 0.5;
+      }
+      .theme-root textarea::-webkit-input-placeholder {
+        color: ${currentTheme.inputText};
+        opacity: 0.5;
+      }
+      .theme-root textarea::-moz-placeholder {
+        color: ${currentTheme.inputText};
+        opacity: 0.5;
+      }
+      .theme-root textarea:-ms-input-placeholder {
+        color: ${currentTheme.inputText};
+        opacity: 0.5;
+      }
       ::selection { background-color: ${currentTheme["user-selection-bg"]}; }
       ::-moz-selection { background-color: ${currentTheme["user-selection-bg"]}; }
       @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
@@ -425,7 +442,7 @@ const ThemeableChatbot = () => {
         style={{ backgroundColor: "var(--body-bg)" }}
       >
         <div
-          className="theme-root w-full h-full mx-auto shadow-lg flex flex-col transition-colors duration-300"
+          className="theme-root w-full h-full mx-auto flex flex-col transition-colors duration-300"
           style={{ backgroundColor: "var(--body-bg)" }}
         >
           <header
@@ -580,7 +597,7 @@ const ThemeableChatbot = () => {
           </main>
           <footer className="p-4">
             <div
-              className={`flex items-center gap-4 border p-1 rounded-[28px] w-full shadow-md transition-colors duration-300 ${
+              className={`flex items-center gap-4 border p-1 rounded-[28px] w-full shadow-2xs transition-colors duration-300 ${
                 isMultiLine ? "flex-col" : "flex-row"
               }`}
               style={{

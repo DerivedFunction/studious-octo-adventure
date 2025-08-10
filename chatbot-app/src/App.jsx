@@ -3,7 +3,7 @@ import "./App.css";
 
 function App() {
   return (
-    <div className="App min-w-[600px] min-h-[300px] h-screen w-screen">
+    <div className="App w-[600px] h-[300px] text-base">
       <ThemeableChatbot />
     </div>
   );
