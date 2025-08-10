@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Accent Color for ChatGPT",
+  "version": "2025.8.10",
+  "description": "Overrides default accent colors.",
+  "action": {
+    "default_popup": "index.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png"
+  },
+  "permissions": ["storage", "scripting"],
+  "content_scripts": [
+    {
+      "matches": ["https://chat.openai.com/*", "https://*.chatgpt.com/*"],
+      "js": ["script/chatgpt.js"]
+    }
+  ]
+}
