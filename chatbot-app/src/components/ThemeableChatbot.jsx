@@ -1,6 +1,6 @@
 /* eslint-disable no-undef */
 import { useState, useEffect, useRef } from "react";
-import chatgpt from "../assets/chatgpt.png"; // Assuming you have this asset locally
+import chatgpt from "../assets/chatgpt.png";
 
 // Helper to get initial dark mode preference from chrome.storage or system settings
 const getInitialDarkMode = (callback) => {
@@ -29,7 +29,7 @@ const getInitialDarkMode = (callback) => {
 const ThemeableChatbot = () => {
   // --- STATE MANAGEMENT ---
   const [messages, setMessages] = useState([
-    { id: 1, type: "user", content: "Hello, who are you?" },
+    { id: 1, type: "user", content: "This is a user message" },
     {
       id: 2,
       type: "ai",
@@ -39,15 +39,21 @@ const ThemeableChatbot = () => {
   ]);
   const [inputMessage, setInputMessage] = useState("");
   const [themeColor, setThemeColor] = useState("#0285FF");
-  const [themeObject, setThemeObject] = useState(null); // Will hold { light: {...}, dark: {...} }
+  const [themeObject, setThemeObject] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isMultiLine, setIsMultiLine] = useState(false);
+  const [isScriptingEnabled, setIsScriptingEnabled] = useState(false); // <-- NEW: State for scripting toggle
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
 
-  // --- COLOR CONVERSION UTILITIES ---
+  // --- PERMISSIONS CONFIG ---
+  const scriptingPermissions = {
+    permissions: ["scripting"],
+    origins: ["https://chat.openai.com/*", "https://*.chatgpt.com/*"], // The host you want to run scripts on
+  };
 
+  // --- COLOR CONVERSION UTILITIES (Omitted for brevity, same as your original code) ---
   const hslToHex = (h, s, l) => {
     l /= 100;
     const a = (s * Math.min(l, 1 - l)) / 100;
@@ -56,7 +62,7 @@ const ThemeableChatbot = () => {
       const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
       return Math.round(255 * color)
         .toString(16)
-        .padStart(2, "0"); // Convert to Hex and pad with a zero if needed
+        .padStart(2, "0");
     };
     return `#${f(0)}${f(8)}${f(4)}`;
   };
@@ -79,7 +85,6 @@ const ThemeableChatbot = () => {
     let h = 0,
       s = 0,
       l = (cmax + cmin) / 2;
-
     if (delta !== 0) {
       s = delta / (1 - Math.abs(2 * l - 1));
       switch (cmax) {
@@ -112,20 +117,14 @@ const ThemeableChatbot = () => {
       : null;
   };
 
-  // --- THEME GENERATION LOGIC ---
+  // --- THEME GENERATION LOGIC (Omitted for brevity, same as your original code) ---
   const generateFullThemeObject = (mainColorHex) => {
     const hsl = hexToHsl(mainColorHex);
     const rgb = hexToRgb(mainColorHex);
     if (!rgb) return null;
-
     const { h, s, l } = hsl;
-
-    // Check if the color is very dark (near black) to switch to neutral colors
     const isNearBlack = l < 15;
-    // Check if the color is desaturated (grey)
     const isGrey = s < 20;
-
-    // Light Mode Palette
     const lightTheme = {
       primary: mainColorHex,
       "submit-btn-bg": mainColorHex,
@@ -147,8 +146,6 @@ const ThemeableChatbot = () => {
       inputText: "#18181b",
       inputBorder: "#d4d4d8",
     };
-
-    // Dark Mode Palette
     const darkTheme = {
       primary: mainColorHex,
       "submit-btn-bg": mainColorHex,
@@ -171,18 +168,23 @@ const ThemeableChatbot = () => {
       inputText: "#f4f4f5",
       inputBorder: "#52525b",
     };
-
     return { light: lightTheme, dark: darkTheme };
   };
 
   // --- SIDE EFFECTS ---
   useEffect(() => {
+    // Load initial settings from storage
     getInitialDarkMode(setIsDarkMode);
     try {
       if (chrome?.storage?.local) {
-        chrome.storage.local.get(["themeColor"], (result) => {
-          if (result.themeColor) setThemeColor(result.themeColor);
-        });
+        chrome.storage.local.get(
+          ["themeColor", "isScriptingEnabled"],
+          (result) => {
+            if (result.themeColor) setThemeColor(result.themeColor);
+            // Set scripting toggle based on stored value or default to false
+            setIsScriptingEnabled(!!result.isScriptingEnabled);
+          }
+        );
       }
     } catch (error) {
       console.error("Error reading from chrome.storage on init:", error);
@@ -190,6 +192,7 @@ const ThemeableChatbot = () => {
   }, []);
 
   useEffect(() => {
+    // Save theme and dark mode changes to storage
     const newThemeObject = generateFullThemeObject(themeColor);
     setThemeObject(newThemeObject);
     try {
@@ -206,6 +209,7 @@ const ThemeableChatbot = () => {
   }, [themeColor, isDarkMode]);
 
   useEffect(() => {
+    // Auto-scroll chat
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop =
         chatContainerRef.current.scrollHeight;
@@ -213,6 +217,7 @@ const ThemeableChatbot = () => {
   }, [messages, isTyping]);
 
   useEffect(() => {
+    // Adjust textarea for multi-line input
     const textarea = textareaRef.current;
     if (textarea) {
       setIsMultiLine(textarea.value.length > 110);
@@ -220,6 +225,51 @@ const ThemeableChatbot = () => {
   }, [inputMessage]);
 
   // --- EVENT HANDLERS ---
+
+  // NEW: Handler for the scripting toggle
+  const handleScriptingToggle = async () => {
+    const newIsEnabled = !isScriptingEnabled;
+    setIsScriptingEnabled(newIsEnabled); // Optimistically update UI
+
+    try {
+      if (newIsEnabled) {
+        // Request permissions when enabling
+        const granted = await chrome.permissions.request(scriptingPermissions);
+        if (granted) {
+          await chrome.scripting.registerContentScripts([
+            {
+              id: "ChatGPT",
+              matches: ["https://chat.openai.com/*", "https://*.chatgpt.com/*"],
+              js: ["./script/chatgpt.js"],
+              runAt: "document_end",
+              allFrames: true,
+            },
+          ]);
+          console.log("Scripting permissions granted.");
+          chrome.storage.local.set({ isScriptingEnabled: true });
+        } else {
+          console.log("Scripting permissions denied.");
+          setIsScriptingEnabled(false); // Revert UI if denied
+          chrome.storage.local.set({ isScriptingEnabled: false });
+        }
+      } else {
+        // Remove permissions when disabling
+        try {
+          await chrome.scripting.unregisterContentScripts();
+          console.log("All dynamic content scripts unregistered");
+        } catch (error) {
+          console.error("Error unregistering scripts:", error);
+        }
+        await chrome.permissions.remove(scriptingPermissions);
+        console.log("Scripting permissions removed.");
+        chrome.storage.local.set({ isScriptingEnabled: false });
+      }
+    } catch (error) {
+      console.error("Error handling scripting permissions:", error);
+      setIsScriptingEnabled(isScriptingEnabled); // Revert on error
+    }
+  };
+
   const handleSendMessage = () => {
     if (inputMessage.trim().length > 0) {
       window.open(
@@ -262,8 +312,6 @@ const ThemeableChatbot = () => {
   const handleColorChange = (e) => {
     const newColorHex = e.target.value;
     const hsl = hexToHsl(newColorHex);
-
-    // If the lightness is greater than 70, cap it at 70.
     if (hsl.l > 70) {
       hsl.l = 70;
       const cappedColorHex = hslToHex(hsl.h, hsl.s, hsl.l);
@@ -333,6 +381,39 @@ const ThemeableChatbot = () => {
               Accent Color Override
             </h1>
             <div className="flex items-center gap-4">
+              {/* --- NEW SCRIPTING TOGGLE --- */}
+              <div className="flex items-center gap-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="var(--header-text)"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  class="lucide lucide-power-icon lucide-power"
+                >
+                  <path d="M12 2v10" />
+                  <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+                </svg>
+                <label
+                  htmlFor="scripting-toggle"
+                  className="relative inline-flex items-center cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    id="scripting-toggle"
+                    className="sr-only peer"
+                    checked={isScriptingEnabled}
+                    onChange={handleScriptingToggle}
+                  />
+                  <div className="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                </label>
+              </div>
+              {/* --- END NEW SCRIPTING TOGGLE --- */}
+
               <div className="flex items-center gap-3">
                 <label
                   htmlFor="theme-color-picker"
@@ -440,7 +521,9 @@ const ThemeableChatbot = () => {
           </main>
           <footer className="p-4">
             <div
-              className={`flex items-center gap-4 border p-1 rounded-[28px] w-full shadow-md transition-colors duration-300 ${isMultiLine ? "flex-col" : "flex-row"}`}
+              className={`flex items-center gap-4 border p-1 rounded-[28px] w-full shadow-md transition-colors duration-300 ${
+                isMultiLine ? "flex-col" : "flex-row"
+              }`}
               style={{
                 borderColor: "var(--input-border)",
                 backgroundColor: "var(--input-bg)",

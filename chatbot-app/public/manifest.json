@@ -14,11 +14,7 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png"
   },
-  "permissions": ["storage", "scripting"],
-  "content_scripts": [
-    {
-      "matches": ["https://chat.openai.com/*", "https://*.chatgpt.com/*"],
-      "js": ["script/chatgpt.js"]
-    }
-  ]
+  "permissions": ["storage"],
+  "optional_permissions": ["scripting"],
+  "optional_host_permissions": ["https://chat.openai.com/*", "https://*.chatgpt.com/*"]
 }
