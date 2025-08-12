@@ -55,40 +55,58 @@ async function getConversationFromDB(conversationId) {
 }
 
 /**
- * Attaches mouseover event listeners to chat bubbles to show token counts.
- * It maps the DOM element to the corresponding message data from IndexedDB.
+ * Attaches a token count display (individual and cumulative) to each chat bubble.
  * @param {Array<object>} messages - The array of message objects from the conversation.
  */
 function addHoverListeners(messages) {
   const turnElements = document.querySelectorAll(
     '[data-testid^="conversation-turn-"]'
   );
+  let cumulativeTokens = 0; // Reset the cumulative count for each full check
 
   turnElements.forEach((turnElement) => {
-    // If we've already attached a listener, skip it to avoid duplicates.
-    if (turnElement.dataset.tokenListenerAttached) {
-      return;
-    }
-
     const testId = turnElement.dataset.testid; // e.g., "conversation-turn-2"
-    // The index in the DOM's test-id directly corresponds to the message index.
     const messageIndex = parseInt(testId.replace("conversation-turn-", ""), 10);
-
-    // Get the corresponding message from the database data.
     const messageData = messages[messageIndex];
 
-    if (messageData) {
-      const handleHover = () => {
-        const messageText = messageData.text || "";
-        if (messageText.trim()) {
-          const messageTokenCount = enc.encode(messageText).length;
-          console.log(`💬 Message Tokens (from DB): ${messageTokenCount}`);
-        }
-      };
+    if (!messageData) return;
 
-      turnElement.addEventListener("mouseover", handleHover);
-      // Mark the element so we don't add the listener again.
-      turnElement.dataset.tokenListenerAttached = "true";
+    const messageText = messageData.text || "";
+    const messageTokenCount = messageText.trim()
+      ? enc.encode(messageText).length
+      : 0;
+    cumulativeTokens += messageTokenCount; // Add to the running total
+
+    // Only add/update the UI if the token count is greater than 0
+    if (messageTokenCount > 0) {
+      const authorRoleElement = turnElement.querySelector(
+        "[data-message-author-role]"
+      );
+      if (authorRoleElement) {
+        // Check if our UI element already exists
+        let tokenCountDiv = authorRoleElement.querySelector(
+          ".token-count-display"
+        );
+
+        if (!tokenCountDiv) {
+          // If it doesn't exist, create it
+          tokenCountDiv = document.createElement("div");
+          tokenCountDiv.className = "token-count-display"; // Add a class for easy selection
+
+          // Style it to be subtle and inline
+          tokenCountDiv.style.display = "inline-block";
+          tokenCountDiv.style.marginLeft = "8px";
+          tokenCountDiv.style.fontSize = "12px";
+          tokenCountDiv.style.color = "var(--text-secondary)"; // Use ChatGPT's CSS variable
+          tokenCountDiv.style.fontWeight = "normal";
+
+          // Append it next to the author role element
+          authorRoleElement.appendChild(tokenCountDiv);
+        }
+
+        // Update its content every time to show the latest cumulative total
+        tokenCountDiv.textContent = `| ${messageTokenCount} tokens (Total: ${cumulativeTokens})`;
+      }
     }
   });
 }
