@@ -18,7 +18,11 @@ const applyTheme = async () => {
     const { isScriptingEnabled } = await chrome.storage.local.get(
       "isScriptingEnabled"
     );
-    if (!isScriptingEnabled) return;
+    const { isThemeActive } = await chrome.storage.local.get("isThemeActive");
+    if (!isScriptingEnabled || !isThemeActive) {
+      removeStyles();
+      return;
+    }
     const keysToGet = ["themeObject"];
     chrome.storage.local.get(keysToGet, (result) => {
       if (chrome.runtime.lastError) {
@@ -43,7 +47,10 @@ const applyTheme = async () => {
       const keys = Object.keys(currentTheme);
       const values = Object.values(currentTheme);
       for (let i = 0; i < keys.length; i++) {
-        document.documentElement.style.setProperty(`--theme-${keys[i]}`, values[i]);
+        document.documentElement.style.setProperty(
+          `--theme-${keys[i]}`,
+          values[i]
+        );
       }
 
       console.log("Theme successfully applied.");
@@ -116,14 +123,8 @@ observeHostSchemeChanges();
 // 3. Listen for changes from the extension's storage (e.g., user changes theme in the popup).
 chrome.storage.onChanged.addListener((changes, namespace) => {
   console.log(changes);
-  if (
-    namespace === "local" &&
-    (changes.themeObject || changes.isScriptingEnabled.newValue)
-  ) {
+  if (namespace === "local") {
     console.log("Theme object in storage changed. Re-applying styles...");
     applyTheme();
-  }
-  if (namespace === "local" && changes.isScriptingEnabled.newValue === false) {
-    removeStyles();
   }
 });

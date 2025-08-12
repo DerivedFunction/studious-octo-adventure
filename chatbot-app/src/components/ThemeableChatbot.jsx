@@ -1,6 +1,6 @@
 /* eslint-disable no-undef */
 import { useState, useEffect, useRef } from "react";
-import chatgpt from "../assets/chatgpt.png";
+import Header from "./header";
 
 // Helper to get initial dark mode preference from chrome.storage or system settings
 const getInitialDarkMode = (callback) => {
@@ -29,7 +29,11 @@ const getInitialDarkMode = (callback) => {
 const ThemeableChatbot = () => {
   // --- STATE MANAGEMENT ---
   const [messages, setMessages] = useState([
-    { id: 1, type: "user", content: "This is a user message" },
+    {
+      id: 1,
+      type: "user",
+      content: "This is a user message. Click me to change the theme.",
+    },
     {
       id: 2,
       type: "ai",
@@ -43,6 +47,7 @@ const ThemeableChatbot = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [isScriptingEnabled, setIsScriptingEnabled] = useState(false); // <-- NEW: State for scripting toggle
+  const [isThemeActive, setIsThemeActive] = useState(false);
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -202,8 +207,9 @@ const ThemeableChatbot = () => {
     getInitialDarkMode(setIsDarkMode);
     try {
       if (chrome?.storage?.local) {
-        chrome.storage.local.get(["themeColor"], (result) => {
+        chrome.storage.local.get(["themeColor", "themeActive"], (result) => {
           if (result.themeColor) setThemeColor(result.themeColor);
+          if (result.themeActive) setIsThemeActive(result.themeActive);
         });
         // Check to see if script exists
         try {
@@ -251,6 +257,11 @@ const ThemeableChatbot = () => {
       chrome.storage.local.set({ isScriptingEnabled });
     }
   }, [isScriptingEnabled]);
+  useEffect(() => {
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({ isThemeActive });
+    }
+  }, [isThemeActive]);
 
   useEffect(() => {
     // Auto-scroll chat
@@ -436,102 +447,29 @@ const ThemeableChatbot = () => {
           className="theme-root w-full h-full mx-auto flex flex-col transition-colors duration-300"
           style={{ backgroundColor: "var(--body-bg)" }}
         >
-          <header
-            className="flex items-center justify-between p-4 border-b transition-colors duration-300"
-            style={{ borderColor: "var(--input-border)" }}
-          >
-            <img src={chatgpt} width={24} height={24} alt="ChatGPT Logo" />
-            <h1
-              className="text-xl font-bold m-0"
-              style={{ color: "var(--header-text)" }}
-            >
-              Accent Color Override
-            </h1>
-            <div className="flex items-center gap-4">
-              {/* --- NEW SCRIPTING TOGGLE --- */}
-              <div className="flex items-center gap-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="var(--header-text)"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="lucide lucide-power-icon lucide-power"
-                >
-                  <path d="M12 2v10" />
-                  <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
-                </svg>
-                <label
-                  htmlFor="scripting-toggle"
-                  className="relative inline-flex items-center cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    id="scripting-toggle"
-                    className="sr-only peer"
-                    checked={isScriptingEnabled}
-                    onChange={handleScriptingToggle}
-                  />
-                  <div className="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </label>
-              </div>
-              {/* --- END NEW SCRIPTING TOGGLE --- */}
+          <Header
+            isScriptingEnabled={isScriptingEnabled}
+            handleScriptingToggle={handleScriptingToggle}
+            themeColor={themeColor}
+            handleColorChange={handleColorChange}
+            isDarkMode={isDarkMode}
+            setIsDarkMode={setIsDarkMode}
+            pageName={"Theme"}
+            toolStatus={isThemeActive}
+            toggleTool={setIsThemeActive}
+          />
 
-              <div className="flex items-center gap-3">
-                <label
-                  htmlFor="theme-color-picker"
-                  className="text-sm font-medium"
-                  style={{ color: "var(--header-text)" }}
-                >
-                  Theme:
-                </label>
-                <input
-                  type="color"
-                  id="theme-color-picker"
-                  value={themeColor}
-                  onChange={handleColorChange}
-                  className="w-8 h-8 p-0 bg-transparent border-none rounded-md cursor-pointer"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ color: "var(--header-text)" }}
-                >
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                </svg>
-                <label
-                  htmlFor="dark-mode-toggle"
-                  className="relative inline-flex items-center cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    id="dark-mode-toggle"
-                    className="sr-only peer"
-                    checked={isDarkMode}
-                    onChange={() => setIsDarkMode((prev) => !prev)}
-                  />
-                  <div className="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-              </div>
-            </div>
-          </header>
           <main
             ref={chatContainerRef}
             className="flex-1 p-6 overflow-y-auto min-h-0 flex flex-col gap-6"
           >
+            <input
+              type="color"
+              id="theme-color-picker"
+              value={themeColor}
+              onChange={handleColorChange}
+              className="w-8 h-8 p-0 bg-transparent border-none rounded-md cursor-pointer hidden"
+            />
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -555,6 +493,11 @@ const ThemeableChatbot = () => {
                         msg.type === "user"
                           ? "var(--user-msg-text)"
                           : "var(--ai-msg-text)",
+                    }}
+                    onClick={() => {
+                      if (msg.type === "user") {
+                        document.querySelector("input[type='color']").click();
+                      }
                     }}
                   >
                     <p className="m-0 whitespace-pre-wrap">{msg.content}</p>
