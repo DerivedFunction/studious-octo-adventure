@@ -7,6 +7,27 @@ console.log("✅ Tokenizer initialized.");
 
 /* eslint-disable no-undef */
 
+// --- UTILITY FUNCTIONS ---
+
+/**
+ * Creates a debounced function that delays invoking `func` until after `wait`
+ * milliseconds have elapsed since the last time the debounced function was invoked.
+ * @param {Function} func The function to debounce.
+ * @param {number} wait The number of milliseconds to delay.
+ * @returns {Function} Returns the new debounced function.
+ */
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
 // --- TOKEN COUNTING LOGIC ---
 
 /**
@@ -84,7 +105,7 @@ async function runTokenCheck() {
   }
 
   const conversationId = pathParts[2];
-  console.log(`🚀 Running token check for conversation: ${conversationId}`);
+  // console.log(`🚀 Running token check for conversation: ${conversationId}`); // This can be noisy, optional to keep.
 
   try {
     const conversationData = await getConversationFromDB(conversationId);
@@ -101,7 +122,8 @@ async function runTokenCheck() {
       // Add hover listeners using the accurate data from IndexedDB
       addHoverListeners(conversationData.messages);
     } else {
-      console.warn("Could not find conversation data or messages.");
+      // This can happen briefly during navigation, so a warn might be too much.
+      // console.warn("Could not find conversation data or messages.");
     }
   } catch (error) {
     console.error("❌ Error during token check:", error);
@@ -117,7 +139,7 @@ async function runTokenCheck() {
 const applyTheme = async () => {
   const hostScheme = document.documentElement.style.colorScheme || "light";
   chrome.storage.local.set({ isDarkMode: hostScheme === "dark" });
-  console.log("Applying theme for host scheme:", hostScheme);
+  // console.log("Applying theme for host scheme:", hostScheme);
 
   try {
     if (!chrome.storage?.local) {
@@ -141,13 +163,13 @@ const applyTheme = async () => {
 
       const { themeObject } = result;
       if (!themeObject) {
-        console.warn("Theme object not found in storage.");
+        // console.warn("Theme object not found in storage.");
         return;
       }
 
       const currentTheme = themeObject[hostScheme];
       if (!currentTheme) {
-        console.warn(`No theme found for scheme: "${hostScheme}"`);
+        // console.warn(`No theme found for scheme: "${hostScheme}"`);
         return;
       }
 
@@ -159,7 +181,7 @@ const applyTheme = async () => {
           values[i]
         );
       }
-      console.log("Theme successfully applied.");
+      // console.log("Theme successfully applied.");
     });
   } catch (error) {
     console.error("An unexpected error occurred in applyTheme:", error);
@@ -184,9 +206,7 @@ const observeHostSchemeChanges = () => {
         (mutation.attributeName === "style" ||
           mutation.attributeName === "class")
       ) {
-        console.log(
-          "Host page style or class attribute changed. Re-applying theme."
-        );
+        // console.log("Host page style or class attribute changed. Re-applying theme.");
         applyTheme();
         return;
       }
@@ -195,14 +215,14 @@ const observeHostSchemeChanges = () => {
 
   const observer = new MutationObserver(callback);
   observer.observe(targetNode, config);
-  console.log("MutationObserver is now watching for color scheme changes.");
+  // console.log("MutationObserver is now watching for color scheme changes.");
 };
 
 /**
  * Removes custom styles by clearing the CSS variables.
  */
 const removeStyles = () => {
-  console.log("Removing styles...");
+  // console.log("Removing styles...");
   const themeProperties = [
     "--theme-user-msg-bg",
     "--theme-user-msg-text",
@@ -228,7 +248,7 @@ observeHostSchemeChanges();
 // 3. Listen for changes from the extension's storage (e.g., user changes theme in the popup).
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === "local") {
-    console.log("Storage changed. Re-applying theme...");
+    // console.log("Storage changed. Re-applying theme...");
     applyTheme();
   }
 });
@@ -236,14 +256,21 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 // 4. Run the token check on initial load.
 runTokenCheck();
 
-// 5. Set up an observer for navigation and content changes to re-run the token check.
+// 5. Create a debounced version of the token check function.
+const debouncedRunTokenCheck = debounce(runTokenCheck, 500); // 500ms delay
+
+// 6. Set up an observer for navigation and content changes.
 let lastUrl = location.href;
 new MutationObserver(() => {
   const url = location.href;
-  // Re-run if the URL changes OR if new content is added to the page.
+
+  // If the URL has changed, it's a navigation event. Run the check immediately.
   if (url !== lastUrl) {
     lastUrl = url;
-    console.log("URL changed, re-running token check.");
+    console.log("URL changed, running token check immediately.");
+    runTokenCheck();
+  } else {
+    // Otherwise, it's a content change (e.g., AI typing). Use the debounced version.
+    debouncedRunTokenCheck();
   }
-  runTokenCheck();
 }).observe(document.body, { subtree: true, childList: true });
