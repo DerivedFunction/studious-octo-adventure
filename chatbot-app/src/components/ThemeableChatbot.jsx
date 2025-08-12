@@ -457,6 +457,7 @@ const ThemeableChatbot = () => {
             pageName={"Theme"}
             toolStatus={isThemeActive}
             toggleTool={setIsThemeActive}
+           
           />
 
           <main
