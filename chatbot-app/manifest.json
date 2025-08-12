@@ -16,5 +16,8 @@
   },
   "permissions": ["storage"],
   "optional_permissions": ["scripting"],
-  "optional_host_permissions": ["https://chat.openai.com/*", "https://*.chatgpt.com/*"]
+  "optional_host_permissions": [
+    "https://chat.openai.com/*",
+    "https://*.chatgpt.com/*"
+  ]
 }
