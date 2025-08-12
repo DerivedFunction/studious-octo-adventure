@@ -34,14 +34,52 @@ async function getConversationFromDB(conversationId) {
 }
 
 /**
- * Fetches the current conversation, counts its tokens, and logs the result.
+ * Attaches mouseover event listeners to chat bubbles to show token counts.
+ * It maps the DOM element to the corresponding message data from IndexedDB.
+ * @param {Array<object>} messages - The array of message objects from the conversation.
+ */
+function addHoverListeners(messages) {
+  const turnElements = document.querySelectorAll(
+    '[data-testid^="conversation-turn-"]'
+  );
+
+  turnElements.forEach((turnElement) => {
+    // If we've already attached a listener, skip it to avoid duplicates.
+    if (turnElement.dataset.tokenListenerAttached) {
+      return;
+    }
+
+    const testId = turnElement.dataset.testid; // e.g., "conversation-turn-2"
+    // The index in the DOM's test-id directly corresponds to the message index.
+    const messageIndex = parseInt(testId.replace("conversation-turn-", ""), 10);
+
+    // Get the corresponding message from the database data.
+    const messageData = messages[messageIndex];
+
+    if (messageData) {
+      const handleHover = () => {
+        const messageText = messageData.text || "";
+        if (messageText.trim()) {
+          const messageTokenCount = enc.encode(messageText).length;
+          console.log(`💬 Message Tokens (from DB): ${messageTokenCount}`);
+        }
+      };
+
+      turnElement.addEventListener("mouseover", handleHover);
+      // Mark the element so we don't add the listener again.
+      turnElement.dataset.tokenListenerAttached = "true";
+    }
+  });
+}
+
+/**
+ * Fetches the current conversation, counts its tokens, and attaches hover listeners.
  */
 async function runTokenCheck() {
   const pathParts = window.location.pathname.split("/");
   // Check if the URL matches the pattern for a conversation
   if (pathParts[1] !== "c" || !pathParts[2]) {
     console.log("ⓘ Not on a conversation page. Token check skipped.");
-    // Here you would hide your token counter UI if it were visible
     return;
   }
 
@@ -59,7 +97,9 @@ async function runTokenCheck() {
       console.log(
         `📊 TOTAL TOKENS for "${conversationData.title}": ${tokenCount}`
       );
-      // Here you would update your token counter UI with the new count
+
+      // Add hover listeners using the accurate data from IndexedDB
+      addHoverListeners(conversationData.messages);
     } else {
       console.warn("Could not find conversation data or messages.");
     }
@@ -196,13 +236,14 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 // 4. Run the token check on initial load.
 runTokenCheck();
 
-// 5. Set up an observer for navigation changes to re-run the token check.
+// 5. Set up an observer for navigation and content changes to re-run the token check.
 let lastUrl = location.href;
 new MutationObserver(() => {
   const url = location.href;
+  // Re-run if the URL changes OR if new content is added to the page.
   if (url !== lastUrl) {
     lastUrl = url;
     console.log("URL changed, re-running token check.");
-    runTokenCheck();
   }
+  runTokenCheck();
 }).observe(document.body, { subtree: true, childList: true });
