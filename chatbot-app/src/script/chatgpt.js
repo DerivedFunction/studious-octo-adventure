@@ -5,6 +5,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 const enc = new Tiktoken(o200k_base);
 console.log("✅ Tokenizer initialized.");
 let lastTokenCount = 0;
+let fetchController; // Controller to abort in-flight fetch requests
 /* eslint-disable no-undef */
 
 // --- UTILITY FUNCTIONS ---
@@ -55,6 +56,111 @@ async function getConversationFromDB(conversationId) {
 }
 
 /**
+ * Fetches detailed conversation data from the backend API to find file and canvas tokens.
+ * @param {string} conversationId The ID of the conversation to fetch.
+ * @returns {Promise<Map<string, object>>} A map where keys are message IDs and values contain file/canvas info.
+ */
+async function processBackendData(conversationId) {
+  // Abort any previous fetch request to avoid race conditions on navigation
+  if (fetchController) {
+    fetchController.abort();
+  }
+  fetchController = new AbortController();
+  const signal = fetchController.signal;
+
+  console.log(`Fetching data from backend-api for ${conversationId}...`);
+  const additionalDataMap = new Map();
+
+  try {
+    // First, get the access token needed for the API call
+    const session = await fetch("https://chatgpt.com/api/auth/session", {
+      signal,
+    }).then((res) => {
+      if (!res.ok) throw new Error("Failed to fetch auth session");
+      return res.json();
+    });
+    const accessToken = session.accessToken;
+
+    if (!accessToken) {
+      console.error("Could not retrieve access token.");
+      return additionalDataMap;
+    }
+
+    // Then, fetch the full conversation data
+    const conversationApiData = await fetch(
+      `https://chatgpt.com/backend-api/conversation/${conversationId}`,
+      {
+        headers: {
+          accept: "*/*",
+          authorization: `Bearer ${accessToken}`,
+        },
+        method: "GET",
+        signal, // Pass the signal to the fetch request
+      }
+    ).then((res) => {
+      if (!res.ok)
+        throw new Error(
+          `Backend API request failed with status: ${res.status}`
+        );
+      return res.json();
+    });
+
+    // Process the mapping to find file and canvas metadata
+    if (conversationApiData && conversationApiData.mapping) {
+      for (const messageId in conversationApiData.mapping) {
+        const node = conversationApiData.mapping[messageId];
+        if (node.message) {
+          const metadata = node.message.metadata;
+          const content = node.message.content;
+          let fileInfo = null;
+          let canvasInfo = null;
+
+          // Check for file attachments
+          if (metadata.attachments && metadata.attachments.length > 0) {
+            fileInfo = metadata.attachments.map((file) => ({
+              name: file.name,
+              tokens: file.file_token_size || 0,
+            }));
+          }
+
+          // Check for canvas/textdoc creation
+          if (
+            node.message.recipient === "canmore.create_textdoc" &&
+            content.parts &&
+            content.parts[0]
+          ) {
+            try {
+              const canvasContent = JSON.parse(content.parts[0]);
+              canvasInfo = {
+                title: canvasContent.name || "Canvas",
+                tokens: enc.encode(canvasContent.content || "").length,
+              };
+            } catch (e) {
+              console.error("Error parsing canvas content:", e);
+            }
+          }
+
+          if (fileInfo || canvasInfo) {
+            additionalDataMap.set(node.message.id, {
+              files: fileInfo,
+              canvas: canvasInfo,
+            });
+          }
+        }
+      }
+    }
+  } catch (error) {
+    if (error.name === "AbortError") {
+      console.log("Fetch aborted for previous conversation.");
+    } else {
+      console.error("❌ Error processing backend data:", error);
+    }
+  }
+  console.log("✅ Backend data processed.", additionalDataMap);
+  return additionalDataMap;
+}
+
+/**
  * Processes the full message history to determine which messages fit
  * within the defined context window limit.
  * @param {Array<object>} allMessages - The complete list of messages from the DB.
@@ -74,6 +180,7 @@ function getEffectiveMessages(allMessages, limit) {
   for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
     const message = messagesWithTokens[i];
     if (message.tokens === 0) continue;
+
     if (message.tokens > limit) {
       if (i === messagesWithTokens.length - 1) {
         message.isTruncated = true;
@@ -98,12 +205,14 @@ function getEffectiveMessages(allMessages, limit) {
 }
 
 /**
- * Attaches a token count display to each chat bubble, handling truncation and
- * visually distinguishing messages that are outside the context window.
+ * Attaches a token count display to each chat bubble.
  * @param {Array<object>} allMessages - The complete list of messages from the DB.
  * @param {Set<string>} effectiveMessageIds - A set of IDs for messages that are within the context window.
  * @param {Map<string, object>} effectiveMessageMap - A map to get the potentially modified (truncated) message object.
  * @param {number} limit - The context window token limit.
+ * @param {number} totalTokens - The total tokens of the effective messages.
+ * @param {Array<object>} messagesWithTokens - All messages with their token counts.
+ * @param {Map<string, object>} additionalDataMap - Map with file and canvas token data.
  */
 function addHoverListeners(
   allMessages,
@@ -111,18 +220,17 @@ function addHoverListeners(
   effectiveMessageMap,
   limit,
   totalTokens,
-  messagesWithTokens
+  messagesWithTokens,
+  additionalDataMap
 ) {
   if (totalTokens > 0 && lastTokenCount == totalTokens) {
-    console.log("Same token count, skipping update.");
-    return;
+    console.log("Same token count, skipping UI update.");
   }
   const turnElements = document.querySelectorAll(
     '[data-testid^="conversation-turn-"]'
   );
-  if (!turnElements) {
+  if (!turnElements.length) {
     console.log("Elements still loading.");
-    // run a debounce to wait for the changes
     debouncedRunTokenCheck();
     return;
   }
@@ -135,18 +243,12 @@ function addHoverListeners(
     const messageIndex = parseInt(testId.replace("conversation-turn-", ""), 10);
     const originalMessageData = allMessages[messageIndex];
 
-    if (!originalMessageData) {
-      console.log("Message data not found. Skipping update.");
-      return;
-    }
+    if (!originalMessageData) return;
 
     const authorRoleElement = turnElement.querySelector(
       "[data-message-author-role]"
     );
-    if (!authorRoleElement) {
-      console.log("Author role element not found. Skipping update.");
-      return;
-    }
+    if (!authorRoleElement) return;
 
     let tokenCountDiv = authorRoleElement.querySelector(".token-count-display");
     if (!tokenCountDiv) {
@@ -160,6 +262,20 @@ function addHoverListeners(
       authorRoleElement.appendChild(tokenCountDiv);
     }
 
+    let extraInfoDiv = authorRoleElement.querySelector(".extra-token-info");
+    if (!extraInfoDiv) {
+      extraInfoDiv = document.createElement("div");
+      extraInfoDiv.className = "extra-token-info";
+      extraInfoDiv.style.marginTop = "4px";
+      extraInfoDiv.style.fontSize = "11px";
+      extraInfoDiv.style.color = "var(--text-tertiary)";
+      tokenCountDiv.parentNode.insertBefore(
+        extraInfoDiv,
+        tokenCountDiv.nextSibling
+      );
+    }
+    extraInfoDiv.innerHTML = "";
+
     if (effectiveMessageIds.has(originalMessageData.id)) {
       const effectiveMessageData = effectiveMessageMap.get(
         originalMessageData.id
@@ -171,21 +287,36 @@ function addHoverListeners(
       } else {
         cumulativeTokens += messageTokenCount;
         maxcumulativeTokens += messageTokenCount;
-        if (messageTokenCount > 0) {
-          tokenCountDiv.textContent = `${messageTokenCount} of ${cumulativeTokens}/${limit} tokens.`;
-        }
+        tokenCountDiv.textContent =
+          messageTokenCount > 0
+            ? `${messageTokenCount} of ${cumulativeTokens}/${limit} tokens.`
+            : "";
       }
       turnElement.style.opacity = "1";
     } else {
-      const messageTokens= messagesWithTokens.find(
+      const messageTokens = messagesWithTokens.find(
         (m) => m.id === originalMessageData.id
       ).tokens;
       maxcumulativeTokens += messageTokens;
       tokenCountDiv.textContent = `(May be out of context): ${messageTokens} tokens.`;
       turnElement.style.opacity = "0.5";
-      
+    }
+
+    const extraData = additionalDataMap.get(originalMessageData.id);
+    if (extraData) {
+      let extraContent = "";
+      if (extraData.files) {
+        extraData.files.forEach((file) => {
+          extraContent += `<div>📎 ${file.name} (${file.tokens} tokens)</div>`;
+        });
+      }
+      if (extraData.canvas) {
+        extraContent += `<div>🎨 ${extraData.canvas.title} (${extraData.canvas.tokens} tokens)</div>`;
+      }
+      extraInfoDiv.innerHTML = extraContent;
     }
   });
+
   let statusDiv = document.querySelector(
     "#thread-bottom-container > div.text-token-text-secondary #tokenstatus"
   );
@@ -197,15 +328,16 @@ function addHoverListeners(
     statusDiv.style.fontSize = "12px";
     statusDiv.style.color = "var(--text-secondary)";
     statusDiv.style.fontWeight = "normal";
-    statusDiv.textContent = `Total tokens: ${maxcumulativeTokens} tokens.`
-    const parent = document.querySelector("#thread-bottom-container > div.text-token-text-secondary");
-    parent.appendChild(statusDiv)
-  } else {
-    statusDiv.textContent = `Total tokens: ${maxcumulativeTokens}/${limit} tokens.`
+    const parent = document.querySelector(
+      "#thread-bottom-container > div.text-token-text-secondary"
+    );
+    if (parent) parent.appendChild(statusDiv);
   }
-  const hasTokenDiv = document.body.querySelector(".token-count-display");
-  if (hasTokenDiv) lastTokenCount = totalTokens;
-  else lastTokenCount = 0;
+  statusDiv.textContent = `Total tokens: ${maxcumulativeTokens}/${limit} tokens.`;
+
+  lastTokenCount = document.body.querySelector(".token-count-display")
+    ? totalTokens
+    : 0;
 }
 
 /**
@@ -213,27 +345,26 @@ function addHoverListeners(
  */
 function clearTokenUI() {
   console.log("Clearing token UI...");
-  const tokenDisplays = document.querySelectorAll(".token-count-display");
-  tokenDisplays.forEach((display) => display.remove());
-
-  const turnElements = document.querySelectorAll(
-    '[data-testid^="conversation-turn-"]'
-  );
-  turnElements.forEach((turn) => {
-    turn.style.opacity = "1"; // Reset opacity for all messages
-  });
+  document
+    .querySelectorAll(".token-count-display, .extra-token-info")
+    .forEach((el) => el.remove());
+  document
+    .querySelectorAll('[data-testid^="conversation-turn-"]')
+    .forEach((turn) => {
+      turn.style.opacity = "1";
+    });
+  const statusDiv = document.querySelector("#tokenstatus");
+  if (statusDiv) statusDiv.remove();
 }
 
 /**
- * Fetches the current conversation, processes it against the context limit,
- * and updates the UI accordingly.
+ * Fetches the current conversation, processes it, and updates the UI.
  */
 async function runTokenCheck() {
   const { contextWindow } = await chrome.storage.local.get({
     contextWindow: 8192,
   });
 
-  // If contextWindow is 0, disable the feature and clean up the UI.
   if (contextWindow === 0) {
     clearTokenUI();
     return;
@@ -241,19 +372,31 @@ async function runTokenCheck() {
 
   const pathParts = window.location.pathname.split("/");
   if (pathParts[1] !== "c" || !pathParts[2]) {
+    clearTokenUI();
     return;
   }
 
   const conversationId = pathParts[2];
 
   try {
-    const conversationData = await getConversationFromDB(conversationId);
+    const [conversationData, additionalDataMap] = await Promise.all([
+      getConversationFromDB(conversationId),
+      processBackendData(conversationId),
+    ]);
+
+    // --- STRICT CHECK ---
+    // After async operations, re-check the URL to ensure the user hasn't navigated away.
+    const currentConversationId = window.location.pathname.split("/")[2];
+    if (conversationId !== currentConversationId) {
+      console.log(
+        `Stale data for ${conversationId} ignored; current chat is ${currentConversationId}.`
+      );
+      return; // Abort the UI update
+    }
+
     if (conversationData && Array.isArray(conversationData.messages)) {
-      const {
-        effectiveMessages,
-        totalTokens,
-        messagesWithTokens,
-      } = getEffectiveMessages(conversationData.messages, contextWindow);
+      const { effectiveMessages, totalTokens, messagesWithTokens } =
+        getEffectiveMessages(conversationData.messages, contextWindow);
       const effectiveMessageIds = new Set(effectiveMessages.map((m) => m.id));
       const effectiveMessageMap = new Map(
         effectiveMessages.map((m) => [m.id, m])
@@ -268,7 +411,8 @@ async function runTokenCheck() {
         effectiveMessageMap,
         contextWindow,
         totalTokens,
-        messagesWithTokens
+        messagesWithTokens,
+        additionalDataMap
       );
     }
   } catch (error) {
@@ -278,18 +422,10 @@ async function runTokenCheck() {
 
 // --- THEME LOGIC ---
 
-/**
- * Applies the correct theme (light or dark) based on stored settings
- * and the host page's current color scheme.
- */
 const applyTheme = async () => {
   const hostScheme = document.documentElement.style.colorScheme || "light";
   chrome.storage.local.set({ isDarkMode: hostScheme === "dark" });
-
   try {
-    if (!chrome.storage?.local) {
-      return;
-    }
     const { isScriptingEnabled, isThemeActive } =
       await chrome.storage.local.get(["isScriptingEnabled", "isThemeActive"]);
     if (!isScriptingEnabled || !isThemeActive) {
@@ -298,10 +434,8 @@ const applyTheme = async () => {
     }
     chrome.storage.local.get("themeObject", (result) => {
       if (chrome.runtime.lastError || !result.themeObject) return;
-
       const currentTheme = result.themeObject[hostScheme];
       if (!currentTheme) return;
-
       Object.entries(currentTheme).forEach(([key, value]) => {
         document.documentElement.style.setProperty(`--theme-${key}`, value);
       });
@@ -311,9 +445,6 @@ const applyTheme = async () => {
   }
 };
 
-/**
- * Sets up a MutationObserver to watch for changes to the <html> element's style.
- */
 const observeHostSchemeChanges = () => {
   const observer = new MutationObserver(() => applyTheme());
   observer.observe(document.documentElement, {
@@ -322,9 +453,6 @@ const observeHostSchemeChanges = () => {
   });
 };
 
-/**
- * Removes custom styles by clearing the CSS variables.
- */
 const removeStyles = () => {
   const themeProperties = [
     "--theme-user-msg-bg",
@@ -345,10 +473,8 @@ const removeStyles = () => {
 applyTheme();
 observeHostSchemeChanges();
 
-// Updated listener to handle both theme and context window changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace !== "local") return;
-
   if (
     changes.themeObject ||
     changes.isThemeActive ||
@@ -370,7 +496,7 @@ new MutationObserver(() => {
     lastUrl = url;
     lastTokenCount = 0;
     console.log("URL changed, running token check immediately.");
-    debouncedRunTokenCheck();
+    runTokenCheck();
   } else {
     debouncedRunTokenCheck();
   }
