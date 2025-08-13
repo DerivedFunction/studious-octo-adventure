@@ -6,6 +6,7 @@ const enc = new Tiktoken(o200k_base);
 console.log("✅ Tokenizer initialized.");
 let lastTokenCount = 0;
 let fetchController; // Controller to abort in-flight fetch requests
+let accessToken = null; // Global variable to store the access token
 /* eslint-disable no-undef */
 
 // --- UTILITY FUNCTIONS ---
@@ -30,6 +31,31 @@ function debounce(func, wait) {
 }
 
 // --- TOKEN COUNTING LOGIC ---
+
+/**
+ * Fetches and stores the access token globally. Only fetches if the token is not already present.
+ * @returns {Promise<string|null>} The access token or null if it fails.
+ */
+async function getAccessToken() {
+  if (accessToken) {
+    return accessToken;
+  }
+  console.log("Fetching new access token...");
+  try {
+    const session = await fetch("https://chatgpt.com/api/auth/session").then(
+      (res) => {
+        if (!res.ok) throw new Error("Failed to fetch auth session");
+        return res.json();
+      }
+    );
+    accessToken = session.accessToken;
+    return accessToken;
+  } catch (error) {
+    console.error("Could not retrieve access token:", error);
+    accessToken = null; // Reset on failure
+    return null;
+  }
+}
 
 /**
  * Retrieves a full conversation object from ChatGPT's IndexedDB.
@@ -63,7 +89,7 @@ async function getConversationFromDB(conversationId) {
  */
 async function processBackendData(conversationId) {
   const storageKey = `backend_data_${conversationId}`;
-  const cacheDuration = 1 * 1000; // 1 seconds
+  const cacheDuration = 5 * 1000; // 5 seconds
   const maxRetries = 3;
 
   // Try to load from cache first
@@ -72,7 +98,6 @@ async function processBackendData(conversationId) {
     if (result[storageKey]) {
       const cachedData = JSON.parse(result[storageKey]);
       console.log(`Using cached backend data for ${conversationId}.`);
-      // Convert the plain object from JSON back into a Map
       return new Map(Object.entries(cachedData));
     }
   } catch (e) {
@@ -91,37 +116,35 @@ async function processBackendData(conversationId) {
       console.log(
         `Fetching data from backend-api for ${conversationId} (Attempt ${attempt})...`
       );
-      const additionalDataMap = new Map();
-
-      // Get access token
-      const session = await fetch("https://chatgpt.com/api/auth/session", {
-        signal,
-      }).then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch auth session");
-        return res.json();
-      });
-      const accessToken = session.accessToken;
-
-      if (!accessToken) {
+      const token = await getAccessToken();
+      if (!token) {
         console.error("Could not retrieve access token. Aborting retries.");
-        return new Map(); // Don't retry if auth fails
+        return new Map();
       }
 
-      // Fetch conversation data
-      const conversationApiData = await fetch(
+      const response = await fetch(
         `https://chatgpt.com/backend-api/conversation/${conversationId}`,
         {
-          headers: { accept: "*/*", authorization: `Bearer ${accessToken}` },
+          headers: { accept: "*/*", authorization: `Bearer ${token}` },
           method: "GET",
           signal,
         }
-      ).then((res) => {
-        if (!res.ok)
-          throw new Error(
-            `Backend API request failed with status: ${res.status}`
-          );
-        return res.json();
-      });
+      );
+
+      if (response.status === 401 || response.status === 403) {
+        console.log("Access token expired or invalid. Refreshing...");
+        accessToken = null; // Clear the global token to force a refresh
+        throw new Error("Authentication failed, retrying...");
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          `Backend API request failed with status: ${response.status}`
+        );
+      }
+
+      const conversationApiData = await response.json();
+      const additionalDataMap = new Map();
 
       // Process the mapping to find file and canvas metadata
       if (conversationApiData && conversationApiData.mapping) {
@@ -185,7 +208,6 @@ async function processBackendData(conversationId) {
           }s.`
         );
 
-        // Set timeout to automatically remove the cache entry
         setTimeout(() => {
           chrome.storage.local.remove(storageKey, () => {
             console.log(`Cache for ${conversationId} has been cleared.`);
@@ -196,7 +218,7 @@ async function processBackendData(conversationId) {
       }
 
       console.log("✅ Backend data processed.", additionalDataMap);
-      return additionalDataMap; // Success, return the data and exit the loop
+      return additionalDataMap; // Success, return the data
     } catch (error) {
       if (error.name === "AbortError") {
         console.log("Fetch aborted for previous conversation.");
