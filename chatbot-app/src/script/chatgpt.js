@@ -4,7 +4,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 // This encoder is now available for the entire script
 const enc = new Tiktoken(o200k_base);
 console.log("✅ Tokenizer initialized.");
-
+let lastTokenCount = 0;
 /* eslint-disable no-undef */
 
 // --- UTILITY FUNCTIONS ---
@@ -74,7 +74,6 @@ function getEffectiveMessages(allMessages, limit) {
   for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
     const message = messagesWithTokens[i];
     if (message.tokens === 0) continue;
-
     if (message.tokens > limit) {
       if (i === messagesWithTokens.length - 1) {
         message.isTruncated = true;
@@ -91,7 +90,11 @@ function getEffectiveMessages(allMessages, limit) {
       break;
     }
   }
-  return { effectiveMessages, totalTokens: currentTotalTokens };
+  return {
+    effectiveMessages,
+    totalTokens: currentTotalTokens,
+    messagesWithTokens,
+  };
 }
 
 /**
@@ -106,24 +109,44 @@ function addHoverListeners(
   allMessages,
   effectiveMessageIds,
   effectiveMessageMap,
-  limit
+  limit,
+  totalTokens,
+  messagesWithTokens
 ) {
+  if (totalTokens > 0 && lastTokenCount == totalTokens) {
+    console.log("Same token count, skipping update.");
+    return;
+  }
   const turnElements = document.querySelectorAll(
     '[data-testid^="conversation-turn-"]'
   );
-  let cumulativeTokens = 0;
+  if (!turnElements) {
+    console.log("Elements still loading.");
+    // run a debounce to wait for the changes
+    debouncedRunTokenCheck();
+    return;
+  }
 
+  let cumulativeTokens = 0;
+  let maxcumulativeTokens = 0;
+  console.log("Updating token UI...");
   turnElements.forEach((turnElement) => {
     const testId = turnElement.dataset.testid;
     const messageIndex = parseInt(testId.replace("conversation-turn-", ""), 10);
     const originalMessageData = allMessages[messageIndex];
 
-    if (!originalMessageData) return;
+    if (!originalMessageData) {
+      console.log("Message data not found. Skipping update.");
+      return;
+    }
 
     const authorRoleElement = turnElement.querySelector(
       "[data-message-author-role]"
     );
-    if (!authorRoleElement) return;
+    if (!authorRoleElement) {
+      console.log("Author role element not found. Skipping update.");
+      return;
+    }
 
     let tokenCountDiv = authorRoleElement.querySelector(".token-count-display");
     if (!tokenCountDiv) {
@@ -142,22 +165,30 @@ function addHoverListeners(
         originalMessageData.id
       );
       const messageTokenCount = effectiveMessageData.tokens;
-
       if (effectiveMessageData.isTruncated) {
         cumulativeTokens = limit;
-        tokenCountDiv.textContent = `| ${limit} tokens (Truncated from ${messageTokenCount})`;
+        tokenCountDiv.textContent = `${limit} tokens (Truncated from ${messageTokenCount})`;
       } else {
         cumulativeTokens += messageTokenCount;
+        maxcumulativeTokens += messageTokenCount;
         if (messageTokenCount > 0) {
-          tokenCountDiv.textContent = `| ${messageTokenCount} tokens (Total: ${cumulativeTokens})`;
+          tokenCountDiv.textContent = `${messageTokenCount} of ${cumulativeTokens}/${limit} tokens. Conversation: ${maxcumulativeTokens}.`;
         }
       }
       turnElement.style.opacity = "1";
     } else {
-      tokenCountDiv.textContent = `| (Out of Context)`;
+      const messageTokens= messagesWithTokens.find(
+        (m) => m.id === originalMessageData.id
+      ).tokens;
+      maxcumulativeTokens += messageTokens;
+      tokenCountDiv.textContent = `(May be out of context): ${messageTokens} tokens. Conversation: ${maxcumulativeTokens}.`;
       turnElement.style.opacity = "0.5";
+      
     }
   });
+  const hasTokenDiv = document.body.querySelector(".token-count-display");
+  if (hasTokenDiv) lastTokenCount = totalTokens;
+  else lastTokenCount = 0;
 }
 
 /**
@@ -201,10 +232,11 @@ async function runTokenCheck() {
   try {
     const conversationData = await getConversationFromDB(conversationId);
     if (conversationData && Array.isArray(conversationData.messages)) {
-      const { effectiveMessages, totalTokens } = getEffectiveMessages(
-        conversationData.messages,
-        contextWindow
-      );
+      const {
+        effectiveMessages,
+        totalTokens,
+        messagesWithTokens,
+      } = getEffectiveMessages(conversationData.messages, contextWindow);
       const effectiveMessageIds = new Set(effectiveMessages.map((m) => m.id));
       const effectiveMessageMap = new Map(
         effectiveMessages.map((m) => [m.id, m])
@@ -213,12 +245,13 @@ async function runTokenCheck() {
       console.log(
         `📊 TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${totalTokens} / ${contextWindow}`
       );
-
       addHoverListeners(
         conversationData.messages,
         effectiveMessageIds,
         effectiveMessageMap,
-        contextWindow
+        contextWindow,
+        totalTokens,
+        messagesWithTokens
       );
     }
   } catch (error) {
@@ -311,17 +344,20 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
 });
 
-runTokenCheck();
-const debouncedRunTokenCheck = debounce(runTokenCheck, 500);
-
+const debouncedRunTokenCheck = debounce(runTokenCheck, 1000);
+debouncedRunTokenCheck();
 let lastUrl = location.href;
 new MutationObserver(() => {
   const url = location.href;
   if (url !== lastUrl) {
     lastUrl = url;
+    lastTokenCount = 0;
     console.log("URL changed, running token check immediately.");
-    runTokenCheck();
+    debouncedRunTokenCheck();
   } else {
     debouncedRunTokenCheck();
   }
-}).observe(document.body, { subtree: true, childList: true });
+}).observe(document.body.querySelector("main"), {
+  subtree: true,
+  childList: true,
+});
