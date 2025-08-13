@@ -56,131 +56,161 @@ async function getConversationFromDB(conversationId) {
 }
 
 /**
- * Fetches detailed conversation data from the backend API to find file and canvas tokens.
+ * Fetches detailed conversation data from the backend API, using a short-lived
+ * cache and retry mechanism to ensure data is fetched reliably.
  * @param {string} conversationId The ID of the conversation to fetch.
  * @returns {Promise<Map<string, object>>} A map where keys are message IDs and values contain file/canvas info.
  */
 async function processBackendData(conversationId) {
-  // Abort any previous fetch request to avoid race conditions on navigation
-  if (fetchController) {
-    fetchController.abort();
-  }
-  fetchController = new AbortController();
-  const signal = fetchController.signal;
+  const storageKey = `backend_data_${conversationId}`;
+  const cacheDuration = 1 * 1000; // 1 seconds
+  const maxRetries = 3;
 
-  console.log(`Fetching data from backend-api for ${conversationId}...`);
-  const additionalDataMap = new Map();
-
+  // Try to load from cache first
   try {
-    // First, get the access token needed for the API call
-    const session = await fetch("https://chatgpt.com/api/auth/session", {
-      signal,
-    }).then((res) => {
-      if (!res.ok) throw new Error("Failed to fetch auth session");
-      return res.json();
-    });
-    const accessToken = session.accessToken;
-
-    if (!accessToken) {
-      console.error("Could not retrieve access token.");
-      return additionalDataMap;
+    const result = await chrome.storage.local.get(storageKey);
+    if (result[storageKey]) {
+      const cachedData = JSON.parse(result[storageKey]);
+      console.log(`Using cached backend data for ${conversationId}.`);
+      // Convert the plain object from JSON back into a Map
+      return new Map(Object.entries(cachedData));
     }
+  } catch (e) {
+    console.error("Error reading from local storage cache:", e);
+  }
 
-    // Then, fetch the full conversation data
-    const conversationApiData = await fetch(
-      `https://chatgpt.com/backend-api/conversation/${conversationId}`,
-      {
-        headers: {
-          accept: "*/*",
-          authorization: `Bearer ${accessToken}`,
-        },
-        method: "GET",
-        signal, // Pass the signal to the fetch request
+  // If no cache, proceed with fetching, including retry logic.
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    if (fetchController) {
+      fetchController.abort();
+    }
+    fetchController = new AbortController();
+    const signal = fetchController.signal;
+
+    try {
+      console.log(
+        `Fetching data from backend-api for ${conversationId} (Attempt ${attempt})...`
+      );
+      const additionalDataMap = new Map();
+
+      // Get access token
+      const session = await fetch("https://chatgpt.com/api/auth/session", {
+        signal,
+      }).then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch auth session");
+        return res.json();
+      });
+      const accessToken = session.accessToken;
+
+      if (!accessToken) {
+        console.error("Could not retrieve access token. Aborting retries.");
+        return new Map(); // Don't retry if auth fails
       }
-    ).then((res) => {
-      if (!res.ok)
-        throw new Error(
-          `Backend API request failed with status: ${res.status}`
-        );
-      return res.json();
-    });
 
-    // Process the mapping to find file and canvas metadata
-    if (conversationApiData && conversationApiData.mapping) {
-      for (const messageId in conversationApiData.mapping) {
-        const node = conversationApiData.mapping[messageId];
-        if (node.message) {
-          const metadata = node.message.metadata;
-          const content = node.message.content;
-          let fileInfo = null;
-          let canvasInfo = null;
+      // Fetch conversation data
+      const conversationApiData = await fetch(
+        `https://chatgpt.com/backend-api/conversation/${conversationId}`,
+        {
+          headers: { accept: "*/*", authorization: `Bearer ${accessToken}` },
+          method: "GET",
+          signal,
+        }
+      ).then((res) => {
+        if (!res.ok)
+          throw new Error(
+            `Backend API request failed with status: ${res.status}`
+          );
+        return res.json();
+      });
 
-          // Default to the current message's ID. This will be updated for canvas messages.
-          let targetMessageId = node.message.id;
+      // Process the mapping to find file and canvas metadata
+      if (conversationApiData && conversationApiData.mapping) {
+        for (const messageId in conversationApiData.mapping) {
+          const node = conversationApiData.mapping[messageId];
+          if (node.message) {
+            const { metadata, content } = node.message;
+            let fileInfo = null;
+            let canvasInfo = null;
+            let targetMessageId = node.message.id;
 
-          // Check for file attachments (this logic is correct)
-          if (metadata.attachments && metadata.attachments.length > 0) {
-            fileInfo = metadata.attachments.map((file) => ({
-              name: file.name,
-              tokens: file.file_token_size || 0,
-            }));
-          }
-
-          // Check for canvas/textdoc creation
-          if (
-            node.message.recipient === "canmore.create_textdoc" &&
-            content.parts &&
-            content.parts[0]
-          ) {
-            try {
-              const canvasContent = JSON.parse(content.parts[0]);
-              canvasInfo = {
-                title: canvasContent.name || "Canvas",
-                tokens: enc.encode(canvasContent.content || "").length,
-              };
-
-              // --- FIX: Find the correct target message ID ---
-              // The canvas info belongs to the grandchild of this tool-call node.
-              // Traverse down the conversation tree to find it.
-              if (node.children && node.children.length > 0) {
-                const toolResponseNodeId = node.children[0];
-                const toolResponseNode =
-                  conversationApiData.mapping[toolResponseNodeId];
-                if (
-                  toolResponseNode &&
-                  toolResponseNode.children &&
-                  toolResponseNode.children.length > 0
-                ) {
-                  // This is the ID of the final, user-visible assistant message.
-                  targetMessageId = toolResponseNode.children[0];
-                }
-              }
-            } catch (e) {
-              console.error("Error parsing canvas content:", e);
+            if (metadata.attachments && metadata.attachments.length > 0) {
+              fileInfo = metadata.attachments.map((file) => ({
+                name: file.name,
+                tokens: file.file_token_size || 0,
+              }));
             }
-          }
 
-          if (fileInfo || canvasInfo) {
-            // Use the potentially updated targetMessageId as the key.
-            // This ensures that if a message has both a file and a canvas, they are merged.
-            const existingData = additionalDataMap.get(targetMessageId) || {};
-            additionalDataMap.set(targetMessageId, {
-              files: fileInfo || existingData.files,
-              canvas: canvasInfo || existingData.canvas,
-            });
+            if (
+              node.message.recipient === "canmore.create_textdoc" &&
+              content.parts?.[0]
+            ) {
+              try {
+                const canvasContent = JSON.parse(content.parts[0]);
+                canvasInfo = {
+                  title: canvasContent.name || "Canvas",
+                  tokens: enc.encode(canvasContent.content || "").length,
+                };
+                if (node.children?.length > 0) {
+                  const toolResponseNode =
+                    conversationApiData.mapping[node.children[0]];
+                  if (toolResponseNode?.children?.length > 0) {
+                    targetMessageId = toolResponseNode.children[0];
+                  }
+                }
+              } catch (e) {
+                console.error("Error parsing canvas content:", e);
+              }
+            }
+
+            if (fileInfo || canvasInfo) {
+              const existingData = additionalDataMap.get(targetMessageId) || {};
+              additionalDataMap.set(targetMessageId, {
+                files: fileInfo || existingData.files,
+                canvas: canvasInfo || existingData.canvas,
+              });
+            }
           }
         }
       }
-    }
-  } catch (error) {
-    if (error.name === "AbortError") {
-      console.log("Fetch aborted for previous conversation.");
-    } else {
-      console.error("❌ Error processing backend data:", error);
+
+      // After successful processing, cache the result
+      try {
+        const dataToCache = Object.fromEntries(additionalDataMap);
+        await chrome.storage.local.set({
+          [storageKey]: JSON.stringify(dataToCache),
+        });
+        console.log(
+          `Cached backend data for ${conversationId}. It will be removed in ${
+            cacheDuration / 1000
+          }s.`
+        );
+
+        // Set timeout to automatically remove the cache entry
+        setTimeout(() => {
+          chrome.storage.local.remove(storageKey, () => {
+            console.log(`Cache for ${conversationId} has been cleared.`);
+          });
+        }, cacheDuration);
+      } catch (e) {
+        console.error("Error writing to local storage cache:", e);
+      }
+
+      console.log("✅ Backend data processed.", additionalDataMap);
+      return additionalDataMap; // Success, return the data and exit the loop
+    } catch (error) {
+      if (error.name === "AbortError") {
+        console.log("Fetch aborted for previous conversation.");
+        return new Map(); // Don't retry on abort
+      }
+      console.error(`❌ Attempt ${attempt} failed:`, error.message);
+      if (attempt === maxRetries) {
+        console.error("All fetch attempts failed.");
+        return new Map(); // Return empty map after all retries fail
+      }
+      await new Promise((res) => setTimeout(res, 500)); // Wait before retrying
     }
   }
-  console.log("✅ Backend data processed.", additionalDataMap);
-  return additionalDataMap;
+  return new Map(); // Fallback return
 }
 
 /**
@@ -376,7 +406,7 @@ function clearTokenUI() {
     .forEach((turn) => {
       turn.style.opacity = "1";
     });
-  const statusDiv = document.querySelector("#tokenstatus");
+  const statusDiv = document.querySelector(".tokenstatus");
   if (statusDiv) statusDiv.remove();
 }
 
@@ -405,10 +435,8 @@ async function runTokenCheck() {
     const [conversationData, additionalDataMap] = await Promise.all([
       getConversationFromDB(conversationId),
       processBackendData(conversationId),
-    ]);
+    ]); // After async operations, re-check the URL to ensure the user hasn't navigated away.
 
-    // --- STRICT CHECK ---
-    // After async operations, re-check the URL to ensure the user hasn't navigated away.
     const currentConversationId = window.location.pathname.split("/")[2];
     if (conversationId !== currentConversationId) {
       console.log(
@@ -532,25 +560,22 @@ new MutationObserver((mutationList) => {
     const ignoredElementParent = ["#thread-bottom"];
 
     mutationList.forEach((m) => {
-      if (skip) return;
+      if (skip) return; // Get the parent element, as characterData changes target the text node itself.
 
-      // 1. Get the parent element, as characterData changes target the text node itself.
       const targetElement =
         m.type === "characterData" ? m.target.parentElement : m.target;
 
       if (!targetElement) return; // If there's no element, skip this mutation.
 
-      const classList = targetElement.classList;
+      const classList = targetElement.classList; // Check if the element's class is in the ignore list
 
-      // Check if the element's class is in the ignore list
       for (const cls of classList) {
         if (ignoredClasses.has(cls)) {
           skip = true;
           break;
         }
-      }
+      } // Check if the element is inside an ignored parent
 
-      // Check if the element is inside an ignored parent
       if (!skip) {
         for (const selector of ignoredElementParent) {
           const parent = document.querySelector(selector);
@@ -566,6 +591,6 @@ new MutationObserver((mutationList) => {
   }
 }).observe(document.body.querySelector("main"), {
   subtree: true,
-  childList: true, // For new elements that contain text
-  characterData: true, // 2. For direct changes to an element's text content
+  childList: true,
+  characterData: true,
 });
