@@ -529,31 +529,43 @@ new MutationObserver((mutationList) => {
       "@thread-xl/thread:pt-header-height",
       "placeholder",
     ]);
-    // CSS selectors for parent elements to ignore
     const ignoredElementParent = ["#thread-bottom"];
+
     mutationList.forEach((m) => {
-      const classList = m.target.classList;
-      // Check if target has any ignored class
+      if (skip) return;
+
+      // 1. Get the parent element, as characterData changes target the text node itself.
+      const targetElement =
+        m.type === "characterData" ? m.target.parentElement : m.target;
+
+      if (!targetElement) return; // If there's no element, skip this mutation.
+
+      const classList = targetElement.classList;
+
+      // Check if the element's class is in the ignore list
       for (const cls of classList) {
         if (ignoredClasses.has(cls)) {
           skip = true;
           break;
         }
       }
-      // Check if target is inside any ignored parent
+
+      // Check if the element is inside an ignored parent
       if (!skip) {
         for (const selector of ignoredElementParent) {
           const parent = document.querySelector(selector);
-          if (parent && parent.contains(m.target)) {
+          if (parent && parent.contains(targetElement)) {
             skip = true;
             break;
           }
         }
       }
     });
+
     if (!skip) debouncedRunTokenCheck();
   }
 }).observe(document.body.querySelector("main"), {
   subtree: true,
-  childList: true,
+  childList: true, // For new elements that contain text
+  characterData: true, // 2. For direct changes to an element's text content
 });
