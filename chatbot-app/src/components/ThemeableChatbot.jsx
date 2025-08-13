@@ -37,7 +37,7 @@ const ThemeableChatbot = () => {
     {
       id: 2,
       type: "ai",
-      content: "Click the token count to track tokens (0 = disable)",
+      content: "This is an AI response.",
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");
@@ -48,7 +48,7 @@ const ThemeableChatbot = () => {
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [isScriptingEnabled, setIsScriptingEnabled] = useState(false); // <-- NEW: State for scripting toggle
   const [isThemeActive, setIsThemeActive] = useState(false);
-  const [contextWindow, setContextWindow] = useState(8 * 2 ** 10); // 8K tokens
+  const [contextWindow, setContextWindow] = useState(0); //  tokens
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -534,7 +534,7 @@ const ThemeableChatbot = () => {
                       setContextWindow(value);
                   }}
                   >
-                    {`Set Context Window: ${contextWindow} tokens`}
+                    {`Click to set Context Window: ${contextWindow} tokens`}
                   </div>
               </>
             ))}
