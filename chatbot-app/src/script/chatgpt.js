@@ -510,7 +510,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
 });
 
-const debouncedRunTokenCheck = debounce(runTokenCheck, 1000);
+const debouncedRunTokenCheck = debounce(runTokenCheck, 3000);
 debouncedRunTokenCheck();
 let lastUrl = location.href;
 new MutationObserver((mutationList) => {
@@ -527,14 +527,27 @@ new MutationObserver((mutationList) => {
       "token-count-display",
       "tokenstatus",
       "@thread-xl/thread:pt-header-height",
+      "placeholder",
     ]);
+    // CSS selectors for parent elements to ignore
+    const ignoredElementParent = ["#thread-bottom"];
     mutationList.forEach((m) => {
       const classList = m.target.classList;
-      console.log(classList);
+      // Check if target has any ignored class
       for (const cls of classList) {
         if (ignoredClasses.has(cls)) {
           skip = true;
           break;
+        }
+      }
+      // Check if target is inside any ignored parent
+      if (!skip) {
+        for (const selector of ignoredElementParent) {
+          const parent = document.querySelector(selector);
+          if (parent && parent.contains(m.target)) {
+            skip = true;
+            break;
+          }
         }
       }
     });
