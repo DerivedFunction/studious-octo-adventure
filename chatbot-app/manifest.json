@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Accent Color for ChatGPT",
-  "version": "2025.8.10",
-  "description": "Overrides default accent colors.",
+  "name": "ChatGPT Tools",
+  "version": "2025.8.13",
+  "description": "Extra visual Tools for ChatGPT. Includes additional accent colors and token counter.",
   "action": {
     "default_popup": "index.html",
     "default_icon": {
