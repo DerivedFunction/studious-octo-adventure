@@ -236,46 +236,92 @@ async function processBackendData(conversationId) {
 }
 
 /**
- * Processes the full message history to determine which messages fit
- * within the defined context window limit.
+ * Processes the full message history and attachments to determine what fits
+ * within the defined context window limit based on user selections.
  * @param {Array<object>} allMessages - The complete list of messages from the DB.
  * @param {number} limit - The context window token limit.
- * @returns {{effectiveMessages: Array<object>, totalTokens: number}} An object containing the messages that fit and their total token count.
+ * @param {Map<string, object>} additionalDataMap - Map with file and canvas token data.
+ * @param {Set<string>} checkedItems - A set of IDs for checked files/canvases.
+ * @returns {object} An object containing the effective messages and token breakdown.
  */
-function getEffectiveMessages(allMessages, limit) {
+function getEffectiveMessages(
+  allMessages,
+  limit,
+  additionalDataMap,
+  checkedItems
+) {
   const messagesWithTokens = allMessages.map((msg) => ({
     ...msg,
     tokens: (msg.text || "").trim() ? enc.encode(msg.text).length : 0,
   }));
 
-  let currentTotalTokens = 0;
+  let baseTokenCost = 0;
+  const truncatedItems = new Set();
+
+  // Calculate token cost of checked items first
+  additionalDataMap.forEach((data, msgId) => {
+    if (data.files) {
+      data.files.forEach((file, index) => {
+        const itemId = `file-${msgId}-${index}`;
+        if (checkedItems.has(itemId)) {
+          if (baseTokenCost + file.tokens > limit) {
+            truncatedItems.add(itemId);
+            baseTokenCost = limit;
+          } else {
+            baseTokenCost += file.tokens;
+          }
+        }
+      });
+    }
+    if (baseTokenCost === limit) return; // Early exit if context is full
+
+    if (data.canvas) {
+      const itemId = `canvas-${msgId}`;
+      if (checkedItems.has(itemId)) {
+        if (baseTokenCost + data.canvas.tokens > limit) {
+          truncatedItems.add(itemId);
+          baseTokenCost = limit;
+        } else {
+          baseTokenCost += data.canvas.tokens;
+        }
+      }
+    }
+    if (baseTokenCost === limit) return; // Early exit
+  });
+
+  const remainingLimit = limit - baseTokenCost;
+  let currentChatTokens = 0;
   const effectiveMessages = [];
 
+  // Now, fit chat messages into the remaining space
   for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
     const message = messagesWithTokens[i];
-    if (message.tokens === 0 && !message.metadata?.attachments?.length > 0)
-      continue;
+    if (message.tokens === 0) continue;
 
-    if (message.tokens > limit) {
+    if (message.tokens > remainingLimit) {
       if (i === messagesWithTokens.length - 1) {
+        // Only truncate the very last message
         message.isTruncated = true;
         effectiveMessages.unshift(message);
-        currentTotalTokens = limit;
+        currentChatTokens = remainingLimit;
       }
-      break;
+      break; // Stop adding messages
     }
 
-    if (currentTotalTokens + message.tokens <= limit) {
-      currentTotalTokens += message.tokens;
+    if (currentChatTokens + message.tokens <= remainingLimit) {
+      currentChatTokens += message.tokens;
       effectiveMessages.unshift(message);
     } else {
       break;
     }
   }
+
   return {
     effectiveMessages,
-    totalTokens: currentTotalTokens,
+    totalChatTokens: currentChatTokens,
     messagesWithTokens,
+    baseTokenCost,
+    truncatedItems,
   };
 }
 
@@ -338,6 +384,7 @@ function injectPopupCSS() {
             overflow: hidden;
             text-overflow: ellipsis;
             margin-right: 8px;
+            cursor: pointer;
         }
         .token-popup .token-item input {
             margin-right: 6px;
@@ -354,6 +401,11 @@ function injectPopupCSS() {
             padding-top: 4px;
             border-top: 1px solid var(--theme-user-msg-bg, #E5E5E5);
         }
+        .truncated-text {
+            font-style: italic;
+            color: var(--text-secondary);
+            margin-left: 4px;
+        }
     `;
   document.head.appendChild(style);
 }
@@ -364,24 +416,25 @@ function injectPopupCSS() {
  * @param {Set<string>} effectiveMessageIds - A set of IDs for messages that are within the context window.
  * @param {Map<string, object>} effectiveMessageMap - A map to get the potentially modified (truncated) message object.
  * @param {number} limit - The context window token limit.
- * @param {number} totalTokens - The total tokens of the effective messages.
+ * @param {object} tokenData - An object with all token calculation results.
  * @param {Array<object>} messagesWithTokens - All messages with their token counts.
  * @param {Map<string, object>} additionalDataMap - Map with file and canvas token data.
+ * @param {Set<string>} checkedItems - A set of IDs for currently checked items.
  */
 function addHoverListeners(
   allMessages,
   effectiveMessageIds,
   effectiveMessageMap,
   limit,
-  totalTokens,
+  tokenData,
   messagesWithTokens,
-  additionalDataMap
+  additionalDataMap,
+  checkedItems
 ) {
   injectPopupCSS(); // Ensure CSS is present
 
-  if (totalTokens > 0 && lastTokenCount == totalTokens) {
-    console.log("Same token count, skipping UI update.");
-  }
+  const { totalChatTokens, truncatedItems } = tokenData;
+
   const turnElements = document.querySelectorAll(
     '[data-testid^="conversation-turn-"]'
   );
@@ -438,14 +491,16 @@ function addHoverListeners(
       );
       const messageTokenCount = effectiveMessageData.tokens;
       if (effectiveMessageData.isTruncated) {
-        cumulativeTokens = limit;
-        tokenCountDiv.textContent = `${limit} tokens of ${cumulativeTokens}/${limit} tokens. (Truncated from ${messageTokenCount})`;
+        cumulativeTokens = tokenData.baseTokenCost + tokenData.totalChatTokens;
+        tokenCountDiv.textContent = `${limit} tokens. (Truncated from ${messageTokenCount})`;
       } else {
         cumulativeTokens += messageTokenCount;
         maxcumulativeTokens += messageTokenCount;
         tokenCountDiv.textContent =
           messageTokenCount > 0
-            ? `${messageTokenCount} of ${cumulativeTokens}/${limit} tokens.`
+            ? `${messageTokenCount} of ${
+                tokenData.baseTokenCost + cumulativeTokens
+              }/${limit} tokens.`
             : "";
       }
       turnElement.style.opacity = "1";
@@ -525,55 +580,59 @@ function addHoverListeners(
 
       const popupTotalSpan = popupDiv.querySelector("#popup-total-tokens");
       if (popupTotalSpan) {
-        const effectiveTotal =
-          cumulativeTokens + checkedFileTokens + checkedCanvasTokens;
-        const maxTotal =
-          maxcumulativeTokens + checkedFileTokens + checkedCanvasTokens;
+        const effectiveTotal = totalChatTokens + tokenData.baseTokenCost;
+        const maxTotal = maxcumulativeTokens + tokenData.baseTokenCost;
         popupTotalSpan.textContent = `${effectiveTotal} / ${maxTotal}`;
       }
     };
 
     let fileDetailsHTML = "",
       canvasDetailsHTML = "";
-    let initialFileTokens = 0,
-      initialCanvasTokens = 0;
 
     additionalDataMap.forEach((data, msgId) => {
       if (data.files) {
         data.files.forEach((f, index) => {
-          initialFileTokens += f.tokens;
           const id = `file-${msgId}-${index}`;
+          const isChecked = checkedItems.has(id);
+          const isTruncated = truncatedItems.has(id);
           fileDetailsHTML += `<div class="token-item">
                       <label for="${id}" title="${f.name}">
-                          <input type="checkbox" id="${id}" data-type="file" data-tokens="${f.tokens}" checked>
-                          📎 ${f.name}
+                          <input type="checkbox" id="${id}" data-type="file" data-tokens="${
+            f.tokens
+          }" ${isChecked ? "checked" : ""}>
+                          📎 ${f.name} ${
+            isTruncated ? '<span class="truncated-text">(Truncated)</span>' : ""
+          }
                       </label>
                       <span>${f.tokens}</span>
                   </div>`;
         });
       }
       if (data.canvas) {
-        initialCanvasTokens += data.canvas.tokens;
         const id = `canvas-${msgId}`;
+        const isChecked = checkedItems.has(id);
+        const isTruncated = truncatedItems.has(id);
         canvasDetailsHTML += `<div class="token-item">
                   <label for="${id}" title="${data.canvas.title}">
-                      <input type="checkbox" id="${id}" data-type="canvas" data-tokens="${data.canvas.tokens}" checked>
-                      🎨 ${data.canvas.title}
+                      <input type="checkbox" id="${id}" data-type="canvas" data-tokens="${
+          data.canvas.tokens
+        }" ${isChecked ? "checked" : ""}>
+                      🎨 ${data.canvas.title} ${
+          isTruncated ? '<span class="truncated-text">(Truncated)</span>' : ""
+        }
                   </label>
                   <span>${data.canvas.tokens}</span>
               </div>`;
       }
     });
 
-    const effectiveTotal =
-      cumulativeTokens + initialFileTokens + initialCanvasTokens;
-    const maxTotal =
-      maxcumulativeTokens + initialFileTokens + initialCanvasTokens;
+    const effectiveTotal = tokenData.baseTokenCost + totalChatTokens;
+    const maxTotal = maxcumulativeTokens + tokenData.baseTokenCost;
 
     popupDiv.innerHTML = `
           <h4>Token Breakdown</h4>
           <div class="token-section">
-              <div class="token-item"><span>Chat Tokens (Effective/Total)</span> <span>${cumulativeTokens} / ${maxcumulativeTokens}</span></div>
+              <div class="token-item"><span>Chat Tokens (Effective/Total)</span> <span>${totalChatTokens} / ${maxcumulativeTokens}</span></div>
           </div>
           ${
             fileDetailsHTML || canvasDetailsHTML
@@ -589,15 +648,24 @@ function addHoverListeners(
           </div>
       `;
 
-    popupDiv.addEventListener("change", (e) => {
+    popupDiv.addEventListener("change", async (e) => {
       if (e.target.type === "checkbox") {
-        updatePopupTotals();
+        const conversationId = window.location.pathname.split("/")[2];
+        if (!conversationId) return;
+
+        const storageKey = `checked_items_${conversationId}`;
+        const currentChecked = Array.from(
+          popupDiv.querySelectorAll("input:checked")
+        ).map((cb) => cb.id);
+
+        await chrome.storage.local.set({ [storageKey]: currentChecked });
+        runTokenCheck(); // Re-run the whole check to update the UI
       }
     });
   }
 
   lastTokenCount = document.body.querySelector(".token-count-display")
-    ? totalTokens
+    ? totalChatTokens + tokenData.baseTokenCost
     : 0;
 }
 
@@ -638,6 +706,11 @@ async function runTokenCheck() {
   }
 
   const conversationId = pathParts[2];
+  const storageKey = `checked_items_${conversationId}`;
+  const { [storageKey]: checkedItemsRaw = [] } = await chrome.storage.local.get(
+    storageKey
+  );
+  const checkedItems = new Set(checkedItemsRaw);
 
   try {
     const [conversationData, additionalDataMap] = await Promise.all([
@@ -654,24 +727,33 @@ async function runTokenCheck() {
     }
 
     if (conversationData && Array.isArray(conversationData.messages)) {
-      const { effectiveMessages, totalTokens, messagesWithTokens } =
-        getEffectiveMessages(conversationData.messages, contextWindow);
+      const tokenData = getEffectiveMessages(
+        conversationData.messages,
+        contextWindow,
+        additionalDataMap,
+        checkedItems
+      );
+      const { effectiveMessages, messagesWithTokens } = tokenData;
+
       const effectiveMessageIds = new Set(effectiveMessages.map((m) => m.id));
       const effectiveMessageMap = new Map(
         effectiveMessages.map((m) => [m.id, m])
       );
 
       console.log(
-        `📊 TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${totalTokens} / ${contextWindow}`
+        `📊 TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${
+          tokenData.totalChatTokens + tokenData.baseTokenCost
+        } / ${contextWindow}`
       );
       addHoverListeners(
         conversationData.messages,
         effectiveMessageIds,
         effectiveMessageMap,
         contextWindow,
-        totalTokens,
+        tokenData,
         messagesWithTokens,
-        additionalDataMap
+        additionalDataMap,
+        checkedItems
       );
     }
   } catch (error) {
@@ -741,7 +823,10 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   ) {
     applyTheme();
   }
-  if (changes.contextWindow) {
+  // Re-run if the context window or checked items change for the current convo
+  const conversationId = window.location.pathname.split("/")[2];
+  const checkedItemsKey = `checked_items_${conversationId}`;
+  if (changes.contextWindow || (conversationId && changes[checkedItemsKey])) {
     runTokenCheck();
   }
 });
