@@ -167,12 +167,12 @@ function addHoverListeners(
       const messageTokenCount = effectiveMessageData.tokens;
       if (effectiveMessageData.isTruncated) {
         cumulativeTokens = limit;
-        tokenCountDiv.textContent = `${limit} tokens (Truncated from ${messageTokenCount})`;
+        tokenCountDiv.textContent = `${limit} tokens of ${cumulativeTokens}/${limit} tokens. (Truncated from ${messageTokenCount})`;
       } else {
         cumulativeTokens += messageTokenCount;
         maxcumulativeTokens += messageTokenCount;
         if (messageTokenCount > 0) {
-          tokenCountDiv.textContent = `${messageTokenCount} of ${cumulativeTokens}/${limit} tokens. Conversation: ${maxcumulativeTokens}.`;
+          tokenCountDiv.textContent = `${messageTokenCount} of ${cumulativeTokens}/${limit} tokens.`;
         }
       }
       turnElement.style.opacity = "1";
@@ -181,11 +181,28 @@ function addHoverListeners(
         (m) => m.id === originalMessageData.id
       ).tokens;
       maxcumulativeTokens += messageTokens;
-      tokenCountDiv.textContent = `(May be out of context): ${messageTokens} tokens. Conversation: ${maxcumulativeTokens}.`;
+      tokenCountDiv.textContent = `(May be out of context): ${messageTokens} tokens.`;
       turnElement.style.opacity = "0.5";
       
     }
   });
+  let statusDiv = document.querySelector(
+    "#thread-bottom-container > div.text-token-text-secondary #tokenstatus"
+  );
+  if (!statusDiv) {
+    statusDiv = document.createElement("div");
+    statusDiv.id = "tokenstatus";
+    statusDiv.style.display = "inline-block";
+    statusDiv.style.marginLeft = "8px";
+    statusDiv.style.fontSize = "12px";
+    statusDiv.style.color = "var(--text-secondary)";
+    statusDiv.style.fontWeight = "normal";
+    statusDiv.textContent = `Total tokens: ${maxcumulativeTokens} tokens.`
+    const parent = document.querySelector("#thread-bottom-container > div.text-token-text-secondary");
+    parent.appendChild(statusDiv)
+  } else {
+    statusDiv.textContent = `Total tokens: ${maxcumulativeTokens}/${limit} tokens.`
+  }
   const hasTokenDiv = document.body.querySelector(".token-count-display");
   if (hasTokenDiv) lastTokenCount = totalTokens;
   else lastTokenCount = 0;
