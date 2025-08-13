@@ -5,6 +5,9 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 const enc = new Tiktoken(o200k_base);
 console.log("✅ Tokenizer initialized.");
 
+// The fixed context window size for our simulation.
+const CONTEXT_WINDOW_LIMIT = 8192;
+
 /* eslint-disable no-undef */
 
 // --- UTILITY FUNCTIONS ---
@@ -55,93 +58,149 @@ async function getConversationFromDB(conversationId) {
 }
 
 /**
- * Attaches a token count display (individual and cumulative) to each chat bubble.
- * @param {Array<object>} messages - The array of message objects from the conversation.
+ * Processes the full message history to determine which messages fit
+ * within the defined CONTEXT_WINDOW_LIMIT. This correctly models a real context
+ * window by taking the most recent messages that fit.
+ * @param {Array<object>} allMessages - The complete list of messages from the DB.
+ * @returns {{effectiveMessages: Array<object>, totalTokens: number}} An object containing the messages that fit and their total token count.
  */
-function addHoverListeners(messages) {
+function getEffectiveMessages(allMessages) {
+  const messagesWithTokens = allMessages.map((msg) => ({
+    ...msg,
+    tokens: (msg.text || "").trim() ? enc.encode(msg.text).length : 0,
+    isTruncated: false, // Flag for truncation
+  }));
+
+  let currentTotalTokens = 0;
+  const effectiveMessages = [];
+
+  // Iterate backwards from the last message to the first.
+  for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
+    const message = messagesWithTokens[i];
+    if (message.tokens === 0) continue; // Skip empty messages
+
+    // Special case: If the most recent message is too big, it's the only one, and it's truncated.
+    if (message.tokens > CONTEXT_WINDOW_LIMIT) {
+      if (i === messagesWithTokens.length - 1) {
+        message.isTruncated = true;
+        effectiveMessages.unshift(message);
+        currentTotalTokens = CONTEXT_WINDOW_LIMIT;
+      }
+      // This oversized message (or an earlier one) blocks everything before it.
+      break;
+    }
+
+    // If the current message fits, add it.
+    if (currentTotalTokens + message.tokens <= CONTEXT_WINDOW_LIMIT) {
+      currentTotalTokens += message.tokens;
+      effectiveMessages.unshift(message); // Add to the beginning to maintain order
+    } else {
+      // Otherwise, the context is full. Stop adding older messages.
+      break;
+    }
+  }
+  return { effectiveMessages, totalTokens: currentTotalTokens };
+}
+
+/**
+ * Attaches a token count display to each chat bubble, handling truncation and
+ * visually distinguishing messages that are outside the context window.
+ * @param {Array<object>} allMessages - The complete list of messages from the DB.
+ * @param {Set<string>} effectiveMessageIds - A set of IDs for messages that are within the context window.
+ * @param {Map<string, object>} effectiveMessageMap - A map to get the potentially modified (truncated) message object.
+ */
+function addHoverListeners(
+  allMessages,
+  effectiveMessageIds,
+  effectiveMessageMap
+) {
   const turnElements = document.querySelectorAll(
     '[data-testid^="conversation-turn-"]'
   );
-  let cumulativeTokens = 0; // Reset the cumulative count for each full check
+  let cumulativeTokens = 0;
 
   turnElements.forEach((turnElement) => {
-    const testId = turnElement.dataset.testid; // e.g., "conversation-turn-2"
+    const testId = turnElement.dataset.testid;
     const messageIndex = parseInt(testId.replace("conversation-turn-", ""), 10);
-    const messageData = messages[messageIndex];
+    const originalMessageData = allMessages[messageIndex];
 
-    if (!messageData) return;
+    if (!originalMessageData) return;
 
-    const messageText = messageData.text || "";
-    const messageTokenCount = messageText.trim()
-      ? enc.encode(messageText).length
-      : 0;
-    cumulativeTokens += messageTokenCount; // Add to the running total
+    const authorRoleElement = turnElement.querySelector(
+      "[data-message-author-role]"
+    );
+    if (!authorRoleElement) return;
 
-    // Only add/update the UI if the token count is greater than 0
-    if (messageTokenCount > 0) {
-      const authorRoleElement = turnElement.querySelector(
-        "[data-message-author-role]"
+    let tokenCountDiv = authorRoleElement.querySelector(".token-count-display");
+    if (!tokenCountDiv) {
+      tokenCountDiv = document.createElement("div");
+      tokenCountDiv.className = "token-count-display";
+      tokenCountDiv.style.display = "inline-block";
+      tokenCountDiv.style.marginLeft = "8px";
+      tokenCountDiv.style.fontSize = "12px";
+      tokenCountDiv.style.color = "var(--text-secondary)";
+      tokenCountDiv.style.fontWeight = "normal";
+      authorRoleElement.appendChild(tokenCountDiv);
+    }
+
+    // The cumulative sum is only calculated for messages inside the effective context.
+    if (effectiveMessageIds.has(originalMessageData.id)) {
+      const effectiveMessageData = effectiveMessageMap.get(
+        originalMessageData.id
       );
-      if (authorRoleElement) {
-        // Check if our UI element already exists
-        let tokenCountDiv = authorRoleElement.querySelector(
-          ".token-count-display"
-        );
+      const messageTokenCount = effectiveMessageData.tokens;
 
-        if (!tokenCountDiv) {
-          // If it doesn't exist, create it
-          tokenCountDiv = document.createElement("div");
-          tokenCountDiv.className = "token-count-display"; // Add a class for easy selection
-
-          // Style it to be subtle and inline
-          tokenCountDiv.style.display = "inline-block";
-          tokenCountDiv.style.marginLeft = "8px";
-          tokenCountDiv.style.fontSize = "12px";
-          tokenCountDiv.style.color = "var(--text-secondary)"; // Use ChatGPT's CSS variable
-          tokenCountDiv.style.fontWeight = "normal";
-
-          // Append it next to the author role element
-          authorRoleElement.appendChild(tokenCountDiv);
+      if (effectiveMessageData.isTruncated) {
+        // A truncated message resets and fills the context.
+        cumulativeTokens = CONTEXT_WINDOW_LIMIT;
+        tokenCountDiv.textContent = `| ${CONTEXT_WINDOW_LIMIT} tokens (Truncated from ${messageTokenCount})`;
+      } else {
+        cumulativeTokens += messageTokenCount;
+        if (messageTokenCount > 0) {
+          tokenCountDiv.textContent = `| ${messageTokenCount} tokens (Total: ${cumulativeTokens})`;
         }
-
-        // Update its content every time to show the latest cumulative total
-        tokenCountDiv.textContent = `| ${messageTokenCount} tokens (Total: ${cumulativeTokens})`;
       }
+      turnElement.style.opacity = "1"; // Ensure it's fully visible
+    } else {
+      // This message is outside the context window.
+      tokenCountDiv.textContent = `| (Out of Context)`;
+      turnElement.style.opacity = "0.5"; // Visually dim it
     }
   });
 }
 
 /**
- * Fetches the current conversation, counts its tokens, and attaches hover listeners.
+ * Fetches the current conversation, processes it against the context limit,
+ * and updates the UI accordingly.
  */
 async function runTokenCheck() {
   const pathParts = window.location.pathname.split("/");
-  // Check if the URL matches the pattern for a conversation
   if (pathParts[1] !== "c" || !pathParts[2]) {
-    console.log("ⓘ Not on a conversation page. Token check skipped.");
     return;
   }
 
   const conversationId = pathParts[2];
-  // console.log(`🚀 Running token check for conversation: ${conversationId}`); // This can be noisy, optional to keep.
 
   try {
     const conversationData = await getConversationFromDB(conversationId);
     if (conversationData && Array.isArray(conversationData.messages)) {
-      const fullText = conversationData.messages
-        .map((msg) => msg.text || "")
-        .join("\n");
-      const tokenCount = enc.encode(fullText).length;
-
-      console.log(
-        `📊 TOTAL TOKENS for "${conversationData.title}": ${tokenCount}`
+      const { effectiveMessages, totalTokens } = getEffectiveMessages(
+        conversationData.messages
+      );
+      const effectiveMessageIds = new Set(effectiveMessages.map((m) => m.id));
+      const effectiveMessageMap = new Map(
+        effectiveMessages.map((m) => [m.id, m])
       );
 
-      // Add hover listeners using the accurate data from IndexedDB
-      addHoverListeners(conversationData.messages);
-    } else {
-      // This can happen briefly during navigation, so a warn might be too much.
-      // console.warn("Could not find conversation data or messages.");
+      console.log(
+        `📊 TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${totalTokens} / ${CONTEXT_WINDOW_LIMIT}`
+      );
+
+      addHoverListeners(
+        conversationData.messages,
+        effectiveMessageIds,
+        effectiveMessageMap
+      );
     }
   } catch (error) {
     console.error("❌ Error during token check:", error);
@@ -157,49 +216,26 @@ async function runTokenCheck() {
 const applyTheme = async () => {
   const hostScheme = document.documentElement.style.colorScheme || "light";
   chrome.storage.local.set({ isDarkMode: hostScheme === "dark" });
-  // console.log("Applying theme for host scheme:", hostScheme);
 
   try {
     if (!chrome.storage?.local) {
-      console.warn("Theme Extension: chrome.storage.local API not available.");
       return;
     }
-    const { isScriptingEnabled } = await chrome.storage.local.get(
-      "isScriptingEnabled"
-    );
-    const { isThemeActive } = await chrome.storage.local.get("isThemeActive");
+    const { isScriptingEnabled, isThemeActive } =
+      await chrome.storage.local.get(["isScriptingEnabled", "isThemeActive"]);
     if (!isScriptingEnabled || !isThemeActive) {
       removeStyles();
       return;
     }
-    const keysToGet = ["themeObject"];
-    chrome.storage.local.get(keysToGet, (result) => {
-      if (chrome.runtime.lastError) {
-        console.error("Error retrieving theme:", chrome.runtime.lastError);
-        return;
-      }
+    chrome.storage.local.get("themeObject", (result) => {
+      if (chrome.runtime.lastError || !result.themeObject) return;
 
-      const { themeObject } = result;
-      if (!themeObject) {
-        // console.warn("Theme object not found in storage.");
-        return;
-      }
+      const currentTheme = result.themeObject[hostScheme];
+      if (!currentTheme) return;
 
-      const currentTheme = themeObject[hostScheme];
-      if (!currentTheme) {
-        // console.warn(`No theme found for scheme: "${hostScheme}"`);
-        return;
-      }
-
-      const keys = Object.keys(currentTheme);
-      const values = Object.values(currentTheme);
-      for (let i = 0; i < keys.length; i++) {
-        document.documentElement.style.setProperty(
-          `--theme-${keys[i]}`,
-          values[i]
-        );
-      }
-      // console.log("Theme successfully applied.");
+      Object.entries(currentTheme).forEach(([key, value]) => {
+        document.documentElement.style.setProperty(`--theme-${key}`, value);
+      });
     });
   } catch (error) {
     console.error("An unexpected error occurred in applyTheme:", error);
@@ -207,40 +243,20 @@ const applyTheme = async () => {
 };
 
 /**
- * Sets up a MutationObserver to watch for changes to the <html> element's style,
- * which is where the color-scheme is often set.
+ * Sets up a MutationObserver to watch for changes to the <html> element's style.
  */
 const observeHostSchemeChanges = () => {
-  const targetNode = document.documentElement;
-  const config = {
+  const observer = new MutationObserver(() => applyTheme());
+  observer.observe(document.documentElement, {
     attributes: true,
     attributeFilter: ["style", "class"],
-  };
-
-  const callback = (mutationsList) => {
-    for (const mutation of mutationsList) {
-      if (
-        mutation.type === "attributes" &&
-        (mutation.attributeName === "style" ||
-          mutation.attributeName === "class")
-      ) {
-        // console.log("Host page style or class attribute changed. Re-applying theme.");
-        applyTheme();
-        return;
-      }
-    }
-  };
-
-  const observer = new MutationObserver(callback);
-  observer.observe(targetNode, config);
-  // console.log("MutationObserver is now watching for color scheme changes.");
+  });
 };
 
 /**
  * Removes custom styles by clearing the CSS variables.
  */
 const removeStyles = () => {
-  // console.log("Removing styles...");
   const themeProperties = [
     "--theme-user-msg-bg",
     "--theme-user-msg-text",
@@ -257,38 +273,23 @@ const removeStyles = () => {
 
 // --- SCRIPT INITIALIZATION ---
 
-// 1. Apply the theme immediately when the script is injected.
 applyTheme();
-
-// 2. Set up the observer to watch for dynamic changes on the page for themes.
 observeHostSchemeChanges();
-
-// 3. Listen for changes from the extension's storage (e.g., user changes theme in the popup).
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === "local") {
-    // console.log("Storage changed. Re-applying theme...");
-    applyTheme();
-  }
+  if (namespace === "local") applyTheme();
 });
 
-// 4. Run the token check on initial load.
 runTokenCheck();
+const debouncedRunTokenCheck = debounce(runTokenCheck, 500);
 
-// 5. Create a debounced version of the token check function.
-const debouncedRunTokenCheck = debounce(runTokenCheck, 500); // 500ms delay
-
-// 6. Set up an observer for navigation and content changes.
 let lastUrl = location.href;
 new MutationObserver(() => {
   const url = location.href;
-
-  // If the URL has changed, it's a navigation event. Run the check immediately.
   if (url !== lastUrl) {
     lastUrl = url;
     console.log("URL changed, running token check immediately.");
     runTokenCheck();
   } else {
-    // Otherwise, it's a content change (e.g., AI typing). Use the debounced version.
     debouncedRunTokenCheck();
   }
 }).observe(document.body, { subtree: true, childList: true });
