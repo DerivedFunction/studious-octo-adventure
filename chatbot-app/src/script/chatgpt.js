@@ -246,7 +246,6 @@ function getEffectiveMessages(allMessages, limit) {
   const messagesWithTokens = allMessages.map((msg) => ({
     ...msg,
     tokens: (msg.text || "").trim() ? enc.encode(msg.text).length : 0,
-    isTruncated: false,
   }));
 
   let currentTotalTokens = 0;
@@ -254,7 +253,8 @@ function getEffectiveMessages(allMessages, limit) {
 
   for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
     const message = messagesWithTokens[i];
-    if (message.tokens === 0) continue;
+    if (message.tokens === 0 && !message.metadata?.attachments?.length > 0)
+      continue;
 
     if (message.tokens > limit) {
       if (i === messagesWithTokens.length - 1) {
@@ -280,7 +280,86 @@ function getEffectiveMessages(allMessages, limit) {
 }
 
 /**
- * Attaches a token count display to each chat bubble.
+ * Injects CSS for the hover popup into the document head.
+ */
+function injectPopupCSS() {
+  const styleId = "token-popup-styles";
+  if (document.getElementById(styleId)) return;
+
+  const style = document.createElement("style");
+  style.id = styleId;
+  style.innerHTML = `
+        .token-status-container {
+            position: relative;
+            display: inline-block;
+        }
+        .token-status-container:hover .token-popup {
+            display: block;
+        }
+        .token-popup {
+            display: none;
+            position: absolute;
+            bottom: 120%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--theme-secondary-btn-bg, #FFFFFF);
+            border: 1px solid var(--theme-user-msg-bg, #E5E5E5);
+            border-radius: 8px;
+            padding: 12px;
+            width: 320px;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            color: var(--theme-secondary-btn-text, #000000);
+            font-size: 12px;
+            text-align: left;
+        }
+        .token-popup h4 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-weight: bold;
+            border-bottom: 1px solid var(--theme-user-msg-bg, #E5E5E5);
+            padding-bottom: 4px;
+        }
+        .token-popup .token-section {
+            margin-bottom: 8px;
+        }
+        .token-popup .token-section:last-child {
+            margin-bottom: 0;
+        }
+        .token-popup .token-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .token-popup .token-item label {
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-right: 8px;
+        }
+        .token-popup .token-item input {
+            margin-right: 6px;
+        }
+        .token-popup .token-item span {
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .token-popup .token-total-line {
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            margin-top: 4px;
+            padding-top: 4px;
+            border-top: 1px solid var(--theme-user-msg-bg, #E5E5E5);
+        }
+    `;
+  document.head.appendChild(style);
+}
+
+/**
+ * Attaches a token count display to each chat bubble and the summary status.
  * @param {Array<object>} allMessages - The complete list of messages from the DB.
  * @param {Set<string>} effectiveMessageIds - A set of IDs for messages that are within the context window.
  * @param {Map<string, object>} effectiveMessageMap - A map to get the potentially modified (truncated) message object.
@@ -298,6 +377,8 @@ function addHoverListeners(
   messagesWithTokens,
   additionalDataMap
 ) {
+  injectPopupCSS(); // Ensure CSS is present
+
   if (totalTokens > 0 && lastTokenCount == totalTokens) {
     console.log("Same token count, skipping UI update.");
   }
@@ -369,11 +450,11 @@ function addHoverListeners(
       }
       turnElement.style.opacity = "1";
     } else {
-      const messageTokens = messagesWithTokens.find(
-        (m) => m.id === originalMessageData.id
-      ).tokens;
+      const messageTokens =
+        messagesWithTokens.find((m) => m.id === originalMessageData.id)
+          ?.tokens || 0;
       maxcumulativeTokens += messageTokens;
-      tokenCountDiv.textContent = `(May be out of context): ${messageTokens} tokens.`;
+      tokenCountDiv.textContent = `(Out of context): ${messageTokens} tokens.`;
       turnElement.style.opacity = "0.5";
     }
 
@@ -392,23 +473,128 @@ function addHoverListeners(
     }
   });
 
-  let statusDiv = document.querySelector(
-    "#thread-bottom-container > div.text-token-text-secondary .tokenstatus"
+  // --- Status Div with Hover Popup ---
+  let statusContainer = document.querySelector(".token-status-container");
+  const parent = document.querySelector(
+    "#thread-bottom-container > div.text-token-text-secondary"
   );
-  if (!statusDiv) {
-    statusDiv = document.createElement("div");
-    statusDiv.classList.add("tokenstatus");
-    statusDiv.style.display = "inline-block";
-    statusDiv.style.marginLeft = "8px";
-    statusDiv.style.fontSize = "12px";
-    statusDiv.style.color = "var(--text-secondary)";
-    statusDiv.style.fontWeight = "normal";
-    const parent = document.querySelector(
-      "#thread-bottom-container > div.text-token-text-secondary"
-    );
-    if (parent) parent.appendChild(statusDiv);
+
+  if (!statusContainer && parent) {
+    statusContainer = document.createElement("div");
+    statusContainer.className = "token-status-container";
+    parent.appendChild(statusContainer);
   }
-  statusDiv.textContent = `Total tokens: ${maxcumulativeTokens}/${limit} tokens.`;
+
+  if (statusContainer) {
+    let statusDiv = statusContainer.querySelector(".tokenstatus");
+    if (!statusDiv) {
+      statusDiv = document.createElement("div");
+      statusDiv.className = "tokenstatus";
+      statusDiv.style.display = "inline-block";
+      statusDiv.style.marginLeft = "8px";
+      statusDiv.style.fontSize = "12px";
+      statusDiv.style.color = "var(--text-secondary)";
+      statusDiv.style.fontWeight = "normal";
+      statusContainer.appendChild(statusDiv);
+    }
+    statusDiv.textContent = `Total tokens: ${maxcumulativeTokens}/${limit} tokens.`;
+
+    let popupDiv = statusContainer.querySelector(".token-popup");
+    if (!popupDiv) {
+      popupDiv = document.createElement("div");
+      popupDiv.className = "token-popup";
+      statusContainer.appendChild(popupDiv);
+    }
+
+    // --- Popup Logic ---
+    const updatePopupTotals = () => {
+      let checkedFileTokens = 0;
+      let checkedCanvasTokens = 0;
+
+      popupDiv
+        .querySelectorAll('.token-item input[type="checkbox"]:checked')
+        .forEach((cb) => {
+          const itemType = cb.getAttribute("data-type");
+          const itemTokens = parseInt(cb.getAttribute("data-tokens"), 10);
+          if (itemType === "file") {
+            checkedFileTokens += itemTokens;
+          } else if (itemType === "canvas") {
+            checkedCanvasTokens += itemTokens;
+          }
+        });
+
+      const popupTotalSpan = popupDiv.querySelector("#popup-total-tokens");
+      if (popupTotalSpan) {
+        const effectiveTotal =
+          cumulativeTokens + checkedFileTokens + checkedCanvasTokens;
+        const maxTotal =
+          maxcumulativeTokens + checkedFileTokens + checkedCanvasTokens;
+        popupTotalSpan.textContent = `${effectiveTotal} / ${maxTotal}`;
+      }
+    };
+
+    let fileDetailsHTML = "",
+      canvasDetailsHTML = "";
+    let initialFileTokens = 0,
+      initialCanvasTokens = 0;
+
+    additionalDataMap.forEach((data, msgId) => {
+      if (data.files) {
+        data.files.forEach((f, index) => {
+          initialFileTokens += f.tokens;
+          const id = `file-${msgId}-${index}`;
+          fileDetailsHTML += `<div class="token-item">
+                      <label for="${id}" title="${f.name}">
+                          <input type="checkbox" id="${id}" data-type="file" data-tokens="${f.tokens}" checked>
+                          📎 ${f.name}
+                      </label>
+                      <span>${f.tokens}</span>
+                  </div>`;
+        });
+      }
+      if (data.canvas) {
+        initialCanvasTokens += data.canvas.tokens;
+        const id = `canvas-${msgId}`;
+        canvasDetailsHTML += `<div class="token-item">
+                  <label for="${id}" title="${data.canvas.title}">
+                      <input type="checkbox" id="${id}" data-type="canvas" data-tokens="${data.canvas.tokens}" checked>
+                      🎨 ${data.canvas.title}
+                  </label>
+                  <span>${data.canvas.tokens}</span>
+              </div>`;
+      }
+    });
+
+    const effectiveTotal =
+      cumulativeTokens + initialFileTokens + initialCanvasTokens;
+    const maxTotal =
+      maxcumulativeTokens + initialFileTokens + initialCanvasTokens;
+
+    popupDiv.innerHTML = `
+          <h4>Token Breakdown</h4>
+          <div class="token-section">
+              <div class="token-item"><span>Chat Tokens (Effective/Total)</span> <span>${cumulativeTokens} / ${maxcumulativeTokens}</span></div>
+          </div>
+          ${
+            fileDetailsHTML || canvasDetailsHTML
+              ? `<div class="token-section">
+              ${fileDetailsHTML}
+              ${canvasDetailsHTML}
+          </div>`
+              : ""
+          }
+          <div class="token-total-line">
+              <span>Selected Total:</span>
+              <span id="popup-total-tokens">${effectiveTotal} / ${maxTotal}</span>
+          </div>
+      `;
+
+    popupDiv.addEventListener("change", (e) => {
+      if (e.target.type === "checkbox") {
+        updatePopupTotals();
+      }
+    });
+  }
 
   lastTokenCount = document.body.querySelector(".token-count-display")
     ? totalTokens
@@ -421,15 +607,15 @@ function addHoverListeners(
 function clearTokenUI() {
   console.log("Clearing token UI...");
   document
-    .querySelectorAll(".token-count-display, .extra-token-info")
+    .querySelectorAll(
+      ".token-count-display, .extra-token-info, .token-status-container"
+    )
     .forEach((el) => el.remove());
   document
     .querySelectorAll('[data-testid^="conversation-turn-"]')
     .forEach((turn) => {
       turn.style.opacity = "1";
     });
-  const statusDiv = document.querySelector(".tokenstatus");
-  if (statusDiv) statusDiv.remove();
 }
 
 /**
@@ -575,7 +761,10 @@ new MutationObserver((mutationList) => {
     const ignoredClasses = new Set([
       "extra-token-info",
       "token-count-display",
+      "token-status-container",
       "tokenstatus",
+      "token-popup",
+      "token-item",
       "@thread-xl/thread:pt-header-height",
       "placeholder",
     ]);
@@ -587,7 +776,7 @@ new MutationObserver((mutationList) => {
       const targetElement =
         m.type === "characterData" ? m.target.parentElement : m.target;
 
-      if (!targetElement) return; // If there's no element, skip this mutation.
+      if (!targetElement || !targetElement.classList) return;
 
       const classList = targetElement.classList; // Check if the element's class is in the ignore list
 
