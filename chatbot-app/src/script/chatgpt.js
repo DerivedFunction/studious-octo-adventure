@@ -115,7 +115,10 @@ async function processBackendData(conversationId) {
           let fileInfo = null;
           let canvasInfo = null;
 
-          // Check for file attachments
+          // Default to the current message's ID. This will be updated for canvas messages.
+          let targetMessageId = node.message.id;
+
+          // Check for file attachments (this logic is correct)
           if (metadata.attachments && metadata.attachments.length > 0) {
             fileInfo = metadata.attachments.map((file) => ({
               name: file.name,
@@ -135,15 +138,35 @@ async function processBackendData(conversationId) {
                 title: canvasContent.name || "Canvas",
                 tokens: enc.encode(canvasContent.content || "").length,
               };
+
+              // --- FIX: Find the correct target message ID ---
+              // The canvas info belongs to the grandchild of this tool-call node.
+              // Traverse down the conversation tree to find it.
+              if (node.children && node.children.length > 0) {
+                const toolResponseNodeId = node.children[0];
+                const toolResponseNode =
+                  conversationApiData.mapping[toolResponseNodeId];
+                if (
+                  toolResponseNode &&
+                  toolResponseNode.children &&
+                  toolResponseNode.children.length > 0
+                ) {
+                  // This is the ID of the final, user-visible assistant message.
+                  targetMessageId = toolResponseNode.children[0];
+                }
+              }
             } catch (e) {
               console.error("Error parsing canvas content:", e);
             }
           }
 
           if (fileInfo || canvasInfo) {
-            additionalDataMap.set(node.message.id, {
-              files: fileInfo,
-              canvas: canvasInfo,
+            // Use the potentially updated targetMessageId as the key.
+            // This ensures that if a message has both a file and a canvas, they are merged.
+            const existingData = additionalDataMap.get(targetMessageId) || {};
+            additionalDataMap.set(targetMessageId, {
+              files: fileInfo || existingData.files,
+              canvas: canvasInfo || existingData.canvas,
             });
           }
         }
@@ -318,11 +341,11 @@ function addHoverListeners(
   });
 
   let statusDiv = document.querySelector(
-    "#thread-bottom-container > div.text-token-text-secondary #tokenstatus"
+    "#thread-bottom-container > div.text-token-text-secondary .tokenstatus"
   );
   if (!statusDiv) {
     statusDiv = document.createElement("div");
-    statusDiv.id = "tokenstatus";
+    statusDiv.classList.add("tokenstatus");
     statusDiv.style.display = "inline-block";
     statusDiv.style.marginLeft = "8px";
     statusDiv.style.fontSize = "12px";
@@ -490,7 +513,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 const debouncedRunTokenCheck = debounce(runTokenCheck, 1000);
 debouncedRunTokenCheck();
 let lastUrl = location.href;
-new MutationObserver(() => {
+new MutationObserver((mutationList) => {
   const url = location.href;
   if (url !== lastUrl) {
     lastUrl = url;
@@ -498,7 +521,24 @@ new MutationObserver(() => {
     console.log("URL changed, running token check immediately.");
     runTokenCheck();
   } else {
-    debouncedRunTokenCheck();
+    let skip = false;
+    const ignoredClasses = new Set([
+      "extra-token-info",
+      "token-count-display",
+      "tokenstatus",
+      "@thread-xl/thread:pt-header-height",
+    ]);
+    mutationList.forEach((m) => {
+      const classList = m.target.classList;
+      console.log(classList);
+      for (const cls of classList) {
+        if (ignoredClasses.has(cls)) {
+          skip = true;
+          break;
+        }
+      }
+    });
+    if (!skip) debouncedRunTokenCheck();
   }
 }).observe(document.body.querySelector("main"), {
   subtree: true,
