@@ -534,7 +534,7 @@ const ThemeableChatbot = () => {
                       setContextWindow(value);
                   }}
                   >
-                    {`N tokens (Total: ${contextWindow})`}
+                    {`Set Context Window: ${contextWindow} tokens`}
                   </div>
               </>
             ))}
