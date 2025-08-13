@@ -37,7 +37,7 @@ const ThemeableChatbot = () => {
     {
       id: 2,
       type: "ai",
-      content: "Choose a theme with theme picker.",
+      content: "Click the token count to track tokens (0 = disable)",
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");
@@ -48,6 +48,7 @@ const ThemeableChatbot = () => {
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [isScriptingEnabled, setIsScriptingEnabled] = useState(false); // <-- NEW: State for scripting toggle
   const [isThemeActive, setIsThemeActive] = useState(false);
+  const [contextWindow, setContextWindow] = useState(8 * 2 ** 10); // 8K tokens
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -207,9 +208,10 @@ const ThemeableChatbot = () => {
     getInitialDarkMode(setIsDarkMode);
     try {
       if (chrome?.storage?.local) {
-        chrome.storage.local.get(["themeColor", "themeActive"], (result) => {
+        chrome.storage.local.get(["themeColor", "isThemeActive", "contextWindow"], (result) => {
           if (result.themeColor) setThemeColor(result.themeColor);
-          if (result.themeActive) setIsThemeActive(result.themeActive);
+          if (result.isThemeActive) setIsThemeActive(result.isThemeActive);
+          if (result.contextWindow) setContextWindow(result.contextWindow);
         });
         // Check to see if script exists
         try {
@@ -278,6 +280,12 @@ const ThemeableChatbot = () => {
       setIsMultiLine(textarea.value.length > 50);
     }
   }, [inputMessage]);
+
+  useEffect(() => {
+    if (chrome?.storage?.local) {
+     chrome.storage.local.set({ contextWindow });
+    }
+  }, [contextWindow]);
 
   // --- EVENT HANDLERS ---
 
@@ -409,6 +417,7 @@ const ThemeableChatbot = () => {
       --input-text: ${isDarkMode ? "#ffffff" : "#18181b"};
       --input-border: ${isDarkMode ? "#ffffff0d" : "#0000000d"};
       --body-bg: ${isDarkMode ? "#212121" : "#ffffff0d"};
+      --text-secondary: ${isDarkMode ? "#ffffffb3" : "#0009"};
     }
     /* Fix placeholder color for theme switching */
     .theme-root textarea::placeholder {
@@ -457,12 +466,11 @@ const ThemeableChatbot = () => {
             pageName={"Theme"}
             toolStatus={isThemeActive}
             toggleTool={setIsThemeActive}
-           
           />
 
           <main
             ref={chatContainerRef}
-            className="flex-1 p-6 overflow-y-auto min-h-0 flex flex-col gap-6"
+            className="flex-1 p-6 overflow-y-auto min-h-0 flex flex-col gap-1"
           >
             <input
               type="color"
@@ -472,9 +480,10 @@ const ThemeableChatbot = () => {
               className="w-8 h-8 p-0 bg-transparent border-none rounded-md cursor-pointer hidden"
             />
             {messages.map((msg) => (
+              <>
               <div
                 key={msg.id}
-                className={`flex gap-3 items-start ${
+                className={`flex items-start ${
                   msg.type === "user" ? "justify-end" : ""
                 } fade-in`}
               >
@@ -502,9 +511,32 @@ const ThemeableChatbot = () => {
                     }}
                   >
                     <p className="m-0 whitespace-pre-wrap">{msg.content}</p>
-                  </div>
-                </div>
+                  </div>            
+                </div>   
               </div>
+              <div
+                  className={`token-count-display inline-block ml-8
+                    ${msg.type === "user" ? "text-right" : ""
+                    } fade-in
+                      `}
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--text-secondary)",
+                    fontWeight: "normal",
+                  }}
+                  onClick={() => {
+                    const contextWindow =
+                      parseFloat(window.prompt("Enter Context Window Length [per (K) tokens]:", "8")) 
+                    const value =
+                      contextWindow < 0 || Number.isNaN(contextWindow)
+                        ? 0
+                        : contextWindow * 2 ** 10;
+                      setContextWindow(value);
+                  }}
+                  >
+                    {`N tokens (Total: ${contextWindow})`}
+                  </div>
+              </>
             ))}
             {isTyping && (
               <div className="flex gap-3 items-start">

@@ -5,9 +5,6 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 const enc = new Tiktoken(o200k_base);
 console.log("✅ Tokenizer initialized.");
 
-// The fixed context window size for our simulation.
-const CONTEXT_WINDOW_LIMIT = 8192;
-
 /* eslint-disable no-undef */
 
 // --- UTILITY FUNCTIONS ---
@@ -59,43 +56,38 @@ async function getConversationFromDB(conversationId) {
 
 /**
  * Processes the full message history to determine which messages fit
- * within the defined CONTEXT_WINDOW_LIMIT. This correctly models a real context
- * window by taking the most recent messages that fit.
+ * within the defined context window limit.
  * @param {Array<object>} allMessages - The complete list of messages from the DB.
+ * @param {number} limit - The context window token limit.
  * @returns {{effectiveMessages: Array<object>, totalTokens: number}} An object containing the messages that fit and their total token count.
  */
-function getEffectiveMessages(allMessages) {
+function getEffectiveMessages(allMessages, limit) {
   const messagesWithTokens = allMessages.map((msg) => ({
     ...msg,
     tokens: (msg.text || "").trim() ? enc.encode(msg.text).length : 0,
-    isTruncated: false, // Flag for truncation
+    isTruncated: false,
   }));
 
   let currentTotalTokens = 0;
   const effectiveMessages = [];
 
-  // Iterate backwards from the last message to the first.
   for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
     const message = messagesWithTokens[i];
-    if (message.tokens === 0) continue; // Skip empty messages
+    if (message.tokens === 0) continue;
 
-    // Special case: If the most recent message is too big, it's the only one, and it's truncated.
-    if (message.tokens > CONTEXT_WINDOW_LIMIT) {
+    if (message.tokens > limit) {
       if (i === messagesWithTokens.length - 1) {
         message.isTruncated = true;
         effectiveMessages.unshift(message);
-        currentTotalTokens = CONTEXT_WINDOW_LIMIT;
+        currentTotalTokens = limit;
       }
-      // This oversized message (or an earlier one) blocks everything before it.
       break;
     }
 
-    // If the current message fits, add it.
-    if (currentTotalTokens + message.tokens <= CONTEXT_WINDOW_LIMIT) {
+    if (currentTotalTokens + message.tokens <= limit) {
       currentTotalTokens += message.tokens;
-      effectiveMessages.unshift(message); // Add to the beginning to maintain order
+      effectiveMessages.unshift(message);
     } else {
-      // Otherwise, the context is full. Stop adding older messages.
       break;
     }
   }
@@ -108,11 +100,13 @@ function getEffectiveMessages(allMessages) {
  * @param {Array<object>} allMessages - The complete list of messages from the DB.
  * @param {Set<string>} effectiveMessageIds - A set of IDs for messages that are within the context window.
  * @param {Map<string, object>} effectiveMessageMap - A map to get the potentially modified (truncated) message object.
+ * @param {number} limit - The context window token limit.
  */
 function addHoverListeners(
   allMessages,
   effectiveMessageIds,
-  effectiveMessageMap
+  effectiveMessageMap,
+  limit
 ) {
   const turnElements = document.querySelectorAll(
     '[data-testid^="conversation-turn-"]'
@@ -143,7 +137,6 @@ function addHoverListeners(
       authorRoleElement.appendChild(tokenCountDiv);
     }
 
-    // The cumulative sum is only calculated for messages inside the effective context.
     if (effectiveMessageIds.has(originalMessageData.id)) {
       const effectiveMessageData = effectiveMessageMap.get(
         originalMessageData.id
@@ -151,21 +144,35 @@ function addHoverListeners(
       const messageTokenCount = effectiveMessageData.tokens;
 
       if (effectiveMessageData.isTruncated) {
-        // A truncated message resets and fills the context.
-        cumulativeTokens = CONTEXT_WINDOW_LIMIT;
-        tokenCountDiv.textContent = `| ${CONTEXT_WINDOW_LIMIT} tokens (Truncated from ${messageTokenCount})`;
+        cumulativeTokens = limit;
+        tokenCountDiv.textContent = `| ${limit} tokens (Truncated from ${messageTokenCount})`;
       } else {
         cumulativeTokens += messageTokenCount;
         if (messageTokenCount > 0) {
           tokenCountDiv.textContent = `| ${messageTokenCount} tokens (Total: ${cumulativeTokens})`;
         }
       }
-      turnElement.style.opacity = "1"; // Ensure it's fully visible
+      turnElement.style.opacity = "1";
     } else {
-      // This message is outside the context window.
       tokenCountDiv.textContent = `| (Out of Context)`;
-      turnElement.style.opacity = "0.5"; // Visually dim it
+      turnElement.style.opacity = "0.5";
     }
+  });
+}
+
+/**
+ * Removes all token count UI elements and resets message styles.
+ */
+function clearTokenUI() {
+  console.log("Clearing token UI...");
+  const tokenDisplays = document.querySelectorAll(".token-count-display");
+  tokenDisplays.forEach((display) => display.remove());
+
+  const turnElements = document.querySelectorAll(
+    '[data-testid^="conversation-turn-"]'
+  );
+  turnElements.forEach((turn) => {
+    turn.style.opacity = "1"; // Reset opacity for all messages
   });
 }
 
@@ -174,6 +181,16 @@ function addHoverListeners(
  * and updates the UI accordingly.
  */
 async function runTokenCheck() {
+  const { contextWindow } = await chrome.storage.local.get({
+    contextWindow: 8192,
+  });
+
+  // If contextWindow is 0, disable the feature and clean up the UI.
+  if (contextWindow === 0) {
+    clearTokenUI();
+    return;
+  }
+
   const pathParts = window.location.pathname.split("/");
   if (pathParts[1] !== "c" || !pathParts[2]) {
     return;
@@ -185,7 +202,8 @@ async function runTokenCheck() {
     const conversationData = await getConversationFromDB(conversationId);
     if (conversationData && Array.isArray(conversationData.messages)) {
       const { effectiveMessages, totalTokens } = getEffectiveMessages(
-        conversationData.messages
+        conversationData.messages,
+        contextWindow
       );
       const effectiveMessageIds = new Set(effectiveMessages.map((m) => m.id));
       const effectiveMessageMap = new Map(
@@ -193,13 +211,14 @@ async function runTokenCheck() {
       );
 
       console.log(
-        `📊 TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${totalTokens} / ${CONTEXT_WINDOW_LIMIT}`
+        `📊 TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${totalTokens} / ${contextWindow}`
       );
 
       addHoverListeners(
         conversationData.messages,
         effectiveMessageIds,
-        effectiveMessageMap
+        effectiveMessageMap,
+        contextWindow
       );
     }
   } catch (error) {
@@ -275,8 +294,21 @@ const removeStyles = () => {
 
 applyTheme();
 observeHostSchemeChanges();
+
+// Updated listener to handle both theme and context window changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === "local") applyTheme();
+  if (namespace !== "local") return;
+
+  if (
+    changes.themeObject ||
+    changes.isThemeActive ||
+    changes.isScriptingEnabled
+  ) {
+    applyTheme();
+  }
+  if (changes.contextWindow) {
+    runTokenCheck();
+  }
 });
 
 runTokenCheck();
