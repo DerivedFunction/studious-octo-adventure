@@ -1003,7 +1003,6 @@ function clearTokenUI() {
  */
 async function runTokenCheck() {
   const { contextWindow, isScriptingEnabled } = await chrome.storage.local.get(["contextWindow", "isScriptingEnabled"]);
-  console.log(contextWindow, isScriptingEnabled)
   if (contextWindow === 0 || !isScriptingEnabled) {
     clearTokenUI();
     return;
