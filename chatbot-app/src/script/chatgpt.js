@@ -145,8 +145,8 @@ async function processBackendData(conversationId) {
       const conversationApiData = await response.json();
       const additionalDataMap = new Map();
       const latestCanvasData = new Map(); // Map<textdoc_id, { version, title, tokens, attachToMessageId }>
+      let toolInstructionTokens = 0; // Pass 1: Collect all canvas versions and identify the latest for each
 
-      // Pass 1: Collect all canvas versions and identify the latest for each
       if (conversationApiData && conversationApiData.mapping) {
         for (const messageId in conversationApiData.mapping) {
           const node = conversationApiData.mapping[messageId];
@@ -164,22 +164,19 @@ async function processBackendData(conversationId) {
                 try {
                   const { textdoc_id, version } =
                     toolNode.message.metadata.canvas;
-                  const contentNode = JSON.parse(node.message.content.parts[0]);
+                  const contentNode = JSON.parse(node.message.content.parts[0]); // --- START: Logic to find the correct final message to attach the canvas to ---
 
-                  // --- START: Logic to find the correct final message to attach the canvas to ---
                   let attachToMessageId = null;
                   let currentNodeId = toolNode.id;
-                  let currentNode = toolNode;
+                  let currentNode = toolNode; // Traverse the chain of children until we find the final assistant message to the user.
 
-                  // Traverse the chain of children until we find the final assistant message to the user.
                   while (
                     currentNode &&
                     currentNode.children &&
                     currentNode.children.length > 0
                   ) {
                     currentNodeId = currentNode.children[0];
-                    currentNode = conversationApiData.mapping[currentNodeId];
-                    // The final message is from the assistant to 'all' recipients.
+                    currentNode = conversationApiData.mapping[currentNodeId]; // The final message is from the assistant to 'all' recipients.
                     if (
                       currentNode?.message?.author?.role === "assistant" &&
                       currentNode?.message?.recipient === "all"
@@ -187,9 +184,7 @@ async function processBackendData(conversationId) {
                       break;
                     }
                   }
-                  attachToMessageId = currentNodeId;
-                  // --- END: New logic ---
-
+                  attachToMessageId = currentNodeId; // --- END: New logic ---
                   let title = "Canvas";
                   let content = "";
 
@@ -225,9 +220,8 @@ async function processBackendData(conversationId) {
               }
             }
           }
-        }
+        } // Pass 2: Populate additionalDataMap with latest canvas versions and other data
 
-        // Pass 2: Populate additionalDataMap with latest canvas versions and other data
         latestCanvasData.forEach((data, textdoc_id) => {
           const attachToMessageId = data.attachToMessageId;
           const existing = additionalDataMap.get(attachToMessageId) || {};
@@ -246,16 +240,25 @@ async function processBackendData(conversationId) {
               },
             ],
           });
-        });
+        }); // Pass 3: Process files, custom instructions, and hidden tool messages
 
-        // Pass 3: Process files and custom instructions
         for (const messageId in conversationApiData.mapping) {
           const node = conversationApiData.mapping[messageId];
           if (node.message) {
-            const { metadata, content } = node.message;
+            const { metadata, content, author } = node.message;
             let fileInfo = null;
             let customInstructionsInfo = null;
             let targetMessageId = node.message.id;
+
+            if (
+              author &&
+              author.role === "tool" &&
+              content &&
+              content.content_type === "text" &&
+              content.parts[0]
+            ) {
+              toolInstructionTokens += enc.encode(content.parts[0]).length;
+            }
 
             if (metadata.attachments && metadata.attachments.length > 0) {
               fileInfo = metadata.attachments.map((file) => ({
@@ -282,6 +285,19 @@ async function processBackendData(conversationId) {
               });
             }
           }
+        }
+      }
+
+      if (toolInstructionTokens > 0) {
+        // Find the root node's first child to attach the tool instruction cost
+        const rootNode = conversationApiData.mapping["client-created-root"];
+        if (rootNode && rootNode.children.length > 0) {
+          const firstMessageId = rootNode.children[0];
+          const existingData = additionalDataMap.get(firstMessageId) || {};
+          additionalDataMap.set(firstMessageId, {
+            ...existingData,
+            toolInstructions: { tokens: toolInstructionTokens },
+          });
         }
       }
 
@@ -346,11 +362,12 @@ function getEffectiveMessages(
   }));
 
   let currentTotalTokens = 0;
-  const truncatedItems = new Set();
+  const truncatedItems = new Set(); // --- Result variables ---
 
-  // --- Result variables ---
   let instructionsCost = 0;
   let instructionsTruncatedFrom = null;
+  let toolInstructionCost = 0;
+  let toolInstructionTruncatedFrom = null;
   let promptCost = 0;
   let promptTruncatedFrom = null;
   let attachmentsCost = 0;
@@ -361,9 +378,8 @@ function getEffectiveMessages(
   messagesWithTokens.forEach((msg) => {
     maxPossibleTokens += msg.tokens;
     maxChatTokens += msg.tokens;
-  });
+  }); // --- 1. Custom Instructions ---
 
-  // --- 1. Custom Instructions ---
   additionalDataMap.forEach((data) => {
     if (data.customInstructions) {
       const instrTokens =
@@ -383,7 +399,26 @@ function getEffectiveMessages(
     }
   });
 
-  // --- 2. User Prompt ---
+  // --- 1.5 Tool Instructions ---
+  let totalToolInstructionTokens = 0;
+  additionalDataMap.forEach((data) => {
+    if (data.toolInstructions) {
+      totalToolInstructionTokens += data.toolInstructions.tokens;
+    }
+  });
+  maxPossibleTokens += totalToolInstructionTokens;
+  if (currentTotalTokens < limit && totalToolInstructionTokens > 0) {
+    const remainingSpace = limit - currentTotalTokens;
+    if (totalToolInstructionTokens > remainingSpace) {
+      toolInstructionCost = remainingSpace;
+      toolInstructionTruncatedFrom = totalToolInstructionTokens;
+      currentTotalTokens = limit;
+    } else {
+      toolInstructionCost = totalToolInstructionTokens;
+      currentTotalTokens += totalToolInstructionTokens;
+    }
+  } // --- 2. User Prompt ---
+
   if (currentTotalTokens < limit && promptTokens > 0) {
     const remainingSpace = limit - currentTotalTokens;
     if (promptTokens > remainingSpace) {
@@ -394,9 +429,8 @@ function getEffectiveMessages(
       promptCost = promptTokens;
       currentTotalTokens += promptTokens;
     }
-  }
+  } // --- 3. Files & Canvases ---
 
-  // --- 3. Files & Canvases ---
   if (currentTotalTokens < limit) {
     additionalDataMap.forEach((data, msgId) => {
       if (currentTotalTokens >= limit) return;
@@ -442,9 +476,8 @@ function getEffectiveMessages(
         });
       }
     });
-  }
+  } // --- 4. Chat History ---
 
-  // --- 4. Chat History ---
   if (currentTotalTokens < limit) {
     const remainingForChat = limit - currentTotalTokens;
     for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
@@ -467,7 +500,8 @@ function getEffectiveMessages(
     }
   }
 
-  const baseTokenCost = instructionsCost + promptCost + attachmentsCost;
+  const baseTokenCost =
+    instructionsCost + toolInstructionCost + promptCost + attachmentsCost;
 
   return {
     effectiveMessages,
@@ -479,6 +513,8 @@ function getEffectiveMessages(
     promptTruncatedFrom,
     instructionsCost,
     instructionsTruncatedFrom,
+    toolInstructionCost,
+    toolInstructionTruncatedFrom,
     maxPossibleTokens,
     maxChatTokens,
   };
@@ -812,6 +848,34 @@ function addHoverListeners(
       }
       popupFragment.appendChild(h4);
       popupFragment.appendChild(customInstructionsSection);
+    }
+
+    if (
+      tokenData.toolInstructionCost > 0 ||
+      tokenData.toolInstructionTruncatedFrom
+    ) {
+      h4 = document.createElement("h4");
+      h4.textContent = "Tool Responses";
+      if (tokenData.toolInstructionTruncatedFrom) {
+        const truncatedSpan = document.createElement("span");
+        truncatedSpan.className = "truncated-text";
+        truncatedSpan.textContent = ` (Overflow: ${tokenData.toolInstructionCost}/${tokenData.toolInstructionTruncatedFrom})`;
+        h4.appendChild(truncatedSpan);
+      }
+      popupFragment.appendChild(h4);
+
+      const toolSection = document.createElement("div");
+      toolSection.className = "token-section";
+      const originalToolTokens =
+        tokenData.toolInstructionTruncatedFrom ?? tokenData.toolInstructionCost;
+      let toolValue = originalToolTokens;
+      if (tokenData.toolInstructionTruncatedFrom) {
+        toolValue = `${tokenData.toolInstructionCost} / ${originalToolTokens}`;
+      }
+      toolSection.appendChild(
+        createTokenItem("🛠️ Hidden Tool Output", toolValue)
+      );
+      popupFragment.appendChild(toolSection);
     }
 
     const filesFragment = document.createDocumentFragment();
