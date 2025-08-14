@@ -241,7 +241,7 @@ const ThemeableChatbot = () => {
     if (chrome?.storage?.local && newThemeObject) {
       chrome.storage.local.get("themeObject", (result) => {
         const oldThemeObject = result.themeObject;
-        if (oldThemeObject && JSON.stringify(oldThemeObject) !== JSON.stringify(newThemeObject)) {
+        if (!oldThemeObject || JSON.stringify(oldThemeObject) !== JSON.stringify(newThemeObject) ) {
           chrome.storage.local.set(
             {
               themeColor,

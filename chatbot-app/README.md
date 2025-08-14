@@ -1,10 +1,6 @@
 # ChatGPT Token Counter & Context Manager
 
-This browser script enhances the ChatGPT web interface by providing a detailed, real-time token count for conversations. It helps users understand and manage the context window size by analyzing messages, attachments, and custom instructions.
 
-The script is designed to be injected into the ChatGPT page as a content script for a browser extension.
-
----
 
 ## ✨ Features
 
