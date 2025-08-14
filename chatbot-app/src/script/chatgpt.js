@@ -4,7 +4,6 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 // This encoder is now available for the entire script
 const enc = new Tiktoken(o200k_base);
 console.log("✅ Tokenizer initialized.");
-let lastTokenCount = 0;
 let fetchController; // Controller to abort in-flight fetch requests
 let accessToken = null; // Global variable to store the access token
 /* eslint-disable no-undef */
@@ -302,6 +301,7 @@ function getEffectiveMessages(
       if (i === messagesWithTokens.length - 1) {
         // Only truncate the very last message
         message.isTruncated = true;
+        message.truncatedTokens = remainingLimit;
         effectiveMessages.unshift(message);
         currentChatTokens = remainingLimit;
       }
@@ -345,17 +345,17 @@ function injectPopupCSS() {
         .token-popup {
             display: none;
             position: absolute;
-            bottom: 120%;
+            bottom: 0%;
             left: 50%;
             transform: translateX(-50%);
-            background-color: var(--theme-secondary-btn-bg, #FFFFFF);
-            border: 1px solid var(--theme-user-msg-bg, #E5E5E5);
+            background-color: var(--main-surface-primary);
+            border: 1px solid var(--border-medium);
             border-radius: 8px;
             padding: 12px;
             width: 320px;
             z-index: 1000;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            color: var(--theme-secondary-btn-text, #000000);
+            color: var(--text-secondary);
             font-size: 12px;
             text-align: left;
         }
@@ -363,7 +363,8 @@ function injectPopupCSS() {
             margin-top: 0;
             margin-bottom: 8px;
             font-weight: bold;
-            border-bottom: 1px solid var(--theme-user-msg-bg, #E5E5E5);
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-medium);
             padding-bottom: 4px;
         }
         .token-popup .token-section {
@@ -399,7 +400,7 @@ function injectPopupCSS() {
             justify-content: space-between;
             margin-top: 4px;
             padding-top: 4px;
-            border-top: 1px solid var(--theme-user-msg-bg, #E5E5E5);
+            border-top: 1px solid var(--border-light);
         }
         .truncated-text {
             font-style: italic;
@@ -489,21 +490,23 @@ function addHoverListeners(
       const effectiveMessageData = effectiveMessageMap.get(
         originalMessageData.id
       );
-      const messageTokenCount = effectiveMessageData.tokens;
-      if (effectiveMessageData.isTruncated) {
-        cumulativeTokens = tokenData.baseTokenCost + tokenData.totalChatTokens;
-        tokenCountDiv.textContent = `${limit} tokens. (Truncated from ${messageTokenCount})`;
-      } else {
-        cumulativeTokens += messageTokenCount;
-        maxcumulativeTokens += messageTokenCount;
-        tokenCountDiv.textContent =
-          messageTokenCount > 0
-            ? `${messageTokenCount} of ${
-                tokenData.baseTokenCost + cumulativeTokens
-              }/${limit} tokens.`
-            : "";
-      }
-      turnElement.style.opacity = "1";
+      const messageTokenCount = effectiveMessageData.isTruncated
+        ? effectiveMessageData.truncatedTokens
+        : effectiveMessageData.tokens;
+
+      cumulativeTokens += messageTokenCount;
+      maxcumulativeTokens += effectiveMessageData.tokens;
+      tokenCountDiv.textContent = `${
+        messageTokenCount > 0
+          ? `${messageTokenCount} of ${cumulativeTokens}/${limit} tokens`
+          : `(Out of context): ${messageTokenCount} tokens`
+      }. ${
+        effectiveMessageData.isTruncated
+          ? `Truncated from ${effectiveMessageData.tokens} tokens.`
+          : ""
+      }`;
+
+      turnElement.style.opacity = messageTokenCount > 0 ? "1" : "0.5";
     } else {
       const messageTokens =
         messagesWithTokens.find((m) => m.id === originalMessageData.id)
@@ -552,7 +555,6 @@ function addHoverListeners(
       statusDiv.style.fontWeight = "normal";
       statusContainer.appendChild(statusDiv);
     }
-    statusDiv.textContent = `Total tokens: ${maxcumulativeTokens}/${limit} tokens.`;
 
     let popupDiv = statusContainer.querySelector(".token-popup");
     if (!popupDiv) {
@@ -560,31 +562,6 @@ function addHoverListeners(
       popupDiv.className = "token-popup";
       statusContainer.appendChild(popupDiv);
     }
-
-    // --- Popup Logic ---
-    const updatePopupTotals = () => {
-      let checkedFileTokens = 0;
-      let checkedCanvasTokens = 0;
-
-      popupDiv
-        .querySelectorAll('.token-item input[type="checkbox"]:checked')
-        .forEach((cb) => {
-          const itemType = cb.getAttribute("data-type");
-          const itemTokens = parseInt(cb.getAttribute("data-tokens"), 10);
-          if (itemType === "file") {
-            checkedFileTokens += itemTokens;
-          } else if (itemType === "canvas") {
-            checkedCanvasTokens += itemTokens;
-          }
-        });
-
-      const popupTotalSpan = popupDiv.querySelector("#popup-total-tokens");
-      if (popupTotalSpan) {
-        const effectiveTotal = totalChatTokens + tokenData.baseTokenCost;
-        const maxTotal = maxcumulativeTokens + tokenData.baseTokenCost;
-        popupTotalSpan.textContent = `${effectiveTotal} / ${maxTotal}`;
-      }
-    };
 
     let fileDetailsHTML = "",
       canvasDetailsHTML = "";
@@ -635,11 +612,15 @@ function addHoverListeners(
               <div class="token-item"><span>Chat Tokens (Effective/Total)</span> <span>${totalChatTokens} / ${maxcumulativeTokens}</span></div>
           </div>
           ${
-            fileDetailsHTML || canvasDetailsHTML
-              ? `<div class="token-section">
-              ${fileDetailsHTML}
-              ${canvasDetailsHTML}
-          </div>`
+            fileDetailsHTML
+              ? `<h4>Files</h4>
+                ${fileDetailsHTML}`
+              : ""
+          }
+          ${
+            canvasDetailsHTML
+              ? `<h4>Canvas</h4>
+                ${canvasDetailsHTML}`
               : ""
           }
           <div class="token-total-line">
@@ -647,7 +628,7 @@ function addHoverListeners(
               <span id="popup-total-tokens">${effectiveTotal} / ${maxTotal}</span>
           </div>
       `;
-
+    statusDiv.textContent = `Effective tokens: ${effectiveTotal}/${limit} tokens.`;
     popupDiv.addEventListener("change", async (e) => {
       if (e.target.type === "checkbox") {
         const conversationId = window.location.pathname.split("/")[2];
