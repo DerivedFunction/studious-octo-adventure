@@ -934,6 +934,18 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 
 const debouncedRunTokenCheck = debounce(runTokenCheck, 3000);
 debouncedRunTokenCheck();
+function clearOldCache() {
+  // Delete all instances of backend_data_${id}
+  console.log("🗑️ Clearing old cache...");
+  chrome.storage.local.get(null, (items) => {
+    for (const key in items) {
+      if (key.startsWith("backend_data_")) {
+        chrome.storage.local.remove(key);
+      }
+    }
+  });
+}
+clearOldCache();
 let lastUrl = location.href;
 new MutationObserver((mutationList) => {
   const url = location.href;
