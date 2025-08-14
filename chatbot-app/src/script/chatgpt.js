@@ -6,6 +6,8 @@ const enc = new Tiktoken(o200k_base);
 console.log("✅ Tokenizer initialized.");
 let fetchController; // Controller to abort in-flight fetch requests
 let accessToken = null; // Global variable to store the access token
+let lastCheckState = { url: "", prompt: "", turns: 0, checked: "" }; // Cache state to avoid redundant checks
+
 /* eslint-disable no-undef */
 
 // --- UTILITY FUNCTIONS ---
@@ -241,104 +243,154 @@ async function processBackendData(conversationId) {
 }
 
 /**
- * Processes the full message history and attachments to determine what fits
+ * Processes the full message history, attachments, and prompt to determine what fits
  * within the defined context window limit based on user selections.
  * @param {Array<object>} allMessages - The complete list of messages from the DB.
  * @param {number} limit - The context window token limit.
  * @param {Map<string, object>} additionalDataMap - Map with file and canvas token data.
  * @param {Set<string>} checkedItems - A set of IDs for checked files/canvases.
+ * @param {number} promptTokens - The token count of the current user input in the prompt box.
  * @returns {object} An object containing the effective messages and token breakdown.
  */
 function getEffectiveMessages(
   allMessages,
   limit,
   additionalDataMap,
-  checkedItems
+  checkedItems,
+  promptTokens = 0
 ) {
   const messagesWithTokens = allMessages.map((msg) => ({
     ...msg,
     tokens: (msg.text || "").trim() ? enc.encode(msg.text).length : 0,
   }));
 
-  let baseTokenCost = 0;
-  const truncatedItems = new Set(); // Calculate token cost of checked items and custom instructions first
+  let currentTotalTokens = 0;
+  const truncatedItems = new Set();
 
-  additionalDataMap.forEach((data, msgId) => {
-    // MODIFICATION: Add custom instructions tokens to base cost
+  // --- Result variables ---
+  let instructionsCost = 0;
+  let instructionsTruncatedFrom = null;
+  let promptCost = 0;
+  let promptTruncatedFrom = null;
+  let attachmentsCost = 0;
+  let totalChatTokens = 0;
+  const effectiveMessages = [];
+  let maxPossibleTokens = promptTokens;
+  messagesWithTokens.forEach((msg) => (maxPossibleTokens += msg.tokens));
+
+  // --- 1. Custom Instructions ---
+  additionalDataMap.forEach((data) => {
     if (data.customInstructions) {
       const instrTokens =
         data.customInstructions.profile_tokens +
         data.customInstructions.instructions_tokens;
-      if (baseTokenCost + instrTokens > limit) {
-        // This case is unlikely but handled for safety
-        baseTokenCost = limit;
-      } else {
-        baseTokenCost += instrTokens;
-      }
-    }
-    if (baseTokenCost === limit) return;
-
-    if (data.files) {
-      data.files.forEach((file, index) => {
-        const itemId = `file-${msgId}-${index}`;
-        if (checkedItems.has(itemId)) {
-          if (baseTokenCost + file.tokens > limit) {
-            truncatedItems.add(itemId);
-            baseTokenCost = limit;
-          } else {
-            baseTokenCost += file.tokens;
-          }
-        }
-      });
-    }
-    if (baseTokenCost === limit) return; // Early exit if context is full
-
-    if (data.canvas) {
-      const itemId = `canvas-${msgId}`;
-      if (checkedItems.has(itemId)) {
-        if (baseTokenCost + data.canvas.tokens > limit) {
-          truncatedItems.add(itemId);
-          baseTokenCost = limit;
+      maxPossibleTokens += instrTokens;
+      if (instrTokens > 0) {
+        if (instrTokens > limit) {
+          instructionsCost = limit;
+          instructionsTruncatedFrom = instrTokens;
+          currentTotalTokens = limit;
         } else {
-          baseTokenCost += data.canvas.tokens;
+          instructionsCost = instrTokens;
+          currentTotalTokens += instrTokens;
         }
       }
     }
-    if (baseTokenCost === limit) return; // Early exit
   });
 
-  const remainingLimit = limit - baseTokenCost;
-  let currentChatTokens = 0;
-  const effectiveMessages = []; // Now, fit chat messages into the remaining space // ### FIX START ### // Iterate backwards from the newest message to decide what fits.
-
-  for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
-    const message = messagesWithTokens[i];
-    if (message.tokens === 0) continue; // Skip empty messages
-
-    const spaceAvailable = remainingLimit - currentChatTokens;
-
-    if (message.tokens <= spaceAvailable) {
-      // Message fits completely, add it.
-      currentChatTokens += message.tokens;
-      effectiveMessages.unshift(message);
+  // --- 2. User Prompt ---
+  if (currentTotalTokens < limit && promptTokens > 0) {
+    const remainingSpace = limit - currentTotalTokens;
+    if (promptTokens > remainingSpace) {
+      promptCost = remainingSpace;
+      promptTruncatedFrom = promptTokens;
+      currentTotalTokens = limit;
     } else {
-      // Message doesn't fit completely.
-      // If there's any space left, truncate this message and add the part that fits.
-      if (spaceAvailable > 0) {
+      promptCost = promptTokens;
+      currentTotalTokens += promptTokens;
+    }
+  }
+
+  // --- 3. Files & Canvases ---
+  if (currentTotalTokens < limit) {
+    additionalDataMap.forEach((data, msgId) => {
+      if (currentTotalTokens >= limit) return;
+
+      if (data.files) {
+        data.files.forEach((file, index) => {
+          if (currentTotalTokens >= limit) return;
+          const itemId = `file-${msgId}-${index}`;
+          if (checkedItems.has(itemId)) {
+            maxPossibleTokens += file.tokens;
+            const remainingSpace = limit - currentTotalTokens;
+            if (file.tokens > remainingSpace) {
+              truncatedItems.add(itemId);
+              attachmentsCost += remainingSpace;
+              currentTotalTokens = limit;
+            } else {
+              attachmentsCost += file.tokens;
+              currentTotalTokens += file.tokens;
+            }
+          }
+        });
+      }
+
+      if (currentTotalTokens >= limit) return;
+
+      if (data.canvas) {
+        const itemId = `canvas-${msgId}`;
+        if (checkedItems.has(itemId)) {
+          maxPossibleTokens += data.canvas.tokens;
+          const remainingSpace = limit - currentTotalTokens;
+          if (data.canvas.tokens > remainingSpace) {
+            truncatedItems.add(itemId);
+            attachmentsCost += remainingSpace;
+            currentTotalTokens = limit;
+          } else {
+            attachmentsCost += data.canvas.tokens;
+            currentTotalTokens += data.canvas.tokens;
+          }
+        }
+      }
+    });
+  }
+
+  // --- 4. Chat History ---
+  if (currentTotalTokens < limit) {
+    const remainingForChat = limit - currentTotalTokens;
+    for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
+      const message = messagesWithTokens[i];
+      if (message.tokens === 0) continue;
+
+      const spaceAvailable = remainingForChat - totalChatTokens;
+      if (spaceAvailable <= 0) break;
+
+      if (message.tokens <= spaceAvailable) {
+        totalChatTokens += message.tokens;
+        effectiveMessages.unshift(message);
+      } else {
         message.isTruncated = true;
         message.truncatedTokens = spaceAvailable;
-        currentChatTokens += spaceAvailable; // Fill the rest of the context
+        totalChatTokens += spaceAvailable;
         effectiveMessages.unshift(message);
-      } // The context is now full, so stop adding messages.
-      break;
+        break;
+      }
     }
-  } // ### FIX END ###
+  }
+
+  const baseTokenCost = instructionsCost + promptCost + attachmentsCost;
+
   return {
     effectiveMessages,
-    totalChatTokens: currentChatTokens,
+    totalChatTokens,
     messagesWithTokens,
     baseTokenCost,
     truncatedItems,
+    promptCost,
+    promptTruncatedFrom,
+    instructionsCost,
+    instructionsTruncatedFrom,
+    maxPossibleTokens,
   };
 }
 
@@ -610,35 +662,70 @@ function addHoverListeners(
     h4.textContent = "Token Breakdown";
     popupFragment.appendChild(h4);
 
+    const promptSection = document.createElement("div");
+    promptSection.className = "token-section";
+    const originalPromptTokens =
+      tokenData.promptTruncatedFrom !== null
+        ? tokenData.promptTruncatedFrom
+        : tokenData.promptCost;
+    const effectivePromptTokens = tokenData.promptCost;
+    const promptLabel = "📝 Current Prompt (Effective/Total)";
+    let promptValue = originalPromptTokens;
+    if (tokenData.promptTruncatedFrom !== null) {
+      promptValue = `${effectivePromptTokens} / ${originalPromptTokens}`;
+    }
+    promptSection.appendChild(createTokenItem(promptLabel, promptValue));
+    popupFragment.appendChild(promptSection);
+
     const chatSection = document.createElement("div");
     chatSection.className = "token-section";
     chatSection.appendChild(
       createTokenItem(
-        "Chat Tokens (Effective/Total)",
+        "💬 Chat History(Effective/Total)",
         `${totalChatTokens} / ${maxcumulativeTokens}`
       )
     );
     popupFragment.appendChild(chatSection);
 
-    const customInstructionsFragment = document.createDocumentFragment();
-    const filesFragment = document.createDocumentFragment();
-    const canvasFragment = document.createDocumentFragment();
+    const customInstructionsSection = document.createElement("div");
+    customInstructionsSection.className = "token-section";
+    let hasInstructions = false;
 
-    additionalDataMap.forEach((data, msgId) => {
+    additionalDataMap.forEach((data) => {
       if (data.customInstructions) {
-        customInstructionsFragment.appendChild(
+        hasInstructions = true;
+        customInstructionsSection.appendChild(
           createTokenItem(
             "👤 User Profile",
             data.customInstructions.profile_tokens
           )
         );
-        customInstructionsFragment.appendChild(
+        customInstructionsSection.appendChild(
           createTokenItem(
             "🤖 Model Instructions",
             data.customInstructions.instructions_tokens
           )
         );
       }
+    });
+
+    if (hasInstructions) {
+      h4 = document.createElement("h4");
+      h4.textContent = "Custom Instructions";
+      if (tokenData.instructionsTruncatedFrom) {
+        const truncatedSpan = document.createElement("span");
+        truncatedSpan.className = "truncated-text";
+        truncatedSpan.textContent = ` (Overflow: ${tokenData.instructionsCost}/${tokenData.instructionsTruncatedFrom})`;
+        h4.appendChild(truncatedSpan);
+      }
+      popupFragment.appendChild(h4);
+      popupFragment.appendChild(customInstructionsSection);
+    }
+
+    const filesFragment = document.createDocumentFragment();
+    const canvasFragment = document.createDocumentFragment();
+
+    additionalDataMap.forEach((data, msgId) => {
       if (data.files) {
         data.files.forEach((f, index) => {
           const id = `file-${msgId}-${index}`;
@@ -697,12 +784,6 @@ function addHoverListeners(
       }
     });
 
-    if (customInstructionsFragment.hasChildNodes()) {
-      h4 = document.createElement("h4");
-      h4.textContent = "Custom Instructions";
-      popupFragment.appendChild(h4);
-      popupFragment.appendChild(customInstructionsFragment);
-    }
     if (filesFragment.hasChildNodes()) {
       h4 = document.createElement("h4");
       h4.textContent = "Files";
@@ -717,7 +798,6 @@ function addHoverListeners(
     } // -- Footer and Totals --
 
     const effectiveTotal = tokenData.baseTokenCost + totalChatTokens;
-    const maxTotal = maxcumulativeTokens + tokenData.baseTokenCost;
 
     const totalLine = document.createElement("div");
     totalLine.className = "token-total-line";
@@ -725,7 +805,7 @@ function addHoverListeners(
     totalLabel.textContent = "Total tokens:";
     const totalValue = document.createElement("span");
     totalValue.id = "popup-total-tokens";
-    totalValue.textContent = `${effectiveTotal} / ${maxTotal}`;
+    totalValue.textContent = `${effectiveTotal} / ${limit}`;
     totalLine.appendChild(totalLabel);
     totalLine.appendChild(totalValue);
     popupFragment.appendChild(totalLine);
@@ -742,7 +822,7 @@ function addHoverListeners(
 
     popupDiv.appendChild(popupFragment);
 
-    statusDiv.textContent = `Effective tokens: ${effectiveTotal}/${limit} tokens.`;
+    statusDiv.textContent = `Effective tokens: ${effectiveTotal}/${limit}`;
 
     const conversationId = window.location.pathname.split("/")[2];
     popupDiv.addEventListener("change", async (e) => {
@@ -764,10 +844,53 @@ function addHoverListeners(
       }
     });
   }
+}
 
-  lastTokenCount = document.body.querySelector(".token-count-display")
-    ? totalChatTokens + tokenData.baseTokenCost
-    : 0;
+/**
+ * Updates the UI element showing the token count for the prompt box.
+ * @param {number} promptCost - The number of tokens for the current prompt.
+ * @param {number|null} promptTruncatedFrom - The original token count if truncated.
+ * @param {number} limit - The context window limit.
+ */
+function updatePromptTokenUI(promptCost, promptTruncatedFrom, limit) {
+  const form = document.querySelector("form");
+  if (!form) return;
+
+  const parent = form.querySelector("div");
+  if (!parent) return;
+
+  let promptTokenDiv = parent.querySelector(".prompt-token-count");
+  if (!promptTokenDiv) {
+    promptTokenDiv = document.createElement("div");
+    promptTokenDiv.className = "prompt-token-count";
+    Object.assign(promptTokenDiv.style, {
+      textAlign: "right",
+      fontSize: "11px",
+      color: "var(--text-secondary)",
+      padding: "4px 12px 0 0",
+      height: "20px",
+      transition: "color 0.3s ease",
+    });
+    const buttonContainer = parent.querySelector("div:last-child");
+    if (buttonContainer) {
+      parent.insertBefore(promptTokenDiv, buttonContainer);
+    } else {
+      parent.appendChild(promptTokenDiv);
+    }
+  }
+
+  if (promptCost > 0) {
+    let text = `Prompt: ${promptCost} tokens`;
+    if (promptTruncatedFrom) {
+      text = `Prompt: ${promptCost} / ${promptTruncatedFrom} tokens (Overflow)`;
+      promptTokenDiv.style.color = "var(--text-danger)";
+    } else {
+      promptTokenDiv.style.color = "var(--text-secondary)";
+    }
+    promptTokenDiv.textContent = text;
+  } else {
+    promptTokenDiv.textContent = "";
+  }
 }
 
 /**
@@ -777,7 +900,7 @@ function clearTokenUI() {
   console.log("🗑️ Clearing token UI...");
   document
     .querySelectorAll(
-      ".token-count-display, .extra-token-info, .token-status-container"
+      ".token-count-display, .extra-token-info, .token-status-container, .prompt-token-count"
     )
     .forEach((el) => el.remove());
   document
@@ -792,7 +915,7 @@ function clearTokenUI() {
  */
 async function runTokenCheck() {
   const { contextWindow } = await chrome.storage.local.get({
-    contextWindow: 8192,
+    contextWindow: 128000,
   });
 
   if (contextWindow === 0) {
@@ -813,26 +936,52 @@ async function runTokenCheck() {
   );
   const checkedItems = new Set(checkedItemsRaw);
 
+  const promptBox = document.querySelector("[contenteditable='true']");
+  const promptText = promptBox ? promptBox.textContent || "" : "";
+  const turnCount = document.querySelectorAll(
+    '[data-testid^="conversation-turn-"]'
+  ).length;
+  const checkedItemsStr = JSON.stringify(Array.from(checkedItems).sort());
+
+  const newState = {
+    url: window.location.href,
+    prompt: promptText,
+    turns: turnCount,
+    checked: checkedItemsStr,
+  };
+
+  if (
+    newState.url === lastCheckState.url &&
+    newState.prompt === lastCheckState.prompt &&
+    newState.turns === lastCheckState.turns &&
+    newState.checked === lastCheckState.checked
+  ) {
+    return; // No meaningful change detected, skip the check
+  }
+  lastCheckState = newState;
+
   try {
     const [conversationData, additionalDataMap] = await Promise.all([
       getConversationFromDB(conversationId),
       processBackendData(conversationId),
-    ]); // After async operations, re-check the URL to ensure the user hasn't navigated away.
+    ]);
 
     const currentConversationId = window.location.pathname.split("/")[2];
     if (conversationId !== currentConversationId) {
       console.log(
         `🗑️ Stale data for ${conversationId} ignored; current chat is ${currentConversationId}.`
       );
-      return; // Abort the UI update
+      return;
     }
 
     if (conversationData && Array.isArray(conversationData.messages)) {
+      const promptTokens = enc.encode(promptText).length;
       const tokenData = getEffectiveMessages(
         conversationData.messages,
         contextWindow,
         additionalDataMap,
-        checkedItems
+        checkedItems,
+        promptTokens
       );
       const { effectiveMessages, messagesWithTokens } = tokenData;
 
@@ -841,11 +990,12 @@ async function runTokenCheck() {
         effectiveMessages.map((m) => [m.id, m])
       );
 
+      const totalEffectiveTokens =
+        tokenData.baseTokenCost + tokenData.totalChatTokens;
       console.log(
-        `📊 TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${
-          tokenData.totalChatTokens + tokenData.baseTokenCost
-        } / ${contextWindow}`
+        `📊 TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${totalEffectiveTokens} / ${contextWindow}`
       );
+
       addHoverListeners(
         conversationData.messages,
         effectiveMessageIds,
@@ -855,6 +1005,12 @@ async function runTokenCheck() {
         messagesWithTokens,
         additionalDataMap,
         checkedItems
+      );
+
+      updatePromptTokenUI(
+        tokenData.promptCost,
+        tokenData.promptTruncatedFrom,
+        contextWindow
       );
     }
   } catch (error) {
@@ -919,7 +1075,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     changes.isScriptingEnabled
   ) {
     applyTheme();
-  } // Re-run if the context window or checked items change for the current convo
+  }
   const conversationId = window.location.pathname.split("/")[2];
   const checkedItemsKey = `checked_items_${conversationId}`;
   if (changes.contextWindow || (conversationId && changes[checkedItemsKey])) {
@@ -930,7 +1086,6 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 const debouncedRunTokenCheck = debounce(runTokenCheck, 3000);
 debouncedRunTokenCheck();
 function clearOldCache() {
-  // Delete all instances of backend_data_${id}
   console.log("🗑️ Clearing old cache...");
   chrome.storage.local.get(null, (items) => {
     for (const key in items) {
@@ -946,7 +1101,7 @@ new MutationObserver((mutationList) => {
   const url = location.href;
   if (url !== lastUrl) {
     lastUrl = url;
-    lastTokenCount = 0;
+    lastCheckState = { url: "", prompt: "", turns: 0, checked: "" }; // Reset state on URL change
     console.log("🔄 URL changed, running token check immediately.");
     runTokenCheck();
   } else {
@@ -959,27 +1114,27 @@ new MutationObserver((mutationList) => {
       "token-popup",
       "truncated-text",
       "token-item",
+      "prompt-token-count",
       "@thread-xl/thread:pt-header-height",
       "placeholder",
     ]);
-    const ignoredElementParent = ["#thread-bottom"];
+    const ignoredElementParent = [];
 
     mutationList.forEach((m) => {
-      if (skip) return; // Get the parent element, as characterData changes target the text node itself.
+      if (skip) return;
 
       const targetElement =
         m.type === "characterData" ? m.target.parentElement : m.target;
 
       if (!targetElement || !targetElement.classList) return;
 
-      const classList = targetElement.classList; // Check if the element's class is in the ignore list
-
+      const classList = targetElement.classList;
       for (const cls of classList) {
         if (ignoredClasses.has(cls)) {
           skip = true;
           break;
         }
-      } // Check if the element is inside an ignored parent
+      }
 
       if (!skip) {
         for (const selector of ignoredElementParent) {
