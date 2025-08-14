@@ -165,7 +165,30 @@ async function processBackendData(conversationId) {
                   const { textdoc_id, version } =
                     toolNode.message.metadata.canvas;
                   const contentNode = JSON.parse(node.message.content.parts[0]);
-                  const attachToMessageId = toolNode.children?.[0];
+
+                  // --- START: Logic to find the correct final message to attach the canvas to ---
+                  let attachToMessageId = null;
+                  let currentNodeId = toolNode.id;
+                  let currentNode = toolNode;
+
+                  // Traverse the chain of children until we find the final assistant message to the user.
+                  while (
+                    currentNode &&
+                    currentNode.children &&
+                    currentNode.children.length > 0
+                  ) {
+                    currentNodeId = currentNode.children[0];
+                    currentNode = conversationApiData.mapping[currentNodeId];
+                    // The final message is from the assistant to 'all' recipients.
+                    if (
+                      currentNode?.message?.author?.role === "assistant" &&
+                      currentNode?.message?.recipient === "all"
+                    ) {
+                      break;
+                    }
+                  }
+                  attachToMessageId = currentNodeId;
+                  // --- END: New logic ---
 
                   let title = "Canvas";
                   let content = "";
@@ -206,15 +229,22 @@ async function processBackendData(conversationId) {
 
         // Pass 2: Populate additionalDataMap with latest canvas versions and other data
         latestCanvasData.forEach((data, textdoc_id) => {
-          const existing = additionalDataMap.get(data.attachToMessageId) || {};
-          additionalDataMap.set(data.attachToMessageId, {
+          const attachToMessageId = data.attachToMessageId;
+          const existing = additionalDataMap.get(attachToMessageId) || {};
+          const existingCanvases = existing.canvases || []; // Get existing canvases or initialize an empty array
+
+          additionalDataMap.set(attachToMessageId, {
             ...existing,
-            canvas: {
-              title: data.title,
-              tokens: data.tokens,
-              textdoc_id,
-              version: data.version,
-            },
+            canvases: [
+              // Use a 'canvases' array
+              ...existingCanvases,
+              {
+                title: data.title,
+                tokens: data.tokens,
+                textdoc_id,
+                version: data.version,
+              },
+            ],
           });
         });
 
@@ -279,7 +309,7 @@ async function processBackendData(conversationId) {
       return additionalDataMap; // Success, return the data
     } catch (error) {
       if (error.name === "AbortError") {
-        console.console.error("❌ Fetch aborted for previous conversation.");
+        console.log("❌ Fetch aborted for previous conversation.");
         return new Map(); // Don't retry on abort
       }
       console.error(`❌ Attempt ${attempt} failed:`, error.message);
@@ -388,20 +418,24 @@ function getEffectiveMessages(
 
       if (currentTotalTokens >= limit) return;
 
-      if (data.canvas) {
-        const itemId = `canvas-${data.canvas.textdoc_id}`;
-        if (checkedItems.has(itemId)) {
-          maxPossibleTokens += data.canvas.tokens;
-          const remainingSpace = limit - currentTotalTokens;
-          if (data.canvas.tokens > remainingSpace) {
-            truncatedItems.add(itemId);
-            attachmentsCost += remainingSpace;
-            currentTotalTokens = limit;
-          } else {
-            attachmentsCost += data.canvas.tokens;
-            currentTotalTokens += data.canvas.tokens;
+      if (data.canvases) {
+        // Check for the 'canvases' array
+        data.canvases.forEach((canvas) => {
+          // Loop through each canvas
+          const itemId = `canvas-${canvas.textdoc_id}`;
+          if (checkedItems.has(itemId)) {
+            maxPossibleTokens += canvas.tokens;
+            const remainingSpace = limit - currentTotalTokens;
+            if (canvas.tokens > remainingSpace) {
+              truncatedItems.add(itemId);
+              attachmentsCost += remainingSpace;
+              currentTotalTokens = limit;
+            } else {
+              attachmentsCost += canvas.tokens;
+              currentTotalTokens += canvas.tokens;
+            }
           }
-        }
+        });
       }
     });
   }
@@ -575,7 +609,7 @@ function addHoverListeners(
 
     if (!originalMessageData) return;
 
-    let tokenCountDiv =  turnElement.querySelector(".token-count-display");
+    let tokenCountDiv = turnElement.querySelector(".token-count-display");
     if (!tokenCountDiv) {
       tokenCountDiv = document.createElement("div");
       tokenCountDiv.className = "token-count-display";
@@ -584,10 +618,10 @@ function addHoverListeners(
       tokenCountDiv.style.fontSize = "12px";
       tokenCountDiv.style.color = "var(--text-secondary)";
       tokenCountDiv.style.fontWeight = "normal";
-       turnElement.appendChild(tokenCountDiv);
+      turnElement.appendChild(tokenCountDiv);
     }
 
-    let extraInfoDiv =  turnElement.querySelector(".extra-token-info");
+    let extraInfoDiv = turnElement.querySelector(".extra-token-info");
     if (!extraInfoDiv) {
       extraInfoDiv = document.createElement("div");
       extraInfoDiv.className = "extra-token-info";
@@ -644,10 +678,12 @@ function addHoverListeners(
           fragment.appendChild(div);
         });
       }
-      if (extraData.canvas) {
-        const div = document.createElement("div");
-        div.textContent = `🎨 ${extraData.canvas.title} (${extraData.canvas.tokens} tokens)`;
-        fragment.appendChild(div);
+      if (extraData.canvases && extraData.canvases.length > 0) {
+        extraData.canvases.forEach((canvas) => {
+          const div = document.createElement("div");
+          div.textContent = `🎨 ${canvas.title} (${canvas.tokens} tokens)`;
+          fragment.appendChild(div);
+        });
       }
       extraInfoDiv.appendChild(fragment);
     }
@@ -804,32 +840,34 @@ function addHoverListeners(
           filesFragment.appendChild(itemDiv);
         });
       }
-      if (data.canvas) {
-        const id = `canvas-${data.canvas.textdoc_id}`;
-        const itemDiv = document.createElement("div");
-        itemDiv.className = "token-item";
-        const label = document.createElement("label");
-        label.htmlFor = id;
-        label.title = `${data.canvas.title} (v${data.canvas.version})`;
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.id = id;
-        checkbox.checked = checkedItems.has(id);
-        checkbox.dataset.type = "canvas";
-        checkbox.dataset.tokens = data.canvas.tokens;
-        label.appendChild(checkbox);
-        label.append(` 🎨 ${data.canvas.title} `);
-        if (truncatedItems.has(id)) {
-          const truncatedSpan = document.createElement("span");
-          truncatedSpan.className = "truncated-text";
-          truncatedSpan.textContent = "(Truncated)";
-          label.appendChild(truncatedSpan);
-        }
-        const valueSpan = document.createElement("span");
-        valueSpan.textContent = data.canvas.tokens;
-        itemDiv.appendChild(label);
-        itemDiv.appendChild(valueSpan);
-        canvasFragment.appendChild(itemDiv);
+      if (data.canvases) {
+        data.canvases.forEach((canvas) => {
+          const id = `canvas-${canvas.textdoc_id}`;
+          const itemDiv = document.createElement("div");
+          itemDiv.className = "token-item";
+          const label = document.createElement("label");
+          label.htmlFor = id;
+          label.title = `${canvas.title} (v${canvas.version})`;
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.id = id;
+          checkbox.checked = checkedItems.has(id);
+          checkbox.dataset.type = "canvas";
+          checkbox.dataset.tokens = canvas.tokens;
+          label.appendChild(checkbox);
+          label.append(` 🎨 ${canvas.title} `);
+          if (truncatedItems.has(id)) {
+            const truncatedSpan = document.createElement("span");
+            truncatedSpan.className = "truncated-text";
+            truncatedSpan.textContent = "(Truncated)";
+            label.appendChild(truncatedSpan);
+          }
+          const valueSpan = document.createElement("span");
+          valueSpan.textContent = canvas.tokens;
+          itemDiv.appendChild(label);
+          itemDiv.appendChild(valueSpan);
+          canvasFragment.appendChild(itemDiv);
+        });
       }
     });
 
