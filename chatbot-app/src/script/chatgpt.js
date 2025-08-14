@@ -88,7 +88,7 @@ async function getConversationFromDB(conversationId) {
  */
 async function processBackendData(conversationId) {
   const storageKey = `backend_data_${conversationId}`;
-  const cacheDuration = 5 * 1000; // 5 seconds
+  const cacheDuration = 3 * 60 * 1000; // 3 minutes
   const maxRetries = 3;
 
   // Try to load from cache first
@@ -627,20 +627,28 @@ function addHoverListeners(
               <span>Selected Total:</span>
               <span id="popup-total-tokens">${effectiveTotal} / ${maxTotal}</span>
           </div>
+           <div class="token-total-line" id="refreshData">Refresh</div>
+          
+
       `;
     statusDiv.textContent = `Effective tokens: ${effectiveTotal}/${limit} tokens.`;
+    const conversationId = window.location.pathname.split("/")[2];
     popupDiv.addEventListener("change", async (e) => {
       if (e.target.type === "checkbox") {
-        const conversationId = window.location.pathname.split("/")[2];
         if (!conversationId) return;
-
         const storageKey = `checked_items_${conversationId}`;
         const currentChecked = Array.from(
           popupDiv.querySelectorAll("input:checked")
         ).map((cb) => cb.id);
 
         await chrome.storage.local.set({ [storageKey]: currentChecked });
-        runTokenCheck(); // Re-run the whole check to update the UI
+      }
+    });
+    popupDiv.addEventListener("click", async (e) => {
+      if (e.target.id === "refreshData") {
+        e.target.textContent = "Refreshing...";
+        await chrome.storage.local.remove(`backend_data_${conversationId}`);
+        debouncedRunTokenCheck();
       }
     });
   }
@@ -776,18 +784,14 @@ const observeHostSchemeChanges = () => {
 };
 
 const removeStyles = () => {
-  const themeProperties = [
-    "--theme-user-msg-bg",
-    "--theme-user-msg-text",
-    "--theme-submit-btn-bg",
-    "--theme-submit-btn-text",
-    "--theme-secondary-btn-bg",
-    "--theme-secondary-btn-text",
-    "--theme-user-selection-bg",
-  ];
-  themeProperties.forEach((prop) =>
-    document.documentElement.style.removeProperty(prop)
-  );
+  chrome.storage.local.get("themeObject", (result) => {
+    if (chrome.runtime.lastError || !result.themeObject) return;
+    const currentTheme = result.themeObject["light"];
+    if (!currentTheme) return;
+    Object.entries(currentTheme).forEach(([key]) => {
+      document.documentElement.style.removeProperty(`--theme-${key}`);
+    });
+  });
 };
 
 // --- SCRIPT INITIALIZATION ---
@@ -830,6 +834,7 @@ new MutationObserver((mutationList) => {
       "token-status-container",
       "tokenstatus",
       "token-popup",
+      "truncated-text",
       "token-item",
       "@thread-xl/thread:pt-header-height",
       "placeholder",
