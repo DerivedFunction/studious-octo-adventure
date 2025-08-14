@@ -27,3 +27,12 @@ Use the interactive popup to manage what the AI remembers, preventing context lo
 2.  🔢 **Tokenization:** It uses the `js-tiktoken` library to accurately count tokens for all text content.
 3.  💉 **DOM Injection:** The script dynamically creates and injects HTML elements and CSS into the ChatGPT DOM to display the token counts and the interactive popup.
 4.  👀 **State Monitoring:** A `MutationObserver` watches for changes in the conversation (new messages, edits) and triggers a recalculation to keep the token counts up-to-date. All checks are debounced to ensure performance.
+
+
+## How to compile and run
+```bash
+npm install // install packages
+npm run build // build the extension
+```
+1. Open `chrome://extensions` and enable developer mode.
+2. Load the `dist` folder as an [unpacked extension](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked)
