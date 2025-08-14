@@ -62,7 +62,9 @@
         `https://chatgpt.com/backend-api/conversations?offset=0&limit=100&is_archived=${isArchived}`,
         {
           // Increased limit
-          headers: { authorization: `Bearer ${token}` },
+          headers: {
+            authorization: `Bearer ${token}`,
+          },
         }
       );
       if (!response.ok)
@@ -129,7 +131,9 @@
             authorization: `Bearer ${token}`,
             "content-type": "application/json",
           },
-          body: JSON.stringify({ is_visible: false }),
+          body: JSON.stringify({
+            is_visible: false,
+          }),
           method: "PATCH",
         }
       );
@@ -153,121 +157,202 @@
 
     // --- CSS Template ---
     const cssTemplate = `
-            #chm-container {
-                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-                background-color: rgba(0, 0, 0, 0.6); z-index: 9999;
-                display: flex; align-items: center; justify-content: center; font-family: inherit;
-                opacity: 0; transition: opacity 0.2s ease-in-out;
-            }
-            #chm-container.visible {
-                opacity: 1;
-            }
-            #chm-modal {
-                background-color: var(--main-surface-primary, #ffffff); color: var(--text-primary, #000000);
-                border: 1px solid var(--border-medium, #e5e5e5);
-                border-radius: 16px; /* Increased border-radius for a softer look */
-                width: 80vw; height: 80vh; display: flex; flex-direction: column;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden;
-                transform: scale(0.95);
-                transition: transform 0.2s ease-in-out;
-            }
-            #chm-container.visible #chm-modal {
-                transform: scale(1);
-            }
-            #chm-header {
-                padding: 16px 20px; border-bottom: 1px solid var(--border-light, #f0f0f0);
-                display: flex; justify-content: space-between; align-items: center;
-            }
-            #chm-header h1 { font-size: 1.125rem; font-weight: 600; } /* Adjusted font size */
-            #chm-close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-tertiary); transition: color 0.2s; }
-            #chm-close-btn:hover { color: var(--text-secondary); }
-            #chm-tabs { display: flex; border-bottom: 1px solid var(--border-light); padding: 0 16px; }
-            #chm-tabs button { flex-grow: 0; padding: 12px 16px; font-weight: 500; border: none; background: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--text-secondary); }
-            #chm-tabs button.active { color: var(--text-primary); border-bottom-color: var(--text-primary, #000); } /* Matched active tab color */
-            #chm-content { flex-grow: 1; padding: 16px 20px; overflow-y: auto; }
-            .chm-action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border-light); }
-            .chm-action-bar-group { display: flex; align-items: center; gap: 12px; }
-            .chm-btn { 
-                padding: 8px 16px; 
-                border-radius: 9999px; /* Pill shape */
-                font-size: var(--text-sm, 0.875rem);
-                font-weight: var(--font-weight-medium, 500);
-                cursor: pointer; 
-                border-width: 1px;
-                border-style: solid;
-                transition: background-color 0.2s, border-color 0.2s; 
-            }
-            .chm-btn.action-archive { 
-                background-color: var(--main-surface-secondary); 
-                color: var(--text-primary); 
-                border-color: var(--border-medium);
-            }
-            .chm-btn.action-archive:hover { background-color: var(--surface-hover); }
-            .chm-btn.action-delete { background-color: var(--text-danger, #ef4444); color: #fff; border: none; }
-            .chm-btn.action-restore { background-color: var(--main-surface-secondary); color: var(--text-primary); border-color: var(--border-medium); }
-            .chm-btn.action-delete-perm { background-color: var(--text-danger, #ef4444); color: #fff; border: none; }
-            .chm-conversation-item { display: flex; align-items: center; padding: 12px; border-radius: 8px; border: 1px solid transparent; transition: background-color 0.2s, border-color 0.2s; }
-            .chm-conversation-item:hover { background-color: var(--surface-hover); }
-            .chm-conversation-item .title { flex-grow: 1; margin: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-            .chm-conversation-item .time { font-size: 0.8rem; color: var(--text-tertiary); }
-            #historyList, #archivedList { padding-top: 8px; }
-            .chm-date-group-header { font-weight: 500; color: var(--text-secondary); padding: 16px 4px 8px 4px; font-size: 0.8rem; text-transform: uppercase; } /* Styled date headers */
-            #historyList > .chm-conversation-item + .chm-conversation-item, #archivedList > .chm-conversation-item + .chm-conversation-item { margin-top: 4px; } /* Reduced space between items */
-            #chm-loader { position: absolute; inset: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; }
-            #chm-loader div { width: 48px; height: 48px; border: 4px solid var(--border-light); border-top-color: var(--tag-blue); border-radius: 50%; animation: spin 1s linear infinite; }
-            #chm-time-filter { background-color: var(--main-surface-secondary); border: 1px solid var(--border-medium); border-radius: 8px; padding: 8px; font-size: 0.875rem; color: var(--text-primary); }
-            @keyframes spin { to { transform: rotate(360deg); } }
+              #chm-container {
+                  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                  background-color: rgba(0, 0, 0, 0.6); z-index: 9999;
+                  display: flex; align-items: center; justify-content: center; font-family: inherit;
+                  opacity: 0; transition: opacity 0.2s ease-in-out;
+              }
+              #chm-container.visible {
+                  opacity: 1;
+              }
+              #chm-modal {
+                  background-color: var(--main-surface-primary, #ffffff); color: var(--text-primary, #000000);
+                  border: 1px solid var(--border-medium, #e5e5e5);
+                  border-radius: 16px;
+                  width: 80vw; height: 80vh; display: flex; flex-direction: column;
+                  box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden;
+                  transform: scale(0.95);
+                  transition: transform 0.2s ease-in-out;
+              }
+              #chm-container.visible #chm-modal {
+                  transform: scale(1);
+              }
+              /* REMOVED #chm-header styles */
+              #chm-tabs { display: flex; border-bottom: 1px solid var(--border-light); padding: 0 16px; }
+              #chm-tabs button { flex-grow: 0; padding: 12px 16px; font-weight: 500; border: none; background: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--text-secondary); }
+              #chm-tabs button.active { color: var(--text-primary); border-bottom-color: var(--text-primary, #000); }
+              #chm-content { 
+                  flex-grow: 1; 
+                  padding: 16px 24px;
+                  overflow-y: auto; 
+              }
+              .chm-action-bar { 
+                  display: flex; 
+                  justify-content: space-between; 
+                  align-items: center; 
+                  margin-bottom: 16px; 
+                  /* REMOVED border-bottom */
+              }
+              .chm-action-bar-group { display: flex; align-items: center; gap: 12px; }
+              .chm-btn { 
+                  padding: 8px 16px; 
+                  border-radius: 8px; /* CHANGED: From pill shape to rounded rectangle */
+                  font-size: var(--text-sm, 0.875rem);
+                  font-weight: var(--font-weight-medium, 500);
+                  cursor: pointer; 
+                  border-width: 1px;
+                  border-style: solid;
+                  transition: background-color 0.2s, border-color 0.2s; 
+              }
+              /* RENAMED/GROUPED button styles */
+              .chm-btn.action-cancel, .chm-btn.action-secondary { 
+                  background-color: var(--main-surface-secondary); 
+                  color: var(--text-primary); 
+                  border-color: var(--border-medium);
+              }
+               .chm-btn.action-cancel:hover, .chm-btn.action-secondary:hover { background-color: var(--surface-hover); }
+              .chm-btn.action-delete, .chm-btn.action-delete-perm { background-color: var(--text-danger, #ef4444); color: #fff; border-color: transparent; }
+              .chm-conversation-item { 
+                  display: flex; 
+                  align-items: center; 
+                  padding: 8px 12px;
+                  border-radius: 8px; 
+                  border: 1px solid transparent; 
+                  transition: background-color 0.2s, border-color 0.2s; 
+              }
+              .chm-conversation-item:hover { background-color: var(--surface-hover); }
+              .chm-conversation-item .title { flex-grow: 1; margin: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+              .chm-conversation-item .time { font-size: 0.8rem; color: var(--text-tertiary); }
+              #historyList, #archivedList { padding-top: 8px; }
+              .chm-date-group-header { 
+                  font-weight: 500; 
+                  color: var(--text-secondary); 
+                  padding: 12px 4px 4px 4px;
+                  font-size: 0.8rem; 
+                  text-transform: uppercase; 
+              }
+              #historyList > .chm-conversation-item + .chm-conversation-item, #archivedList > .chm-conversation-item + .chm-conversation-item { margin-top: 4px; }
+              /* ADDED #chm-footer styles */
+              #chm-footer {
+                  display: flex;
+                  justify-content: flex-end;
+                  align-items: center;
+                  gap: 12px;
+                  padding: 16px 24px;
+                  border-top: 1px solid var(--border-light);
+              }
+              #chm-footer > div {
+                  display: flex;
+                  gap: 12px;
+              }
+              #chm-loader { position: absolute; inset: 0; background: var(--main-surface-primary); display: flex; align-items: center; justify-content: center; }
+              #chm-loader div { width: 24px; height: 24px; border: 4px solid var(--border-light); border-top-color: var(--text-primary); border-radius: 50%; animation: spin 1s linear infinite; }
+              #chm-time-filter { background-color: var(--main-surface-secondary); border: 1px solid var(--border-medium); border-radius: 8px; padding: 8px; font-size: 0.875rem; color: var(--text-primary); }
+              @keyframes spin { to { transform: rotate(360deg); } }
+              /* --- Custom Checkbox Styles --- */
+              .chm-checkbox-label {
+                  display: flex;
+                  align-items: center;
+                  cursor: pointer;
+                  user-select: none;
+                  gap: 8px;
+              }
+              .chm-checkbox-label input[type="checkbox"] {
+                  position: absolute;
+                  opacity: 0;
+                  height: 0;
+                  width: 0;
+              }
+              .chm-custom-checkbox {
+                  position: relative;
+                  display: inline-block;
+                  width: 18px;
+                  height: 18px;
+                  background-color: transparent;
+                  border: 1px solid var(--text-tertiary, #8e8ea0);
+                  border-radius: 4px;
+                  transition: all 0.2s ease;
+              }
+              .chm-checkbox-label:hover .chm-custom-checkbox {
+                  border-color: var(--text-secondary, #6b6b7b);
+              }
+              .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox {
+                  background-color: var(--accent-primary, #10a37f);
+                  border-color: var(--accent-primary, #10a37f);
+              }
+              .chm-custom-checkbox::after {
+                  content: '';
+                  position: absolute;
+                  display: none;
+                  left: 6px;
+                  top: 2px;
+                  width: 4px;
+                  height: 9px;
+                  border: solid white;
+                  border-width: 0 2px 2px 0;
+                  transform: rotate(45deg);
+              }
+              .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox::after {
+                  display: block;
+              }
+              /* --- End Custom Checkbox Styles --- */
         `;
 
     // --- HTML Template ---
     const htmlTemplate = `
-            <div id="chm-modal">
-                <div id="chm-header">
-                    <h1>ChatGPT History Manager</h1>
-                    <button id="chm-close-btn">&times;</button>
-                </div>
-                <div id="chm-tabs">
-                    <button id="historyTab" class="active">History</button>
-                    <button id="archivedTab">Archived</button>
-                </div>
-                <div id="chm-content">
-                    <!-- History View -->
-                    <div id="historyView">
-                        <div class="chm-action-bar">
-                            <div class="chm-action-bar-group">
-                                <label><input type="checkbox" id="selectAllHistory"> Select All</label>
-                                <select id="chm-time-filter">
-                                    <option value="all">All time</option>
-                                    <option value="1h">Last hour</option>
-                                    <option value="24h">Last 24 hours</option>
-                                    <option value="7d">Last 7 days</option>
-                                    <option value="30d">Last 30 days</option>
-                                </select>
-                            </div>
-                            <div class="chm-action-bar-group">
-                                <button id="archiveSelectedBtn" class="chm-btn action-archive">Archive</button>
-                                <button id="deleteSelectedBtn" class="chm-btn action-delete">Delete</button>
-                            </div>
-                        </div>
-                        <div id="historyList"></div>
-                    </div>
-                    <!-- Archived View -->
-                    <div id="archivedView" style="display: none;">
-                        <div class="chm-action-bar">
-                             <div class="chm-action-bar-group">
-                                <label><input type="checkbox" id="selectAllArchived"> Select All</label>
-                            </div>
-                            <div class="chm-action-bar-group">
-                                <button id="restoreSelectedBtn" class="chm-btn action-restore">Restore</button>
-                                <button id="deletePermanentBtn" class="chm-btn action-delete-perm">Delete Permanently</button>
-                            </div>
-                        </div>
-                        <div id="archivedList"></div>
-                    </div>
-                </div>
-                <div id="chm-loader" style="display: none;"><div></div></div>
+        <div id="chm-modal">
+            <div id="chm-tabs">
+                <button id="historyTab" class="active">History</button>
+                <button id="archivedTab">Archived</button>
             </div>
-        `;
+            <div id="chm-content">
+                <div id="historyView">
+                    <div class="chm-action-bar">
+                        <div class="chm-action-bar-group">
+                            <label for="selectAllHistory" class="chm-checkbox-label">
+                                <input type="checkbox" id="selectAllHistory">
+                                <span class="chm-custom-checkbox"></span>
+                                <span>Select All</span>
+                            </label>
+                            <select id="chm-time-filter">
+                                <option value="all">All time</option>
+                                <option value="1h">Last hour</option>
+                                <option value="24h">Last 24 hours</option>
+                                <option value="7d">Last 7 days</option>
+                                <option value="30d">Last 30 days</option>
+                            </select>
+                        </div>
+                        </div>
+                    <div id="historyList"></div>
+                </div>
+                <div id="archivedView" style="display: none;">
+                    <div class="chm-action-bar">
+                           <div class="chm-action-bar-group">
+                            <label for="selectAllArchived" class="chm-checkbox-label">
+                                <input type="checkbox" id="selectAllArchived">
+                                <span class="chm-custom-checkbox"></span>
+                                <span>Select All</span>
+                            </label>
+                        </div>
+                        </div>
+                    <div id="archivedList"></div>
+                </div>
+            </div>
+            <div id="chm-footer">
+                <div id="history-actions">
+                     <button id="archiveSelectedBtn" class="chm-btn action-secondary">Archive</button>
+                     <button id="deleteSelectedBtn" class="chm-btn action-delete">Delete</button>
+                </div>
+                <div id="archived-actions" style="display: none;">
+                    <button id="restoreSelectedBtn" class="chm-btn action-secondary">Restore</button>
+                    <button id="deletePermanentBtn" class="chm-btn action-delete-perm">Delete Permanently</button>
+                </div>
+                <button id="chm-cancel-btn" class="chm-btn action-cancel">Cancel</button>
+            </div>
+            <div id="chm-loader" style="display: none;"><div></div></div>
+        </div>
+      `;
     const styleSheet = document.createElement("style");
     styleSheet.innerText = cssTemplate;
     document.head.appendChild(styleSheet);
@@ -419,15 +504,18 @@
           const itemEl = document.createElement("div");
           itemEl.className = "chm-conversation-item";
           itemEl.innerHTML = `
-                        <input type="checkbox" data-id="${item.id}">
-                        <span class="title">${item.title}</span>
-                        <span class="time">${new Date(
-                          item.update_time
-                        ).toLocaleTimeString([], {
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}</span>
-                    `;
+                          <label class="chm-checkbox-label">
+                              <input type="checkbox" data-id="${item.id}">
+                              <span class="chm-custom-checkbox"></span>
+                          </label>
+                          <span class="title">${item.title}</span>
+                          <span class="time">${new Date(
+                            item.update_time
+                          ).toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}</span>
+                      `;
           container.appendChild(itemEl);
         });
       }
@@ -547,23 +635,31 @@
         message = isOperatingOnAll
           ? `Are you sure you want to archive all ${targetIds.length} visible conversation(s)?`
           : `Are you sure you want to archive ${targetIds.length} conversation(s)?`;
-        payload = { is_archived: true };
+        payload = {
+          is_archived: true,
+        };
         break;
       case "delete":
         message = isOperatingOnAll
           ? `Are you sure you want to delete all ${targetIds.length} visible conversation(s)? They will be moved to archived.`
           : `Are you sure you want to delete ${targetIds.length} conversation(s)? They will be moved to archived.`;
-        payload = { is_archived: true };
+        payload = {
+          is_archived: true,
+        };
         break;
       case "restore":
         message = isOperatingOnAll
           ? `Are you sure you want to restore all ${targetIds.length} conversation(s) in this view?`
           : `Are you sure you want to restore ${targetIds.length} conversation(s)?`;
-        payload = { is_archived: false };
+        payload = {
+          is_archived: false,
+        };
         break;
       case "deletePermanent":
         message = `This is IRREVERSIBLE. Permanently delete ${targetIds.length} conversation(s)?`;
-        payload = { is_visible: false };
+        payload = {
+          is_visible: false,
+        };
         break;
     }
 
@@ -581,10 +677,12 @@
     if (uiInjected)
       document.getElementById("chm-loader").style.display = "flex";
   }
+
   function hideLoader() {
     if (uiInjected)
       document.getElementById("chm-loader").style.display = "none";
   }
+
   function showError(message) {
     alert(`[History Manager Error] ${message}`);
   }
@@ -601,4 +699,95 @@
   console.log(
     "✅ [History Manager] Content script loaded. Press Ctrl+H to open."
   );
+
+  injectSidebarButton();
+  /**
+   * Injects a button into the sidebar using a MutationObserver to robustly handle
+   * cases where the sidebar is rendered, removed, or re-rendered dynamically.
+   */
+  function injectSidebarButton() {
+    waitForAsideAndObserve();
+
+    const injectionLogic = () => {
+      // 1. Check if the button already exists to prevent duplicates.
+      if (document.getElementById("chm-sidebar-btn")) {
+        return true; // Already injected
+      }
+
+      // 2. Find the target navigation area in the sidebar.
+      const sidebarNav = document.querySelector("aside");
+      if (!sidebarNav) {
+        return false; // Target not found, do nothing yet.
+      }
+
+      console.log("🚀 [History Manager] Injecting sidebar button...");
+
+      // 3. Define the SVG icon for the button.
+      const historyIconSVG = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+          <path d="M12 7v5l4 2" />
+        </svg>
+      `;
+
+      // 4. Create the full button element from an HTML string.
+      const buttonWrapper = document.createElement("div");
+      buttonWrapper.innerHTML = `
+        <div id="chm-sidebar-btn" tabindex="0" class="group __menu-item hoverable cursor-pointer">
+            <div class="flex min-w-0 items-center gap-1.5">
+                <div class="flex items-center justify-center icon">${historyIconSVG}</div>
+                <div class="flex min-w-0 grow items-center gap-2.5">
+                    <div class="truncate">History Manager</div>
+                </div>
+            </div>
+            <div class="trailing highlight text-token-text-tertiary">
+                <div class="touch:hidden">
+                    <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']">
+                        <kbd aria-label="Control"><span class="min-w-[1em]">Ctrl</span></kbd>
+                        <kbd><span class="min-w-[1em]">H</span></kbd>
+                    </div>
+                </div>
+            </div>
+        </div>
+      `;
+      const buttonElement = buttonWrapper.firstElementChild;
+
+      // 5. Add the click listener to open your UI.
+      buttonElement.addEventListener("click", (e) => {
+        e.preventDefault();
+        toggleUiVisibility(true);
+      });
+
+      // 6. Append the button and confirm success.
+      sidebarNav.appendChild(buttonElement);
+      console.log("✅ [History Manager] Sidebar button injected successfully.");
+      return true;
+    };
+
+    // --- Observer Setup ---
+
+    // Create an observer to watch for changes in the DOM.
+    const observer = new MutationObserver((mutations) => {
+      // When any change happens, try to inject the button.
+      // The logic inside handles checking if it's already there.
+      injectionLogic();
+    });
+
+    function waitForAsideAndObserve() {
+      const interval = setInterval(() => {
+        const aside = document.body.querySelector("aside");
+        if (aside) {
+          clearInterval(interval);
+          // Start observing the aside for additions/removals of child elements.
+          observer.observe(aside, {
+            childList: true,
+            subtree: true,
+          });
+          // Run injection logic right away once aside is found.
+          injectionLogic();
+        }
+      }, 2000); // check every 2s
+    }
+  }
 })();
