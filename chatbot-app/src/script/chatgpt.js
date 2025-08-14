@@ -347,6 +347,7 @@ async function processBackendData(conversationId) {
  * @param {Map<string, object>} additionalDataMap - Map with file and canvas token data.
  * @param {Set<string>} checkedItems - A set of IDs for checked files/canvases.
  * @param {number} promptTokens - The token count of the current user input in the prompt box.
+ * @param {number} globalSystemPromptTokens - The token count of the global system prompt.
  * @returns {object} An object containing the effective messages and token breakdown.
  */
 function getEffectiveMessages(
@@ -354,7 +355,8 @@ function getEffectiveMessages(
   limit,
   additionalDataMap,
   checkedItems,
-  promptTokens = 0
+  promptTokens = 0,
+  globalSystemPromptTokens = 0
 ) {
   const messagesWithTokens = allMessages.map((msg) => ({
     ...msg,
@@ -362,8 +364,11 @@ function getEffectiveMessages(
   }));
 
   let currentTotalTokens = 0;
-  const truncatedItems = new Set(); // --- Result variables ---
+  const truncatedItems = new Map(); // Store truncated item IDs and their effective token count
 
+  // --- Result variables ---
+  let globalSystemPromptCost = 0;
+  let globalSystemPromptTruncatedFrom = null;
   let instructionsCost = 0;
   let instructionsTruncatedFrom = null;
   let toolInstructionCost = 0;
@@ -378,7 +383,20 @@ function getEffectiveMessages(
   messagesWithTokens.forEach((msg) => {
     maxPossibleTokens += msg.tokens;
     maxChatTokens += msg.tokens;
-  }); // --- 1. Custom Instructions ---
+  });
+
+  // --- 0. Global System Prompt ---
+  maxPossibleTokens += globalSystemPromptTokens;
+  if (globalSystemPromptTokens > 0) {
+    if (globalSystemPromptTokens > limit) {
+      globalSystemPromptCost = limit;
+      globalSystemPromptTruncatedFrom = globalSystemPromptTokens;
+      currentTotalTokens = limit;
+    } else {
+      globalSystemPromptCost = globalSystemPromptTokens;
+      currentTotalTokens += globalSystemPromptTokens;
+    }
+  } // --- 1. Custom Instructions ---
 
   additionalDataMap.forEach((data) => {
     if (data.customInstructions) {
@@ -386,9 +404,10 @@ function getEffectiveMessages(
         data.customInstructions.profile_tokens +
         data.customInstructions.instructions_tokens;
       maxPossibleTokens += instrTokens;
-      if (instrTokens > 0) {
-        if (instrTokens > limit) {
-          instructionsCost = limit;
+      if (currentTotalTokens < limit && instrTokens > 0) {
+        const remainingSpace = limit - currentTotalTokens;
+        if (instrTokens > remainingSpace) {
+          instructionsCost = remainingSpace;
           instructionsTruncatedFrom = instrTokens;
           currentTotalTokens = limit;
         } else {
@@ -397,9 +416,8 @@ function getEffectiveMessages(
         }
       }
     }
-  });
+  }); // --- 1.5 Tool Instructions ---
 
-  // --- 1.5 Tool Instructions ---
   let totalToolInstructionTokens = 0;
   additionalDataMap.forEach((data) => {
     if (data.toolInstructions) {
@@ -407,7 +425,7 @@ function getEffectiveMessages(
     }
   });
   maxPossibleTokens += totalToolInstructionTokens;
-  if (currentTotalTokens < limit && totalToolInstructionTokens > 0) {
+  if (totalToolInstructionTokens > 0) {
     const remainingSpace = limit - currentTotalTokens;
     if (totalToolInstructionTokens > remainingSpace) {
       toolInstructionCost = remainingSpace;
@@ -418,8 +436,7 @@ function getEffectiveMessages(
       currentTotalTokens += totalToolInstructionTokens;
     }
   } // --- 2. User Prompt ---
-
-  if (currentTotalTokens < limit && promptTokens > 0) {
+  if (promptTokens > 0) {
     const remainingSpace = limit - currentTotalTokens;
     if (promptTokens > remainingSpace) {
       promptCost = remainingSpace;
@@ -443,7 +460,7 @@ function getEffectiveMessages(
             maxPossibleTokens += file.tokens;
             const remainingSpace = limit - currentTotalTokens;
             if (file.tokens > remainingSpace) {
-              truncatedItems.add(itemId);
+              truncatedItems.set(itemId, remainingSpace); // Store effective tokens
               attachmentsCost += remainingSpace;
               currentTotalTokens = limit;
             } else {
@@ -465,7 +482,7 @@ function getEffectiveMessages(
             maxPossibleTokens += canvas.tokens;
             const remainingSpace = limit - currentTotalTokens;
             if (canvas.tokens > remainingSpace) {
-              truncatedItems.add(itemId);
+              truncatedItems.set(itemId, remainingSpace); // Store effective tokens
               attachmentsCost += remainingSpace;
               currentTotalTokens = limit;
             } else {
@@ -501,7 +518,11 @@ function getEffectiveMessages(
   }
 
   const baseTokenCost =
-    instructionsCost + toolInstructionCost + promptCost + attachmentsCost;
+    globalSystemPromptCost +
+    instructionsCost +
+    toolInstructionCost +
+    promptCost +
+    attachmentsCost;
 
   return {
     effectiveMessages,
@@ -515,6 +536,8 @@ function getEffectiveMessages(
     instructionsTruncatedFrom,
     toolInstructionCost,
     toolInstructionTruncatedFrom,
+    globalSystemPromptCost,
+    globalSystemPromptTruncatedFrom,
     maxPossibleTokens,
     maxChatTokens,
   };
@@ -547,7 +570,7 @@ function injectPopupCSS() {
             border: 1px solid var(--border-medium);
             border-radius: 8px;
             padding: 12px;
-            width: 320px;
+            width: 375px;
             z-index: 1000;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             color: var(--text-secondary);
@@ -779,75 +802,50 @@ function addHoverListeners(
     }; // -- Build Static and Conditional Sections --
 
     let h4 = document.createElement("h4");
-    h4.textContent = "Token Breakdown";
+    h4.textContent = "Token Breakdown (Effective/Total)";
     popupFragment.appendChild(h4);
 
-    const promptSection = document.createElement("div");
-    promptSection.className = "token-section";
-    const originalPromptTokens =
-      tokenData.promptTruncatedFrom !== null
-        ? tokenData.promptTruncatedFrom
-        : tokenData.promptCost;
-    const effectivePromptTokens = tokenData.promptCost;
-
-    let promptValue = originalPromptTokens;
-    if (tokenData.promptTruncatedFrom !== null) {
-      promptValue = `${effectivePromptTokens} / ${originalPromptTokens}`;
-    }
-    const promptLabel = `📝 Current Prompt ${
-      tokenData.promptTruncatedFrom !== null ? "(Effective/Total)" : ""
-    }`;
-    promptSection.appendChild(createTokenItem(promptLabel, promptValue));
-    popupFragment.appendChild(promptSection);
-
-    const chatSection = document.createElement("div");
-    chatSection.className = "token-section";
-    const chatOverflow = maxChatTokens > totalChatTokens;
-    chatSection.appendChild(
-      createTokenItem(
-        `💬 Chat History ${chatOverflow ? "(Effective/Total)" : ""}`,
-        `${
-          chatOverflow
-            ? `${totalChatTokens} / ${maxChatTokens}`
-            : totalChatTokens
-        } `
-      )
-    );
-    popupFragment.appendChild(chatSection);
-
-    const customInstructionsSection = document.createElement("div");
-    customInstructionsSection.className = "token-section";
-    let hasInstructions = false;
-
-    additionalDataMap.forEach((data) => {
-      if (data.customInstructions) {
-        hasInstructions = true;
-        customInstructionsSection.appendChild(
-          createTokenItem(
-            "👤 User Profile",
-            data.customInstructions.profile_tokens
-          )
-        );
-        customInstructionsSection.appendChild(
-          createTokenItem(
-            "🤖 Model Instructions",
-            data.customInstructions.instructions_tokens
-          )
-        );
+    if (
+      tokenData.globalSystemPromptCost > 0 ||
+      tokenData.globalSystemPromptTruncatedFrom
+    ) {
+      const globalPromptSection = document.createElement("div");
+      globalPromptSection.className = "token-section";
+      const originalTokens =
+        tokenData.globalSystemPromptTruncatedFrom ??
+        tokenData.globalSystemPromptCost;
+      let promptValue = originalTokens;
+      if (tokenData.globalSystemPromptTruncatedFrom) {
+        promptValue = `${tokenData.globalSystemPromptCost} / ${originalTokens}`;
       }
-    });
+      const promptLabel = `🌍 Global System Prompt `;
+      globalPromptSection.appendChild(
+        createTokenItem(promptLabel, promptValue)
+      );
+      popupFragment.appendChild(globalPromptSection);
+    }
 
-    if (hasInstructions) {
+    // This section is now consolidated and uses effective/total logic
+    if (tokenData.instructionsCost > 0 || tokenData.instructionsTruncatedFrom) {
       h4 = document.createElement("h4");
       h4.textContent = "Custom Instructions";
-      if (tokenData.instructionsTruncatedFrom) {
-        const truncatedSpan = document.createElement("span");
-        truncatedSpan.className = "truncated-text";
-        truncatedSpan.textContent = ` (Overflow: ${tokenData.instructionsCost}/${tokenData.instructionsTruncatedFrom})`;
-        h4.appendChild(truncatedSpan);
-      }
       popupFragment.appendChild(h4);
-      popupFragment.appendChild(customInstructionsSection);
+
+      const instructionsSection = document.createElement("div");
+      instructionsSection.className = "token-section";
+
+      const originalInstructionTokens =
+        tokenData.instructionsTruncatedFrom ?? tokenData.instructionsCost;
+      let instructionValue = originalInstructionTokens;
+
+      if (tokenData.instructionsTruncatedFrom) {
+        instructionValue = `${tokenData.instructionsCost} / ${originalInstructionTokens}`;
+      }
+
+      instructionsSection.appendChild(
+        createTokenItem("👤 Instructions", instructionValue)
+      );
+      popupFragment.appendChild(instructionsSection);
     }
 
     if (
@@ -856,12 +854,6 @@ function addHoverListeners(
     ) {
       h4 = document.createElement("h4");
       h4.textContent = "Tool Responses";
-      if (tokenData.toolInstructionTruncatedFrom) {
-        const truncatedSpan = document.createElement("span");
-        truncatedSpan.className = "truncated-text";
-        truncatedSpan.textContent = ` (Overflow: ${tokenData.toolInstructionCost}/${tokenData.toolInstructionTruncatedFrom})`;
-        h4.appendChild(truncatedSpan);
-      }
       popupFragment.appendChild(h4);
 
       const toolSection = document.createElement("div");
@@ -877,6 +869,39 @@ function addHoverListeners(
       );
       popupFragment.appendChild(toolSection);
     }
+    h4 = document.createElement("h4");
+    h4.textContent = `Chat`;
+    popupFragment.appendChild(h4);
+    const promptSection = document.createElement("div");
+    promptSection.className = "token-section";
+    const originalPromptTokens =
+      tokenData.promptTruncatedFrom !== null
+        ? tokenData.promptTruncatedFrom
+        : tokenData.promptCost;
+    const effectivePromptTokens = tokenData.promptCost;
+
+    let promptValue = originalPromptTokens;
+    if (tokenData.promptTruncatedFrom !== null) {
+      promptValue = `${effectivePromptTokens} / ${originalPromptTokens}`;
+    }
+    const promptLabel = `📝 Current Prompt`;
+    promptSection.appendChild(createTokenItem(promptLabel, promptValue));
+    popupFragment.appendChild(promptSection);
+
+    const chatSection = document.createElement("div");
+    chatSection.className = "token-section";
+    const chatOverflow = maxChatTokens > totalChatTokens;
+    chatSection.appendChild(
+      createTokenItem(
+        `💬 Chat History`,
+        `${
+          chatOverflow
+            ? `${totalChatTokens} / ${maxChatTokens}`
+            : totalChatTokens
+        } `
+      )
+    );
+    popupFragment.appendChild(chatSection);
 
     const filesFragment = document.createDocumentFragment();
     const canvasFragment = document.createDocumentFragment();
@@ -898,14 +923,14 @@ function addHoverListeners(
           checkbox.dataset.tokens = f.tokens;
           label.appendChild(checkbox);
           label.append(` 📎 ${f.name} `);
-          if (truncatedItems.has(id)) {
-            const truncatedSpan = document.createElement("span");
-            truncatedSpan.className = "truncated-text";
-            truncatedSpan.textContent = "(Truncated)";
-            label.appendChild(truncatedSpan);
-          }
           const valueSpan = document.createElement("span");
-          valueSpan.textContent = f.tokens;
+          // New logic for effective/total display
+          if (truncatedItems.has(id)) {
+            const effectiveTokens = truncatedItems.get(id);
+            valueSpan.textContent = `${effectiveTokens} / ${f.tokens}`;
+          } else {
+            valueSpan.textContent = f.tokens;
+          }
           itemDiv.appendChild(label);
           itemDiv.appendChild(valueSpan);
           filesFragment.appendChild(itemDiv);
@@ -927,14 +952,14 @@ function addHoverListeners(
           checkbox.dataset.tokens = canvas.tokens;
           label.appendChild(checkbox);
           label.append(` 🎨 ${canvas.title} `);
-          if (truncatedItems.has(id)) {
-            const truncatedSpan = document.createElement("span");
-            truncatedSpan.className = "truncated-text";
-            truncatedSpan.textContent = "(Truncated)";
-            label.appendChild(truncatedSpan);
-          }
           const valueSpan = document.createElement("span");
-          valueSpan.textContent = canvas.tokens;
+          // New logic for effective/total display
+          if (truncatedItems.has(id)) {
+            const effectiveTokens = truncatedItems.get(id);
+            valueSpan.textContent = `${effectiveTokens} / ${canvas.tokens}`;
+          } else {
+            valueSpan.textContent = canvas.tokens;
+          }
           itemDiv.appendChild(label);
           itemDiv.appendChild(valueSpan);
           canvasFragment.appendChild(itemDiv);
@@ -1073,10 +1098,12 @@ function clearTokenUI() {
  * Fetches the current conversation, processes it, and updates the UI.
  */
 async function runTokenCheck() {
-  const { contextWindow, isScriptingEnabled } = await chrome.storage.local.get([
-    "contextWindow",
-    "isScriptingEnabled",
-  ]);
+  const { contextWindow, isScriptingEnabled, globalSystemPrompt } =
+    await chrome.storage.local.get([
+      "contextWindow",
+      "isScriptingEnabled",
+      "globalSystemPrompt",
+    ]);
   if (contextWindow === 0 || !isScriptingEnabled) {
     clearTokenUI();
     return;
@@ -1132,12 +1159,16 @@ async function runTokenCheck() {
 
     if (conversationData && Array.isArray(conversationData.messages)) {
       const promptTokens = enc.encode(promptText).length;
+      const globalSystemPromptTokens = enc.encode(
+        globalSystemPrompt || ""
+      ).length;
       const tokenData = getEffectiveMessages(
         conversationData.messages,
         contextWindow,
         additionalDataMap,
         checkedItems,
-        promptTokens
+        promptTokens,
+        globalSystemPromptTokens
       );
       const { effectiveMessages, messagesWithTokens } = tokenData;
 
@@ -1225,7 +1256,7 @@ observeHostSchemeChanges();
 
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace !== "local") return;
-  if (changes.isScriptingEnabled) {
+  if (changes.isScriptingEnabled || changes.globalSystemPrompt) {
     applyTheme();
     runTokenCheck();
     return;
