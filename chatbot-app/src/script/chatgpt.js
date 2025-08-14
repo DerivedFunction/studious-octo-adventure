@@ -656,10 +656,10 @@ function addHoverListeners(
         : ""
     }
           <div class="token-total-line">
-              <span>Selected Total:</span>
+              <span>Total tokens:</span>
               <span id="popup-total-tokens">${effectiveTotal} / ${maxTotal}</span>
           </div>
-          <div class="token-total-line" id="refreshData" style="cursor: pointer;">Refresh</div>
+          <div class="token-total-line" id="refreshData" style="cursor: pointer; flex-direction: row-reverse;">Refresh</div>
       `;
     statusDiv.textContent = `Effective tokens: ${effectiveTotal}/${limit} tokens.`;
     const conversationId = window.location.pathname.split("/")[2];
