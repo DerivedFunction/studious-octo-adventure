@@ -208,11 +208,14 @@ const ThemeableChatbot = () => {
     getInitialDarkMode(setIsDarkMode);
     try {
       if (chrome?.storage?.local) {
-        chrome.storage.local.get(["themeColor", "isThemeActive", "contextWindow"], (result) => {
-          if (result.themeColor) setThemeColor(result.themeColor);
-          if (result.isThemeActive) setIsThemeActive(result.isThemeActive);
-          if (result.contextWindow) setContextWindow(result.contextWindow);
-        });
+        chrome.storage.local.get(
+          ["themeColor", "isThemeActive", "contextWindow"],
+          (result) => {
+            if (result.themeColor) setThemeColor(result.themeColor);
+            if (result.isThemeActive) setIsThemeActive(result.isThemeActive);
+            if (result.contextWindow) setContextWindow(result.contextWindow);
+          }
+        );
         // Check to see if script exists
         try {
           chrome.scripting.getRegisteredContentScripts(
@@ -283,7 +286,7 @@ const ThemeableChatbot = () => {
 
   useEffect(() => {
     if (chrome?.storage?.local) {
-     chrome.storage.local.set({ contextWindow });
+      chrome.storage.local.set({ contextWindow });
     }
   }, [contextWindow]);
 
@@ -481,61 +484,39 @@ const ThemeableChatbot = () => {
             />
             {messages.map((msg) => (
               <>
-              <div
-                key={msg.id}
-                className={`flex items-start ${
-                  msg.type === "user" ? "justify-end" : ""
-                } fade-in`}
-              >
                 <div
-                  className={`flex-1 ${
-                    msg.type === "user" ? "text-right" : ""
-                  }`}
+                  key={msg.id}
+                  className={`flex items-start ${
+                    msg.type === "user" ? "justify-end" : ""
+                  } fade-in`}
                 >
                   <div
-                    className="inline-block px-4 py-3 rounded-[28px] font-medium transition-colors duration-300"
-                    style={{
-                      backgroundColor:
-                        msg.type === "user"
-                          ? "var(--user-msg-bg)"
-                          : "var(--ai-msg-bg)",
-                      color:
-                        msg.type === "user"
-                          ? "var(--user-msg-text)"
-                          : "var(--ai-msg-text)",
-                    }}
-                    onClick={() => {
-                      if (msg.type === "user") {
-                        document.querySelector("input[type='color']").click();
-                      }
-                    }}
+                    className={`flex-1 ${
+                      msg.type === "user" ? "text-right" : ""
+                    }`}
                   >
-                    <p className="m-0 whitespace-pre-wrap">{msg.content}</p>
-                  </div>            
-                </div>   
-              </div>
-              <div
-                  className={`token-count-display inline-block ml-8
-                    ${msg.type === "user" ? "text-right" : ""
-                    } fade-in
-                      `}
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--text-secondary)",
-                    fontWeight: "normal",
-                  }}
-                  onClick={() => {
-                    const contextWindow =
-                      parseFloat(window.prompt("Enter Context Window Length [per (K) tokens]:", "8")) 
-                    const value =
-                      contextWindow < 0 || Number.isNaN(contextWindow)
-                        ? 0
-                        : contextWindow * 2 ** 10;
-                      setContextWindow(value);
-                  }}
-                  >
-                    {`Click to set Context Window: ${contextWindow} tokens`}
+                    <div
+                      className="inline-block px-4 py-3 rounded-[28px] font-medium transition-colors duration-300"
+                      style={{
+                        backgroundColor:
+                          msg.type === "user"
+                            ? "var(--user-msg-bg)"
+                            : "var(--ai-msg-bg)",
+                        color:
+                          msg.type === "user"
+                            ? "var(--user-msg-text)"
+                            : "var(--ai-msg-text)",
+                      }}
+                      onClick={() => {
+                        if (msg.type === "user") {
+                          document.querySelector("input[type='color']").click();
+                        }
+                      }}
+                    >
+                      <p className="m-0 whitespace-pre-wrap">{msg.content}</p>
+                    </div>
                   </div>
+                </div>
               </>
             ))}
             {isTyping && (
@@ -624,6 +605,29 @@ const ThemeableChatbot = () => {
                   )}
                 </button>
               </div>
+            </div>
+            <div
+              className={`token-count-display inline-block w-full text-center`}
+              style={{
+                fontSize: "12px",
+                color: "var(--text-secondary)",
+                fontWeight: "normal",
+              }}
+              onClick={() => {
+                const contextWindow = parseFloat(
+                  window.prompt(
+                    "Enter Context Window Length [per (K) tokens]:",
+                    "8"
+                  )
+                );
+                const value =
+                  contextWindow < 0 || Number.isNaN(contextWindow)
+                    ? 0
+                    : contextWindow * 2 ** 10;
+                setContextWindow(value);
+              }}
+            >
+              {`Click to set Context Window: ${contextWindow} tokens`}
             </div>
           </footer>
         </div>
