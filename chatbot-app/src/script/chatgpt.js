@@ -352,7 +352,7 @@ function injectPopupCSS() {
 
   const style = document.createElement("style");
   style.id = styleId;
-  style.innerHTML = `
+  style.textContent = `
         .token-status-container {
             position: relative;
             display: inline-block;
@@ -502,7 +502,11 @@ function addHoverListeners(
         tokenCountDiv.nextSibling
       );
     }
-    extraInfoDiv.innerHTML = "";
+
+    // Clear existing content safely
+    while (extraInfoDiv.firstChild) {
+      extraInfoDiv.removeChild(extraInfoDiv.firstChild);
+    }
 
     if (effectiveMessageIds.has(originalMessageData.id)) {
       const effectiveMessageData = effectiveMessageMap.get(
@@ -536,16 +540,20 @@ function addHoverListeners(
 
     const extraData = additionalDataMap.get(originalMessageData.id);
     if (extraData) {
-      let extraContent = "";
+      const fragment = document.createDocumentFragment();
       if (extraData.files) {
         extraData.files.forEach((file) => {
-          extraContent += `<div>📎 ${file.name} (${file.tokens} tokens)</div>`;
+          const div = document.createElement("div");
+          div.textContent = `📎 ${file.name} (${file.tokens} tokens)`;
+          fragment.appendChild(div);
         });
       }
       if (extraData.canvas) {
-        extraContent += `<div>🎨 ${extraData.canvas.title} (${extraData.canvas.tokens} tokens)</div>`;
+        const div = document.createElement("div");
+        div.textContent = `🎨 ${extraData.canvas.title} (${extraData.canvas.tokens} tokens)`;
+        fragment.appendChild(div);
       }
-      extraInfoDiv.innerHTML = extraContent;
+      extraInfoDiv.appendChild(fragment);
     }
   }); // --- Status Div with Hover Popup ---
 
@@ -565,11 +573,14 @@ function addHoverListeners(
     if (!statusDiv) {
       statusDiv = document.createElement("div");
       statusDiv.className = "tokenstatus";
-      statusDiv.style.display = "inline-block";
-      statusDiv.style.marginLeft = "8px";
-      statusDiv.style.fontSize = "12px";
-      statusDiv.style.color = "var(--text-secondary)";
-      statusDiv.style.fontWeight = "normal";
+      // Applying styles via JS
+      Object.assign(statusDiv.style, {
+        display: "inline-block",
+        marginLeft: "8px",
+        fontSize: "12px",
+        color: "var(--text-secondary)",
+        fontWeight: "normal",
+      });
       statusContainer.appendChild(statusDiv);
     }
 
@@ -580,88 +591,164 @@ function addHoverListeners(
       statusContainer.appendChild(popupDiv);
     }
 
-    let fileDetailsHTML = "",
-      canvasDetailsHTML = "",
-      customInstructionsHTML = "";
+    // Clear previous popup content safely
+    while (popupDiv.firstChild) {
+      popupDiv.removeChild(popupDiv.firstChild);
+    }
+
+    // Use a DocumentFragment to build the new popup content
+    const popupFragment = document.createDocumentFragment();
+
+    const createTokenItem = (labelContent, valueContent) => {
+      const itemDiv = document.createElement("div");
+      itemDiv.className = "token-item";
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = labelContent;
+      const valueSpan = document.createElement("span");
+      valueSpan.textContent = valueContent;
+      itemDiv.appendChild(labelSpan);
+      itemDiv.appendChild(valueSpan);
+      return itemDiv;
+    };
+
+    // -- Build Static and Conditional Sections --
+    let h4 = document.createElement("h4");
+    h4.textContent = "Token Breakdown";
+    popupFragment.appendChild(h4);
+
+    const chatSection = document.createElement("div");
+    chatSection.className = "token-section";
+    chatSection.appendChild(
+      createTokenItem(
+        "Chat Tokens (Effective/Total)",
+        `${totalChatTokens} / ${maxcumulativeTokens}`
+      )
+    );
+    popupFragment.appendChild(chatSection);
+
+    const customInstructionsFragment = document.createDocumentFragment();
+    const filesFragment = document.createDocumentFragment();
+    const canvasFragment = document.createDocumentFragment();
 
     additionalDataMap.forEach((data, msgId) => {
+      if (data.customInstructions) {
+        customInstructionsFragment.appendChild(
+          createTokenItem("👤 User Profile", data.customInstructions.profile_tokens)
+        );
+        customInstructionsFragment.appendChild(
+          createTokenItem(
+            "🤖 Model Instructions",
+            data.customInstructions.instructions_tokens
+          )
+        );
+      }
       if (data.files) {
         data.files.forEach((f, index) => {
           const id = `file-${msgId}-${index}`;
-          const isChecked = checkedItems.has(id);
-          const isTruncated = truncatedItems.has(id);
-          fileDetailsHTML += `<div class="token-item">
-                      <label for="${id}" title="${f.name}">
-                          <input type="checkbox" id="${id}" data-type="file" data-tokens="${
-            f.tokens
-          }" ${isChecked ? "checked" : ""}>
-                          📎 ${f.name} ${
-            isTruncated ? '<span class="truncated-text">(Truncated)</span>' : ""
+          const itemDiv = document.createElement("div");
+          itemDiv.className = "token-item";
+          const label = document.createElement("label");
+          label.htmlFor = id;
+          label.title = f.name;
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.id = id;
+          checkbox.checked = checkedItems.has(id);
+          checkbox.dataset.type = "file";
+          checkbox.dataset.tokens = f.tokens;
+          label.appendChild(checkbox);
+          label.append(` 📎 ${f.name} `);
+          if (truncatedItems.has(id)) {
+            const truncatedSpan = document.createElement("span");
+            truncatedSpan.className = "truncated-text";
+            truncatedSpan.textContent = "(Truncated)";
+            label.appendChild(truncatedSpan);
           }
-                      </label>
-                      <span>${f.tokens}</span>
-                  </div>`;
+          const valueSpan = document.createElement("span");
+          valueSpan.textContent = f.tokens;
+          itemDiv.appendChild(label);
+          itemDiv.appendChild(valueSpan);
+          filesFragment.appendChild(itemDiv);
         });
       }
       if (data.canvas) {
         const id = `canvas-${msgId}`;
-        const isChecked = checkedItems.has(id);
-        const isTruncated = truncatedItems.has(id);
-        canvasDetailsHTML += `<div class="token-item">
-                  <label for="${id}" title="${data.canvas.title}">
-                      <input type="checkbox" id="${id}" data-type="canvas" data-tokens="${
-          data.canvas.tokens
-        }" ${isChecked ? "checked" : ""}>
-                      🎨 ${data.canvas.title} ${
-          isTruncated ? '<span class="truncated-text">(Truncated)</span>' : ""
+        const itemDiv = document.createElement("div");
+        itemDiv.className = "token-item";
+        const label = document.createElement("label");
+        label.htmlFor = id;
+        label.title = data.canvas.title;
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.id = id;
+        checkbox.checked = checkedItems.has(id);
+        checkbox.dataset.type = "canvas";
+        checkbox.dataset.tokens = data.canvas.tokens;
+        label.appendChild(checkbox);
+        label.append(` 🎨 ${data.canvas.title} `);
+        if (truncatedItems.has(id)) {
+          const truncatedSpan = document.createElement("span");
+          truncatedSpan.className = "truncated-text";
+          truncatedSpan.textContent = "(Truncated)";
+          label.appendChild(truncatedSpan);
         }
-                  </label>
-                  <span>${data.canvas.tokens}</span>
-              </div>`;
-      } // MODIFICATION: Build HTML for custom instructions
-      if (data.customInstructions) {
-        customInstructionsHTML += `
-            <h4>Custom Instructions</h4>
-            <div class="token-item">
-                <span>👤 User Profile</span>
-                <span>${data.customInstructions.profile_tokens}</span>
-            </div>
-            <div class="token-item">
-                <span>🤖 Model Instructions</span>
-                <span>${data.customInstructions.instructions_tokens}</span>
-            </div>
-        `;
+        const valueSpan = document.createElement("span");
+        valueSpan.textContent = data.canvas.tokens;
+        itemDiv.appendChild(label);
+        itemDiv.appendChild(valueSpan);
+        canvasFragment.appendChild(itemDiv);
       }
     });
 
+    if (customInstructionsFragment.hasChildNodes()) {
+      h4 = document.createElement("h4");
+      h4.textContent = "Custom Instructions";
+      popupFragment.appendChild(h4);
+      popupFragment.appendChild(customInstructionsFragment);
+    }
+    if (filesFragment.hasChildNodes()) {
+      h4 = document.createElement("h4");
+      h4.textContent = "Files";
+      popupFragment.appendChild(h4);
+      popupFragment.appendChild(filesFragment);
+    }
+    if (canvasFragment.hasChildNodes()) {
+      h4 = document.createElement("h4");
+      h4.textContent = "Canvas";
+      popupFragment.appendChild(h4);
+      popupFragment.appendChild(canvasFragment);
+    }
+
+    // -- Footer and Totals --
     const effectiveTotal = tokenData.baseTokenCost + totalChatTokens;
     const maxTotal = maxcumulativeTokens + tokenData.baseTokenCost;
 
-    popupDiv.innerHTML = `
-          <h4>Token Breakdown</h4>
-          <div class="token-section">
-              <div class="token-item"><span>Chat Tokens (Effective/Total)</span> <span>${totalChatTokens} / ${maxcumulativeTokens}</span></div>
-          </div>
-          ${customInstructionsHTML}
-          ${
-      fileDetailsHTML
-        ? `<h4>Files</h4>
-                ${fileDetailsHTML}`
-        : ""
-    }
-          ${
-      canvasDetailsHTML
-        ? `<h4>Canvas</h4>
-                ${canvasDetailsHTML}`
-        : ""
-    }
-          <div class="token-total-line">
-              <span>Total tokens:</span>
-              <span id="popup-total-tokens">${effectiveTotal} / ${maxTotal}</span>
-          </div>
-          <div class="token-total-line" id="refreshData" style="cursor: pointer; flex-direction: row-reverse;">Refresh</div>
-      `;
+    const totalLine = document.createElement("div");
+    totalLine.className = "token-total-line";
+    const totalLabel = document.createElement("span");
+    totalLabel.textContent = "Total tokens:";
+    const totalValue = document.createElement("span");
+    totalValue.id = "popup-total-tokens";
+    totalValue.textContent = `${effectiveTotal} / ${maxTotal}`;
+    totalLine.appendChild(totalLabel);
+    totalLine.appendChild(totalValue);
+    popupFragment.appendChild(totalLine);
+
+    const refreshLine = document.createElement("div");
+    refreshLine.className = "token-total-line";
+    refreshLine.id = "refreshData";
+    refreshLine.textContent = "Refresh";
+    Object.assign(refreshLine.style, {
+      cursor: "pointer",
+      flexDirection: "row-reverse",
+    });
+    popupFragment.appendChild(refreshLine);
+
+    // Append the fully constructed fragment to the DOM
+    popupDiv.appendChild(popupFragment);
+
     statusDiv.textContent = `Effective tokens: ${effectiveTotal}/${limit} tokens.`;
+
     const conversationId = window.location.pathname.split("/")[2];
     popupDiv.addEventListener("change", async (e) => {
       if (e.target.type === "checkbox") {
@@ -670,10 +757,10 @@ function addHoverListeners(
         const currentChecked = Array.from(
           popupDiv.querySelectorAll("input:checked")
         ).map((cb) => cb.id);
-
         await chrome.storage.local.set({ [storageKey]: currentChecked });
       }
     });
+
     popupDiv.addEventListener("click", async (e) => {
       if (e.target.id === "refreshData") {
         e.target.textContent = "Refreshing...";
