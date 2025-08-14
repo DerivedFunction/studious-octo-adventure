@@ -893,6 +893,7 @@ function addHoverListeners(
     popupDiv.addEventListener("click", async (e) => {
       if (e.target.id === "refreshData") {
         e.target.textContent = "Refreshing...";
+        lastCheckState = {};
         await chrome.storage.local.remove(`backend_data_${conversationId}`);
         debouncedRunTokenCheck();
       }
