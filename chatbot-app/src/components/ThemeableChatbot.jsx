@@ -37,7 +37,8 @@ const ThemeableChatbot = () => {
     {
       id: 2,
       type: "ai",
-      content: "This is an AI response.",
+      content:
+        "This is an AI response. Click me to set a global system prompt.",
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");
@@ -46,19 +47,20 @@ const ThemeableChatbot = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isMultiLine, setIsMultiLine] = useState(false);
-  const [isScriptingEnabled, setIsScriptingEnabled] = useState(false); // <-- NEW: State for scripting toggle
+  const [isScriptingEnabled, setIsScriptingEnabled] = useState(false);
   const [isThemeActive, setIsThemeActive] = useState(false);
   const [contextWindow, setContextWindow] = useState(8 * 2 ** 10); //  tokens
+  const [globalSystemPrompt, setGlobalSystemPrompt] = useState("");
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
+  const [tempPrompt, setTempPrompt] = useState("");
   const chatContainerRef = useRef(null);
-  const textareaRef = useRef(null);
+  const textareaRef = useRef(null); // --- PERMISSIONS CONFIG ---
 
-  // --- PERMISSIONS CONFIG ---
   const scriptingPermissions = {
     permissions: ["scripting"],
-    origins: ["https://chat.openai.com/*", "https://*.chatgpt.com/*"], // The host you want to run scripts on
-  };
+    origins: ["https://chat.openai.com/*", "https://*.chatgpt.com/*"],
+  }; // --- COLOR CONVERSION UTILITIES ---
 
-  // --- COLOR CONVERSION UTILITIES (Omitted for brevity, same as your original code) ---
   const hslToHex = (h, s, l) => {
     l /= 100;
     const a = (s * Math.min(l, 1 - l)) / 100;
@@ -120,9 +122,8 @@ const ThemeableChatbot = () => {
           b: parseInt(result[3], 16),
         }
       : null;
-  };
+  }; // --- THEME GENERATION LOGIC ---
 
-  // --- THEME GENERATION LOGIC (Omitted for brevity, same as your original code) ---
   const generateFullThemeObject = (mainColorHex) => {
     const hsl = hexToHsl(mainColorHex);
     const rgb = hexToRgb(mainColorHex);
@@ -200,23 +201,28 @@ const ThemeableChatbot = () => {
       return { light: lightThemeWhite, dark: darkThemeWhite };
     }
     return { light: lightTheme, dark: darkTheme };
-  };
+  }; // --- SIDE EFFECTS ---
 
-  // --- SIDE EFFECTS ---
   useEffect(() => {
     // Load initial settings from storage
     getInitialDarkMode(setIsDarkMode);
     try {
       if (chrome?.storage?.local) {
         chrome.storage.local.get(
-          ["themeColor", "isThemeActive", "contextWindow"],
+          [
+            "themeColor",
+            "isThemeActive",
+            "contextWindow",
+            "globalSystemPrompt",
+          ],
           (result) => {
             if (result.themeColor) setThemeColor(result.themeColor);
             if (result.isThemeActive) setIsThemeActive(result.isThemeActive);
             if (result.contextWindow) setContextWindow(result.contextWindow);
+            if (result.globalSystemPrompt)
+              setGlobalSystemPrompt(result.globalSystemPrompt);
           }
-        );
-        // Check to see if script exists
+        ); // Check to see if script exists
         try {
           chrome.scripting.getRegisteredContentScripts(
             { ids: ["ChatGPT"] },
@@ -237,11 +243,14 @@ const ThemeableChatbot = () => {
   useEffect(() => {
     const newThemeObject = generateFullThemeObject(themeColor);
     setThemeObject(newThemeObject);
-    
+
     if (chrome?.storage?.local && newThemeObject) {
       chrome.storage.local.get("themeObject", (result) => {
         const oldThemeObject = result.themeObject;
-        if (!oldThemeObject || JSON.stringify(oldThemeObject) !== JSON.stringify(newThemeObject) ) {
+        if (
+          !oldThemeObject ||
+          JSON.stringify(oldThemeObject) !== JSON.stringify(newThemeObject)
+        ) {
           chrome.storage.local.set(
             {
               themeColor,
@@ -260,8 +269,7 @@ const ThemeableChatbot = () => {
     }
     if (chrome?.storage?.local) {
       chrome.storage.local.set({ themeColor });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    } // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeColor, isDarkMode]);
 
   useEffect(() => {
@@ -297,9 +305,12 @@ const ThemeableChatbot = () => {
     }
   }, [contextWindow]);
 
-  // --- EVENT HANDLERS ---
+  useEffect(() => {
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({ globalSystemPrompt });
+    }
+  }, [globalSystemPrompt]); // --- EVENT HANDLERS ---
 
-  // NEW: Handler for the scripting toggle
   const handleScriptingToggle = async () => {
     const newIsEnabled = !isScriptingEnabled;
     setIsScriptingEnabled(newIsEnabled); // Optimistically update UI
@@ -400,7 +411,20 @@ const ThemeableChatbot = () => {
     }
   };
 
-  // --- RENDER LOGIC ---
+  const openPromptModal = () => {
+    setTempPrompt(globalSystemPrompt);
+    setIsPromptModalOpen(true);
+  };
+
+  const handleSavePrompt = () => {
+    setGlobalSystemPrompt(tempPrompt);
+    setIsPromptModalOpen(false);
+  };
+
+  const handleCancelPrompt = () => {
+    setIsPromptModalOpen(false);
+  }; // --- RENDER LOGIC ---
+
   if (!themeObject) {
     return (
       <div className="flex items-center justify-center h-full w-full">
@@ -426,7 +450,7 @@ const ThemeableChatbot = () => {
       --input-bg: ${isDarkMode ? "#ffffff0d" : "#ffffff"};
       --input-text: ${isDarkMode ? "#ffffff" : "#18181b"};
       --input-border: ${isDarkMode ? "#ffffff0d" : "#0000000d"};
-      --body-bg: ${isDarkMode ? "#212121" : "#ffffff0d"};
+      --body-bg: ${isDarkMode ? "#212121" : "#ffffff"};
       --text-secondary: ${isDarkMode ? "#ffffffb3" : "#0009"};
     }
     /* Fix placeholder color for theme switching */
@@ -489,6 +513,7 @@ const ThemeableChatbot = () => {
               onChange={handleColorChange}
               className="w-8 h-8 p-0 bg-transparent border-none rounded-md cursor-pointer hidden"
             />
+
             {messages.map((msg) => (
               <>
                 <div
@@ -517,6 +542,8 @@ const ThemeableChatbot = () => {
                       onClick={() => {
                         if (msg.type === "user") {
                           document.querySelector("input[type='color']").click();
+                        } else {
+                          openPromptModal();
                         }
                       }}
                     >
@@ -526,6 +553,7 @@ const ThemeableChatbot = () => {
                 </div>
               </>
             ))}
+
             {isTyping && (
               <div className="flex gap-3 items-start">
                 <div
@@ -537,10 +565,12 @@ const ThemeableChatbot = () => {
                       className="w-2 h-2 bg-gray-400 rounded-full animate-bounce-dot"
                       style={{ animationDelay: "0s" }}
                     ></span>
+
                     <span
                       className="w-2 h-2 bg-gray-400 rounded-full animate-bounce-dot"
                       style={{ animationDelay: "0.2s" }}
                     ></span>
+
                     <span
                       className="w-2 h-2 bg-gray-400 rounded-full animate-bounce-dot"
                       style={{ animationDelay: "0.4s" }}
@@ -550,6 +580,7 @@ const ThemeableChatbot = () => {
               </div>
             )}
           </main>
+
           <footer className="p-4">
             <div
               className={`flex items-center gap-4 border p-1 rounded-[28px] w-full shadow-2xs transition-colors duration-300 ${
@@ -574,6 +605,7 @@ const ThemeableChatbot = () => {
                   color: "var(--input-text)",
                 }}
               />
+
               <div className={`pr-1 ${isMultiLine ? "self-end pb-1" : ""}`}>
                 <button
                   onClick={handleSendMessage}
@@ -613,6 +645,7 @@ const ThemeableChatbot = () => {
                 </button>
               </div>
             </div>
+
             <div
               className={`token-count-display inline-block w-full text-center`}
               style={{
@@ -637,6 +670,59 @@ const ThemeableChatbot = () => {
               {`Click to set Context Window: ${contextWindow} tokens`}
             </div>
           </footer>
+          {isPromptModalOpen && (
+            <div className="fixed flex p-4 z-50 w-full">
+              <div
+                className="rounded-lg shadow-xl p-6 w-full max-w-md flex flex-col gap-4 border"
+                style={{
+                  backgroundColor: "var(--body-bg)",
+                  color: "var(--input-text)",
+                  borderColor: "var(--input-border)",
+                }}
+              >
+                <h2
+                  className="text-xl font-bold"
+                  style={{ color: "var(--header-text)" }}
+                >
+                  Set Global System Prompt
+                </h2>
+                <textarea
+                  value={tempPrompt}
+                  onChange={(e) => setTempPrompt(e.target.value)}
+                  className="w-full h-30 p-2 border rounded-md focus:outline-none"
+                  placeholder="e.g., You are ChatGPT, created by OpenAI..."
+                  style={{
+                    backgroundColor: "var(--body-bg)",
+                    color: "var(--input-text)",
+                    borderColor: "var(--input-border)",
+                    resize: "none",
+                  }}
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={handleCancelPrompt}
+                    className="px-4 py-2 rounded-md font-semibold transition-colors"
+                    style={{
+                      backgroundColor: "var(--secondary-btn-bg)",
+                      color: "var(--secondary-btn-text)",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSavePrompt}
+                    className="px-4 py-2 rounded-md font-semibold transition-colors"
+                    style={{
+                      backgroundColor: "var(--submit-btn-bg)",
+                      color: "var(--submit-btn-text)",
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
