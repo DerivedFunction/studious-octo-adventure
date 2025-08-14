@@ -6,7 +6,7 @@ const enc = new Tiktoken(o200k_base);
 console.log("✅ Tokenizer initialized.");
 let fetchController; // Controller to abort in-flight fetch requests
 let accessToken = null; // Global variable to store the access token
-let lastCheckState = { url: "", prompt: "", turns: 0, checked: "" }; // Cache state to avoid redundant checks
+let lastCheckState = { url: "", prompt: "", turns: 0, checked: "", tokens: 0 }; // Cache state to avoid redundant checks
 
 /* eslint-disable no-undef */
 
@@ -914,11 +914,9 @@ function clearTokenUI() {
  * Fetches the current conversation, processes it, and updates the UI.
  */
 async function runTokenCheck() {
-  const { contextWindow } = await chrome.storage.local.get({
-    contextWindow: 128000,
-  });
-
-  if (contextWindow === 0) {
+  const { contextWindow, isScriptingEnabled } = await chrome.storage.local.get(["contextWindow", "isScriptingEnabled"]);
+  console.log(contextWindow, isScriptingEnabled)
+  if (contextWindow === 0 || !isScriptingEnabled) {
     clearTokenUI();
     return;
   }
@@ -948,13 +946,12 @@ async function runTokenCheck() {
     prompt: promptText,
     turns: turnCount,
     checked: checkedItemsStr,
+    contextWindow,
   };
 
   if (
-    newState.url === lastCheckState.url &&
-    newState.prompt === lastCheckState.prompt &&
-    newState.turns === lastCheckState.turns &&
-    newState.checked === lastCheckState.checked
+    Object.values(lastCheckState) === Object.values(newState) &&
+    checkedItemsStr === lastCheckState.checked
   ) {
     return; // No meaningful change detected, skip the check
   }
@@ -1069,10 +1066,14 @@ observeHostSchemeChanges();
 
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace !== "local") return;
+  if (changes.isScriptingEnabled) {
+    applyTheme();
+    runTokenCheck();
+    return;
+  }
   if (
     changes.themeObject ||
-    changes.isThemeActive ||
-    changes.isScriptingEnabled
+    changes.isThemeActive
   ) {
     applyTheme();
   }
@@ -1101,7 +1102,7 @@ new MutationObserver((mutationList) => {
   const url = location.href;
   if (url !== lastUrl) {
     lastUrl = url;
-    lastCheckState = { url: "", prompt: "", turns: 0, checked: "" }; // Reset state on URL change
+    lastCheckState = { url: "", prompt: "", turns: 0, checked: "", contextWindow: 0 }; // Reset state on URL change
     console.log("🔄 URL changed, running token check immediately.");
     runTokenCheck();
   } else {

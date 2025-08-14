@@ -48,7 +48,7 @@ const ThemeableChatbot = () => {
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [isScriptingEnabled, setIsScriptingEnabled] = useState(false); // <-- NEW: State for scripting toggle
   const [isThemeActive, setIsThemeActive] = useState(false);
-  const [contextWindow, setContextWindow] = useState(0); //  tokens
+  const [contextWindow, setContextWindow] = useState(8 * 2 ** 10); //  tokens
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -237,22 +237,29 @@ const ThemeableChatbot = () => {
   useEffect(() => {
     const newThemeObject = generateFullThemeObject(themeColor);
     setThemeObject(newThemeObject);
-
+    
     if (chrome?.storage?.local && newThemeObject) {
-      chrome.storage.local.set(
-        {
-          themeColor,
-          isDarkMode,
-          themeObject: newThemeObject,
-        },
-        () => {
-          if (chrome.runtime.lastError) {
-            console.error("Storage error:", chrome.runtime.lastError);
-          } else {
-            console.log("Theme saved to storage");
-          }
+      chrome.storage.local.get("themeObject", (result) => {
+        const oldThemeObject = result.themeObject;
+        if (oldThemeObject && JSON.stringify(oldThemeObject) !== JSON.stringify(newThemeObject)) {
+          chrome.storage.local.set(
+            {
+              themeColor,
+              themeObject: newThemeObject,
+            },
+            () => {
+              if (chrome.runtime.lastError) {
+                console.error("Storage error:", chrome.runtime.lastError);
+              } else {
+                console.log("Theme saved to storage");
+              }
+            }
+          );
         }
-      );
+      });
+    }
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({ themeColor });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [themeColor, isDarkMode]);
