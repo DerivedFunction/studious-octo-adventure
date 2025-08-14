@@ -309,31 +309,30 @@ function getEffectiveMessages(
 
   const remainingLimit = limit - baseTokenCost;
   let currentChatTokens = 0;
-  const effectiveMessages = []; // Now, fit chat messages into the remaining space
+  const effectiveMessages = []; // Now, fit chat messages into the remaining space // ### FIX START ### // Iterate backwards from the newest message to decide what fits.
 
   for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
     const message = messagesWithTokens[i];
-    if (message.tokens === 0) continue;
+    if (message.tokens === 0) continue; // Skip empty messages
 
-    if (message.tokens > remainingLimit) {
-      if (i === messagesWithTokens.length - 1) {
-        // Only truncate the very last message
-        message.isTruncated = true;
-        message.truncatedTokens = remainingLimit;
-        effectiveMessages.unshift(message);
-        currentChatTokens = remainingLimit;
-      }
-      break; // Stop adding messages
-    }
+    const spaceAvailable = remainingLimit - currentChatTokens;
 
-    if (currentChatTokens + message.tokens <= remainingLimit) {
+    if (message.tokens <= spaceAvailable) {
+      // Message fits completely, add it.
       currentChatTokens += message.tokens;
       effectiveMessages.unshift(message);
     } else {
+      // Message doesn't fit completely.
+      // If there's any space left, truncate this message and add the part that fits.
+      if (spaceAvailable > 0) {
+        message.isTruncated = true;
+        message.truncatedTokens = spaceAvailable;
+        currentChatTokens += spaceAvailable; // Fill the rest of the context
+        effectiveMessages.unshift(message);
+      } // The context is now full, so stop adding messages.
       break;
     }
-  }
-
+  } // ### FIX END ###
   return {
     effectiveMessages,
     totalChatTokens: currentChatTokens,
@@ -501,9 +500,8 @@ function addHoverListeners(
         extraInfoDiv,
         tokenCountDiv.nextSibling
       );
-    }
+    } // Clear existing content safely
 
-    // Clear existing content safely
     while (extraInfoDiv.firstChild) {
       extraInfoDiv.removeChild(extraInfoDiv.firstChild);
     }
@@ -572,8 +570,7 @@ function addHoverListeners(
     let statusDiv = statusContainer.querySelector(".tokenstatus");
     if (!statusDiv) {
       statusDiv = document.createElement("div");
-      statusDiv.className = "tokenstatus";
-      // Applying styles via JS
+      statusDiv.className = "tokenstatus"; // Applying styles via JS
       Object.assign(statusDiv.style, {
         display: "inline-block",
         marginLeft: "8px",
@@ -589,14 +586,12 @@ function addHoverListeners(
       popupDiv = document.createElement("div");
       popupDiv.className = "token-popup";
       statusContainer.appendChild(popupDiv);
-    }
+    } // Clear previous popup content safely
 
-    // Clear previous popup content safely
     while (popupDiv.firstChild) {
       popupDiv.removeChild(popupDiv.firstChild);
-    }
+    } // Use a DocumentFragment to build the new popup content
 
-    // Use a DocumentFragment to build the new popup content
     const popupFragment = document.createDocumentFragment();
 
     const createTokenItem = (labelContent, valueContent) => {
@@ -609,9 +604,8 @@ function addHoverListeners(
       itemDiv.appendChild(labelSpan);
       itemDiv.appendChild(valueSpan);
       return itemDiv;
-    };
+    }; // -- Build Static and Conditional Sections --
 
-    // -- Build Static and Conditional Sections --
     let h4 = document.createElement("h4");
     h4.textContent = "Token Breakdown";
     popupFragment.appendChild(h4);
@@ -633,7 +627,10 @@ function addHoverListeners(
     additionalDataMap.forEach((data, msgId) => {
       if (data.customInstructions) {
         customInstructionsFragment.appendChild(
-          createTokenItem("👤 User Profile", data.customInstructions.profile_tokens)
+          createTokenItem(
+            "👤 User Profile",
+            data.customInstructions.profile_tokens
+          )
         );
         customInstructionsFragment.appendChild(
           createTokenItem(
@@ -717,9 +714,8 @@ function addHoverListeners(
       h4.textContent = "Canvas";
       popupFragment.appendChild(h4);
       popupFragment.appendChild(canvasFragment);
-    }
+    } // -- Footer and Totals --
 
-    // -- Footer and Totals --
     const effectiveTotal = tokenData.baseTokenCost + totalChatTokens;
     const maxTotal = maxcumulativeTokens + tokenData.baseTokenCost;
 
@@ -742,9 +738,8 @@ function addHoverListeners(
       cursor: "pointer",
       flexDirection: "row-reverse",
     });
-    popupFragment.appendChild(refreshLine);
+    popupFragment.appendChild(refreshLine); // Append the fully constructed fragment to the DOM
 
-    // Append the fully constructed fragment to the DOM
     popupDiv.appendChild(popupFragment);
 
     statusDiv.textContent = `Effective tokens: ${effectiveTotal}/${limit} tokens.`;
