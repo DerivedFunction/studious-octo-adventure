@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Tools",
-  "version": "2025.8.13",
-  "description": "Extra visual Tools for ChatGPT. Includes additional accent colors and token counter.",
+  "version": "2025.8.14",
+  "description": "Token counter + context windows, accent colors for ChatGPT.",
   "action": {
     "default_popup": "index.html",
     "default_icon": {
