@@ -448,52 +448,45 @@ function getEffectiveMessages(
     }
   } // --- 3. Files & Canvases ---
 
-  if (currentTotalTokens < limit) {
-    additionalDataMap.forEach((data, msgId) => {
-      if (currentTotalTokens >= limit) return;
-
-      if (data.files) {
-        data.files.forEach((file, index) => {
-          if (currentTotalTokens >= limit) return;
-          const itemId = `file-${msgId}-${index}`;
-          if (checkedItems.has(itemId)) {
-            maxPossibleTokens += file.tokens;
-            const remainingSpace = limit - currentTotalTokens;
-            if (file.tokens > remainingSpace) {
-              truncatedItems.set(itemId, remainingSpace); // Store effective tokens
-              attachmentsCost += remainingSpace;
-              currentTotalTokens = limit;
-            } else {
-              attachmentsCost += file.tokens;
-              currentTotalTokens += file.tokens;
-            }
+  additionalDataMap.forEach((data, msgId) => {
+    if (data.files) {
+      data.files.forEach((file, index) => {
+        const itemId = `file-${msgId}-${index}`;
+        if (checkedItems.has(itemId)) {
+          maxPossibleTokens += file.tokens;
+          const remainingSpace = limit - currentTotalTokens;
+          if (file.tokens > remainingSpace) {
+            truncatedItems.set(itemId, remainingSpace); // Store effective tokens
+            attachmentsCost += remainingSpace;
+            currentTotalTokens = limit;
+          } else {
+            attachmentsCost += file.tokens;
+            currentTotalTokens += file.tokens;
           }
-        });
-      }
-
-      if (currentTotalTokens >= limit) return;
-
-      if (data.canvases) {
-        // Check for the 'canvases' array
-        data.canvases.forEach((canvas) => {
-          // Loop through each canvas
-          const itemId = `canvas-${canvas.textdoc_id}`;
-          if (checkedItems.has(itemId)) {
-            maxPossibleTokens += canvas.tokens;
-            const remainingSpace = limit - currentTotalTokens;
-            if (canvas.tokens > remainingSpace) {
-              truncatedItems.set(itemId, remainingSpace); // Store effective tokens
-              attachmentsCost += remainingSpace;
-              currentTotalTokens = limit;
-            } else {
-              attachmentsCost += canvas.tokens;
-              currentTotalTokens += canvas.tokens;
-            }
+        }
+      });
+    }
+    if (data.canvases) {
+      // Check for the 'canvases' array
+      data.canvases.forEach((canvas) => {
+        // Loop through each canvas
+        const itemId = `canvas-${canvas.textdoc_id}`;
+        if (checkedItems.has(itemId)) {
+          maxPossibleTokens += canvas.tokens;
+          const remainingSpace = limit - currentTotalTokens;
+          if (canvas.tokens > remainingSpace) {
+            truncatedItems.set(itemId, remainingSpace); // Store effective tokens
+            attachmentsCost += remainingSpace;
+            currentTotalTokens = limit;
+          } else {
+            attachmentsCost += canvas.tokens;
+            currentTotalTokens += canvas.tokens;
           }
-        });
-      }
-    });
-  } // --- 4. Chat History ---
+        }
+      });
+    }
+  });
+  // --- 4. Chat History ---
 
   if (currentTotalTokens < limit) {
     const remainingForChat = limit - currentTotalTokens;
@@ -1289,13 +1282,7 @@ new MutationObserver((mutationList) => {
   const url = location.href;
   if (url !== lastUrl) {
     lastUrl = url;
-    lastCheckState = {
-      url: "",
-      prompt: "",
-      turns: 0,
-      checked: "",
-      contextWindow: 0,
-    }; // Reset state on URL change
+    lastCheckState = {}; // Reset state on URL change
     console.log("🔄 URL changed, running token check immediately.");
     runTokenCheck();
   } else {
