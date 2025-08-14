@@ -355,9 +355,13 @@ function getEffectiveMessages(
   let promptTruncatedFrom = null;
   let attachmentsCost = 0;
   let totalChatTokens = 0;
+  let maxChatTokens = 0;
   const effectiveMessages = [];
   let maxPossibleTokens = promptTokens;
-  messagesWithTokens.forEach((msg) => (maxPossibleTokens += msg.tokens));
+  messagesWithTokens.forEach((msg) => {
+    maxPossibleTokens += msg.tokens;
+    maxChatTokens += msg.tokens;
+  });
 
   // --- 1. Custom Instructions ---
   additionalDataMap.forEach((data) => {
@@ -476,6 +480,7 @@ function getEffectiveMessages(
     instructionsCost,
     instructionsTruncatedFrom,
     maxPossibleTokens,
+    maxChatTokens,
   };
 }
 
@@ -588,7 +593,7 @@ function addHoverListeners(
 ) {
   injectPopupCSS(); // Ensure CSS is present
 
-  const { totalChatTokens, truncatedItems } = tokenData;
+  const { totalChatTokens, truncatedItems, maxChatTokens } = tokenData;
 
   const turnElements = document.querySelectorAll("[data-message-id]");
   if (!turnElements.length) {
@@ -598,7 +603,6 @@ function addHoverListeners(
   }
 
   let cumulativeTokens = 0;
-  let maxcumulativeTokens = 0;
   console.log("💻 Updating token UI...");
 
   const allMessagesMap = new Map(allMessages.map((m) => [m.id, m]));
@@ -647,7 +651,6 @@ function addHoverListeners(
         : effectiveMessageData.tokens;
 
       cumulativeTokens += messageTokenCount;
-      maxcumulativeTokens += effectiveMessageData.tokens;
       tokenCountDiv.textContent = `${
         messageTokenCount > 0
           ? `${messageTokenCount} of ${cumulativeTokens}/${limit} tokens`
@@ -663,7 +666,6 @@ function addHoverListeners(
       const messageTokens =
         messagesWithTokens.find((m) => m.id === originalMessageData.id)
           ?.tokens || 0;
-      maxcumulativeTokens += messageTokens;
       tokenCountDiv.textContent = `(Out of context): ${messageTokens} tokens.`;
       turnElement.style.opacity = "0.5";
     }
@@ -751,7 +753,7 @@ function addHoverListeners(
         ? tokenData.promptTruncatedFrom
         : tokenData.promptCost;
     const effectivePromptTokens = tokenData.promptCost;
-    
+
     let promptValue = originalPromptTokens;
     if (tokenData.promptTruncatedFrom !== null) {
       promptValue = `${effectivePromptTokens} / ${originalPromptTokens}`;
@@ -764,10 +766,15 @@ function addHoverListeners(
 
     const chatSection = document.createElement("div");
     chatSection.className = "token-section";
+    const chatOverflow = maxChatTokens > totalChatTokens;
     chatSection.appendChild(
       createTokenItem(
-        "💬 Chat History (Effective/Total)",
-        `${totalChatTokens} / ${maxcumulativeTokens}`
+        `💬 Chat History ${chatOverflow ? "(Effective/Total)" : ""}`,
+        `${
+          chatOverflow
+            ? `${totalChatTokens} / ${maxChatTokens}`
+            : totalChatTokens
+        } `
       )
     );
     popupFragment.appendChild(chatSection);
@@ -1002,7 +1009,10 @@ function clearTokenUI() {
  * Fetches the current conversation, processes it, and updates the UI.
  */
 async function runTokenCheck() {
-  const { contextWindow, isScriptingEnabled } = await chrome.storage.local.get(["contextWindow", "isScriptingEnabled"]);
+  const { contextWindow, isScriptingEnabled } = await chrome.storage.local.get([
+    "contextWindow",
+    "isScriptingEnabled",
+  ]);
   if (contextWindow === 0 || !isScriptingEnabled) {
     clearTokenUI();
     return;
@@ -1156,10 +1166,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     runTokenCheck();
     return;
   }
-  if (
-    changes.themeObject ||
-    changes.isThemeActive
-  ) {
+  if (changes.themeObject || changes.isThemeActive) {
     applyTheme();
   }
   const conversationId = window.location.pathname.split("/")[2];
@@ -1187,7 +1194,13 @@ new MutationObserver((mutationList) => {
   const url = location.href;
   if (url !== lastUrl) {
     lastUrl = url;
-    lastCheckState = { url: "", prompt: "", turns: 0, checked: "", contextWindow: 0 }; // Reset state on URL change
+    lastCheckState = {
+      url: "",
+      prompt: "",
+      turns: 0,
+      checked: "",
+      contextWindow: 0,
+    }; // Reset state on URL change
     console.log("🔄 URL changed, running token check immediately.");
     runTokenCheck();
   } else {
