@@ -167,6 +167,7 @@
                   opacity: 1;
               }
               #chm-modal {
+                  position: relative; /* ADDED: For positioning the close button */
                   background-color: var(--main-surface-primary, #ffffff); color: var(--text-primary, #000000);
                   border: 1px solid var(--border-medium, #e5e5e5);
                   border-radius: 16px;
@@ -178,7 +179,20 @@
               #chm-container.visible #chm-modal {
                   transform: scale(1);
               }
-              /* REMOVED #chm-header styles */
+              /* RE-ADDED: Close button styles */
+              #chm-close-btn { 
+                  position: absolute;
+                  top: 16px;
+                  right: 20px;
+                  z-index: 10;
+                  background: none; 
+                  border: none; 
+                  font-size: 1.5rem; 
+                  cursor: pointer; 
+                  color: var(--text-tertiary); 
+                  transition: color 0.2s; 
+              }
+              #chm-close-btn:hover { color: var(--text-secondary); }
               #chm-tabs { display: flex; border-bottom: 1px solid var(--border-light); padding: 0 16px; }
               #chm-tabs button { flex-grow: 0; padding: 12px 16px; font-weight: 500; border: none; background: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--text-secondary); }
               #chm-tabs button.active { color: var(--text-primary); border-bottom-color: var(--text-primary, #000); }
@@ -192,12 +206,11 @@
                   justify-content: space-between; 
                   align-items: center; 
                   margin-bottom: 16px; 
-                  /* REMOVED border-bottom */
               }
               .chm-action-bar-group { display: flex; align-items: center; gap: 12px; }
               .chm-btn { 
                   padding: 8px 16px; 
-                  border-radius: 8px; /* CHANGED: From pill shape to rounded rectangle */
+                  border-radius: 8px; 
                   font-size: var(--text-sm, 0.875rem);
                   font-weight: var(--font-weight-medium, 500);
                   cursor: pointer; 
@@ -205,7 +218,6 @@
                   border-style: solid;
                   transition: background-color 0.2s, border-color 0.2s; 
               }
-              /* RENAMED/GROUPED button styles */
               .chm-btn.action-cancel, .chm-btn.action-secondary { 
                   background-color: var(--main-surface-secondary); 
                   color: var(--text-primary); 
@@ -233,7 +245,6 @@
                   text-transform: uppercase; 
               }
               #historyList > .chm-conversation-item + .chm-conversation-item, #archivedList > .chm-conversation-item + .chm-conversation-item { margin-top: 4px; }
-              /* ADDED #chm-footer styles */
               #chm-footer {
                   display: flex;
                   justify-content: flex-end;
@@ -250,58 +261,19 @@
               #chm-loader div { width: 24px; height: 24px; border: 4px solid var(--border-light); border-top-color: var(--text-primary); border-radius: 50%; animation: spin 1s linear infinite; }
               #chm-time-filter { background-color: var(--main-surface-secondary); border: 1px solid var(--border-medium); border-radius: 8px; padding: 8px; font-size: 0.875rem; color: var(--text-primary); }
               @keyframes spin { to { transform: rotate(360deg); } }
-              /* --- Custom Checkbox Styles --- */
-              .chm-checkbox-label {
-                  display: flex;
-                  align-items: center;
-                  cursor: pointer;
-                  user-select: none;
-                  gap: 8px;
-              }
-              .chm-checkbox-label input[type="checkbox"] {
-                  position: absolute;
-                  opacity: 0;
-                  height: 0;
-                  width: 0;
-              }
-              .chm-custom-checkbox {
-                  position: relative;
-                  display: inline-block;
-                  width: 18px;
-                  height: 18px;
-                  background-color: transparent;
-                  border: 1px solid var(--text-tertiary, #8e8ea0);
-                  border-radius: 4px;
-                  transition: all 0.2s ease;
-              }
-              .chm-checkbox-label:hover .chm-custom-checkbox {
-                  border-color: var(--text-secondary, #6b6b7b);
-              }
-              .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox {
-                  background-color: var(--accent-primary, #10a37f);
-                  border-color: var(--accent-primary, #10a37f);
-              }
-              .chm-custom-checkbox::after {
-                  content: '';
-                  position: absolute;
-                  display: none;
-                  left: 6px;
-                  top: 2px;
-                  width: 4px;
-                  height: 9px;
-                  border: solid white;
-                  border-width: 0 2px 2px 0;
-                  transform: rotate(45deg);
-              }
-              .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox::after {
-                  display: block;
-              }
-              /* --- End Custom Checkbox Styles --- */
+              .chm-checkbox-label { display: flex; align-items: center; cursor: pointer; user-select: none; gap: 8px; }
+              .chm-checkbox-label input[type="checkbox"] { position: absolute; opacity: 0; height: 0; width: 0; }
+              .chm-custom-checkbox { position: relative; display: inline-block; width: 18px; height: 18px; background-color: transparent; border: 1px solid var(--text-tertiary, #8e8ea0); border-radius: 4px; transition: all 0.2s ease; }
+              .chm-checkbox-label:hover .chm-custom-checkbox { border-color: var(--text-secondary, #6b6b7b); }
+              .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox { background-color: var(--accent-primary, #10a37f); border-color: var(--accent-primary, #10a37f); }
+              .chm-custom-checkbox::after { content: ''; position: absolute; display: none; left: 6px; top: 2px; width: 4px; height: 9px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+              .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox::after { display: block; }
         `;
 
     // --- HTML Template ---
     const htmlTemplate = `
         <div id="chm-modal">
+            <button id="chm-close-btn">&times;</button>
             <div id="chm-tabs">
                 <button id="historyTab" class="active">History</button>
                 <button id="archivedTab">Archived</button>
@@ -323,7 +295,7 @@
                                 <option value="30d">Last 30 days</option>
                             </select>
                         </div>
-                        </div>
+                    </div>
                     <div id="historyList"></div>
                 </div>
                 <div id="archivedView" style="display: none;">
@@ -335,7 +307,7 @@
                                 <span>Select All</span>
                             </label>
                         </div>
-                        </div>
+                    </div>
                     <div id="archivedList"></div>
                 </div>
             </div>
@@ -371,8 +343,13 @@
     document.getElementById("chm-container").addEventListener("click", (e) => {
       if (e.target.id === "chm-container") toggleUiVisibility(false);
     });
+    // RE-ADDED listener for top-right close button
     document
       .getElementById("chm-close-btn")
+      .addEventListener("click", () => toggleUiVisibility(false));
+    // ADDED listener for footer cancel button
+    document
+      .getElementById("chm-cancel-btn")
       .addEventListener("click", () => toggleUiVisibility(false));
     document
       .getElementById("historyTab")
@@ -532,12 +509,16 @@
     const archivedTab = document.getElementById("archivedTab");
     const historyView = document.getElementById("historyView");
     const archivedView = document.getElementById("archivedView");
+    const historyActions = document.getElementById("history-actions");
+    const archivedActions = document.getElementById("archived-actions");
 
     if (view === "history") {
       historyTab.classList.add("active");
       archivedTab.classList.remove("active");
       historyView.style.display = "block";
       archivedView.style.display = "none";
+      historyActions.style.display = "flex";
+      archivedActions.style.display = "none";
       allConversations = await fetchConversations(false);
       applyFilterAndRender();
     } else {
@@ -545,6 +526,8 @@
       historyTab.classList.remove("active");
       historyView.style.display = "none";
       archivedView.style.display = "block";
+      historyActions.style.display = "none";
+      archivedActions.style.display = "flex";
       allConversations = await fetchConversations(true);
       const grouped = groupAndSortConversations(allConversations);
       renderConversations(grouped, "archivedList");
