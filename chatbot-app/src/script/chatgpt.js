@@ -143,66 +143,101 @@ async function processBackendData(conversationId) {
       }
 
       const conversationApiData = await response.json();
-      const additionalDataMap = new Map(); // Process the mapping to find file, canvas, and custom instructions metadata
+      const additionalDataMap = new Map();
+      const latestCanvasData = new Map(); // Map<textdoc_id, { version, title, tokens, attachToMessageId }>
 
+      // Pass 1: Collect all canvas versions and identify the latest for each
       if (conversationApiData && conversationApiData.mapping) {
+        for (const messageId in conversationApiData.mapping) {
+          const node = conversationApiData.mapping[messageId];
+          const recipient = node.message?.recipient;
+          if (
+            recipient === "canmore.create_textdoc" ||
+            recipient === "canmore.update_textdoc"
+          ) {
+            if (node.children && node.children.length > 0) {
+              const toolNode = conversationApiData.mapping[node.children[0]];
+              if (
+                toolNode?.message?.author?.role === "tool" &&
+                toolNode.message.metadata.canvas
+              ) {
+                try {
+                  const { textdoc_id, version } =
+                    toolNode.message.metadata.canvas;
+                  const contentNode = JSON.parse(node.message.content.parts[0]);
+                  const title = contentNode.name || "Canvas";
+                  const tokens = enc.encode(contentNode.content || "").length;
+                  const attachToMessageId = toolNode.children?.[0];
+
+                  if (attachToMessageId) {
+                    const existing = latestCanvasData.get(textdoc_id);
+                    if (!existing || existing.version < version) {
+                      latestCanvasData.set(textdoc_id, {
+                        version,
+                        title,
+                        tokens,
+                        attachToMessageId,
+                      });
+                    }
+                  }
+                } catch (e) {
+                  console.error("Error processing canvas data:", e);
+                }
+              }
+            }
+          }
+        }
+
+        // Pass 2: Populate additionalDataMap with latest canvas versions and other data
+        latestCanvasData.forEach((data, textdoc_id) => {
+          const existing = additionalDataMap.get(data.attachToMessageId) || {};
+          additionalDataMap.set(data.attachToMessageId, {
+            ...existing,
+            canvas: {
+              title: data.title,
+              tokens: data.tokens,
+              textdoc_id,
+              version: data.version,
+            },
+          });
+        });
+
+        // Pass 3: Process files and custom instructions
         for (const messageId in conversationApiData.mapping) {
           const node = conversationApiData.mapping[messageId];
           if (node.message) {
             const { metadata, content } = node.message;
             let fileInfo = null;
-            let canvasInfo = null;
             let customInstructionsInfo = null;
-            let targetMessageId = node.message.id; // Extract file info
+            let targetMessageId = node.message.id;
 
             if (metadata.attachments && metadata.attachments.length > 0) {
               fileInfo = metadata.attachments.map((file) => ({
                 name: file.name,
                 tokens: file.file_token_size || 0,
               }));
-            } // Extract canvas info
+            }
 
-            if (
-              node.message.recipient === "canmore.create_textdoc" &&
-              content.parts?.[0]
-            ) {
-              try {
-                const canvasContent = JSON.parse(content.parts[0]);
-                canvasInfo = {
-                  title: canvasContent.name || "Canvas",
-                  tokens: enc.encode(canvasContent.content || "").length,
-                };
-                if (node.children?.length > 0) {
-                  const toolResponseNode =
-                    conversationApiData.mapping[node.children[0]];
-                  if (toolResponseNode?.children?.length > 0) {
-                    targetMessageId = toolResponseNode.children[0];
-                  }
-                }
-              } catch (e) {
-                console.error("❌ Error parsing canvas content:", e);
-              }
-            } // MODIFICATION: Extract custom instructions info
             if (content.content_type === "user_editable_context") {
               customInstructionsInfo = {
                 profile_tokens: enc.encode(content.user_profile || "").length,
                 instructions_tokens: enc.encode(content.user_instructions || "")
                   .length,
               };
-            } // Aggregate all found data
+            }
 
-            if (fileInfo || canvasInfo || customInstructionsInfo) {
+            if (fileInfo || customInstructionsInfo) {
               const existingData = additionalDataMap.get(targetMessageId) || {};
               additionalDataMap.set(targetMessageId, {
+                ...existingData,
                 files: fileInfo || existingData.files,
-                canvas: canvasInfo || existingData.canvas,
                 customInstructions:
                   customInstructionsInfo || existingData.customInstructions,
               });
             }
           }
         }
-      } // After successful processing, cache the result
+      }
 
       try {
         const dataToCache = Object.fromEntries(additionalDataMap);
@@ -338,7 +373,7 @@ function getEffectiveMessages(
       if (currentTotalTokens >= limit) return;
 
       if (data.canvas) {
-        const itemId = `canvas-${msgId}`;
+        const itemId = `canvas-${data.canvas.textdoc_id}`;
         if (checkedItems.has(itemId)) {
           maxPossibleTokens += data.canvas.tokens;
           const remainingSpace = limit - currentTotalTokens;
@@ -669,11 +704,14 @@ function addHoverListeners(
         ? tokenData.promptTruncatedFrom
         : tokenData.promptCost;
     const effectivePromptTokens = tokenData.promptCost;
-    const promptLabel = "📝 Current Prompt (Effective/Total)";
+    
     let promptValue = originalPromptTokens;
     if (tokenData.promptTruncatedFrom !== null) {
       promptValue = `${effectivePromptTokens} / ${originalPromptTokens}`;
     }
+    const promptLabel = `📝 Current Prompt ${
+      tokenData.promptTruncatedFrom !== null ? "(Effective/Total)" : ""
+    }`;
     promptSection.appendChild(createTokenItem(promptLabel, promptValue));
     popupFragment.appendChild(promptSection);
 
@@ -681,7 +719,7 @@ function addHoverListeners(
     chatSection.className = "token-section";
     chatSection.appendChild(
       createTokenItem(
-        "💬 Chat History(Effective/Total)",
+        "💬 Chat History (Effective/Total)",
         `${totalChatTokens} / ${maxcumulativeTokens}`
       )
     );
@@ -756,12 +794,12 @@ function addHoverListeners(
         });
       }
       if (data.canvas) {
-        const id = `canvas-${msgId}`;
+        const id = `canvas-${data.canvas.textdoc_id}`;
         const itemDiv = document.createElement("div");
         itemDiv.className = "token-item";
         const label = document.createElement("label");
         label.htmlFor = id;
-        label.title = data.canvas.title;
+        label.title = `${data.canvas.title} (v${data.canvas.version})`;
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.id = id;
@@ -879,10 +917,12 @@ function updatePromptTokenUI(promptCost, promptTruncatedFrom, limit) {
     }
   }
 
-  if (promptCost > 0) {
-    let text = `Prompt: ${promptCost} tokens`;
+  const originalPromptTokens =
+    promptTruncatedFrom !== null ? promptTruncatedFrom : promptCost;
+  if (originalPromptTokens > 0) {
+    let text = `Prompt: ${originalPromptTokens} tokens`;
     if (promptTruncatedFrom) {
-      text = `Prompt: ${promptCost} / ${promptTruncatedFrom} tokens (Overflow)`;
+      text = `Prompt: ${promptCost} / ${originalPromptTokens} tokens (Overflow)`;
       promptTokenDiv.style.color = "var(--text-danger)";
     } else {
       promptTokenDiv.style.color = "var(--text-secondary)";
