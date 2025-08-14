@@ -39,7 +39,7 @@ async function getAccessToken() {
   if (accessToken) {
     return accessToken;
   }
-  console.log("Fetching new access token...");
+  console.log("🔑 Fetching new access token...");
   try {
     const session = await fetch("https://chatgpt.com/api/auth/session").then(
       (res) => {
@@ -50,7 +50,7 @@ async function getAccessToken() {
     accessToken = session.accessToken;
     return accessToken;
   } catch (error) {
-    console.error("Could not retrieve access token:", error);
+    console.error("❌ Could not retrieve access token:", error);
     accessToken = null; // Reset on failure
     return null;
   }
@@ -95,11 +95,11 @@ async function processBackendData(conversationId) {
     const result = await chrome.storage.local.get(storageKey);
     if (result[storageKey]) {
       const cachedData = JSON.parse(result[storageKey]);
-      console.log(`Using cached backend data for ${conversationId}.`);
+      console.log(`🗄️ Using cached backend data for ${conversationId}.`);
       return new Map(Object.entries(cachedData));
     }
   } catch (e) {
-    console.error("Error reading from local storage cache:", e);
+    console.error("❌ Error reading from local storage cache:", e);
   } // If no cache, proceed with fetching, including retry logic.
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -111,11 +111,11 @@ async function processBackendData(conversationId) {
 
     try {
       console.log(
-        `Fetching data from backend-api for ${conversationId} (Attempt ${attempt})...`
+        `🌐 Fetching data from backend-api for ${conversationId} (Attempt ${attempt})...`
       );
       const token = await getAccessToken();
       if (!token) {
-        console.error("Could not retrieve access token. Aborting retries.");
+        console.error("❌ Could not retrieve access token. Aborting retries.");
         return new Map();
       }
 
@@ -129,14 +129,14 @@ async function processBackendData(conversationId) {
       );
 
       if (response.status === 401 || response.status === 403) {
-        console.log("Access token expired or invalid. Refreshing...");
+        console.log("❌ Access token expired or invalid. Refreshing...");
         accessToken = null; // Clear the global token to force a refresh
-        throw new Error("Authentication failed, retrying...");
+        throw new Error("❌ Authentication failed, retrying...");
       }
 
       if (!response.ok) {
         throw new Error(
-          `Backend API request failed with status: ${response.status}`
+          `❌ Backend API request failed with status: ${response.status}`
         );
       }
 
@@ -178,7 +178,7 @@ async function processBackendData(conversationId) {
                   }
                 }
               } catch (e) {
-                console.error("Error parsing canvas content:", e);
+                console.error("❌ Error parsing canvas content:", e);
               }
             } // MODIFICATION: Extract custom instructions info
             if (content.content_type === "user_editable_context") {
@@ -208,30 +208,30 @@ async function processBackendData(conversationId) {
           [storageKey]: JSON.stringify(dataToCache),
         });
         console.log(
-          `Cached backend data for ${conversationId}. It will be removed in ${
+          `💾 Cached backend data for ${conversationId}. It will be removed in ${
             cacheDuration / 1000
           }s.`
         );
 
         setTimeout(() => {
           chrome.storage.local.remove(storageKey, () => {
-            console.log(`Cache for ${conversationId} has been cleared.`);
+            console.log(`🗑️ Cache for ${conversationId} has been cleared.`);
           });
         }, cacheDuration);
       } catch (e) {
-        console.error("Error writing to local storage cache:", e);
+        console.error("❌ Error writing to local storage cache:", e);
       }
 
       console.log("✅ Backend data processed.", additionalDataMap);
       return additionalDataMap; // Success, return the data
     } catch (error) {
       if (error.name === "AbortError") {
-        console.log("Fetch aborted for previous conversation.");
+        console.console.error("❌ Fetch aborted for previous conversation.");
         return new Map(); // Don't retry on abort
       }
       console.error(`❌ Attempt ${attempt} failed:`, error.message);
       if (attempt === maxRetries) {
-        console.error("All fetch attempts failed.");
+        console.error("❌ All fetch attempts failed.");
         return new Map(); // Return empty map after all retries fail
       }
       await new Promise((res) => setTimeout(res, 500)); // Wait before retrying
@@ -458,14 +458,14 @@ function addHoverListeners(
     '[data-testid^="conversation-turn-"]'
   );
   if (!turnElements.length) {
-    console.log("Elements still loading.");
+    console.log("⌛ Elements still loading.");
     debouncedRunTokenCheck();
     return;
   }
 
   let cumulativeTokens = 0;
   let maxcumulativeTokens = 0;
-  console.log("Updating token UI...");
+  console.log("💻 Updating token UI...");
   turnElements.forEach((turnElement) => {
     const testId = turnElement.dataset.testid;
     const messageIndex = parseInt(testId.replace("conversation-turn-", ""), 10);
@@ -779,7 +779,7 @@ function addHoverListeners(
  * Removes all token count UI elements and resets message styles.
  */
 function clearTokenUI() {
-  console.log("Clearing token UI...");
+  console.log("🗑️ Clearing token UI...");
   document
     .querySelectorAll(
       ".token-count-display, .extra-token-info, .token-status-container"
@@ -827,7 +827,7 @@ async function runTokenCheck() {
     const currentConversationId = window.location.pathname.split("/")[2];
     if (conversationId !== currentConversationId) {
       console.log(
-        `Stale data for ${conversationId} ignored; current chat is ${currentConversationId}.`
+        `🗑️ Stale data for ${conversationId} ignored; current chat is ${currentConversationId}.`
       );
       return; // Abort the UI update
     }
@@ -888,7 +888,7 @@ const applyTheme = async () => {
       });
     });
   } catch (error) {
-    console.error("An unexpected error occurred in applyTheme:", error);
+    console.error("❌ An unexpected error occurred in applyTheme:", error);
   }
 };
 
@@ -952,7 +952,7 @@ new MutationObserver((mutationList) => {
   if (url !== lastUrl) {
     lastUrl = url;
     lastTokenCount = 0;
-    console.log("URL changed, running token check immediately.");
+    console.log("🔄 URL changed, running token check immediately.");
     runTokenCheck();
   } else {
     let skip = false;
