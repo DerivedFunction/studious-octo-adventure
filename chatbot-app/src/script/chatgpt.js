@@ -556,9 +556,7 @@ function addHoverListeners(
 
   const { totalChatTokens, truncatedItems } = tokenData;
 
-  const turnElements = document.querySelectorAll(
-    '[data-testid^="conversation-turn-"]'
-  );
+  const turnElements = document.querySelectorAll("[data-message-id]");
   if (!turnElements.length) {
     console.log("⌛ Elements still loading.");
     debouncedRunTokenCheck();
@@ -568,19 +566,16 @@ function addHoverListeners(
   let cumulativeTokens = 0;
   let maxcumulativeTokens = 0;
   console.log("💻 Updating token UI...");
+
+  const allMessagesMap = new Map(allMessages.map((m) => [m.id, m]));
+
   turnElements.forEach((turnElement) => {
-    const testId = turnElement.dataset.testid;
-    const messageIndex = parseInt(testId.replace("conversation-turn-", ""), 10);
-    const originalMessageData = allMessages[messageIndex];
+    const messageId = turnElement.dataset.messageId;
+    const originalMessageData = allMessagesMap.get(messageId);
 
     if (!originalMessageData) return;
 
-    const authorRoleElement = turnElement.querySelector(
-      "[data-message-author-role]"
-    );
-    if (!authorRoleElement) return;
-
-    let tokenCountDiv = authorRoleElement.querySelector(".token-count-display");
+    let tokenCountDiv =  turnElement.querySelector(".token-count-display");
     if (!tokenCountDiv) {
       tokenCountDiv = document.createElement("div");
       tokenCountDiv.className = "token-count-display";
@@ -589,10 +584,10 @@ function addHoverListeners(
       tokenCountDiv.style.fontSize = "12px";
       tokenCountDiv.style.color = "var(--text-secondary)";
       tokenCountDiv.style.fontWeight = "normal";
-      authorRoleElement.appendChild(tokenCountDiv);
+       turnElement.appendChild(tokenCountDiv);
     }
 
-    let extraInfoDiv = authorRoleElement.querySelector(".extra-token-info");
+    let extraInfoDiv =  turnElement.querySelector(".extra-token-info");
     if (!extraInfoDiv) {
       extraInfoDiv = document.createElement("div");
       extraInfoDiv.className = "extra-token-info";
@@ -960,11 +955,9 @@ function clearTokenUI() {
       ".token-count-display, .extra-token-info, .token-status-container, .prompt-token-count"
     )
     .forEach((el) => el.remove());
-  document
-    .querySelectorAll('[data-testid^="conversation-turn-"]')
-    .forEach((turn) => {
-      turn.style.opacity = "1";
-    });
+  document.querySelectorAll("[data-message-id]").forEach((turn) => {
+    turn.style.opacity = "1";
+  });
 }
 
 /**
@@ -993,9 +986,7 @@ async function runTokenCheck() {
 
   const promptBox = document.querySelector("[contenteditable='true']");
   const promptText = promptBox ? promptBox.textContent || "" : "";
-  const turnCount = document.querySelectorAll(
-    '[data-testid^="conversation-turn-"]'
-  ).length;
+  const turnCount = document.querySelectorAll("[data-message-id]").length;
   const checkedItemsStr = JSON.stringify(Array.from(checkedItems).sort());
 
   const newState = {
