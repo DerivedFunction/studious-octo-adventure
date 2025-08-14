@@ -328,7 +328,11 @@ const ThemeableChatbot = () => {
                   "https://chat.openai.com/*",
                   "https://*.chatgpt.com/*",
                 ],
-                js: ["./script/theme.js", "./script/token.js"],
+                js: [
+                  "./script/theme.js",
+                  "./script/token.js",
+                  "./script/history.js",
+                ],
                 runAt: "document_end",
                 allFrames: true,
               },
