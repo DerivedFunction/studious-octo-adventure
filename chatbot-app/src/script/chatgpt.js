@@ -165,9 +165,25 @@ async function processBackendData(conversationId) {
                   const { textdoc_id, version } =
                     toolNode.message.metadata.canvas;
                   const contentNode = JSON.parse(node.message.content.parts[0]);
-                  const title = contentNode.name || "Canvas";
-                  const tokens = enc.encode(contentNode.content || "").length;
                   const attachToMessageId = toolNode.children?.[0];
+
+                  let title = "Canvas";
+                  let content = "";
+
+                  if (contentNode.content) {
+                    // Create operation
+                    content = contentNode.content || "";
+                    title = contentNode.name || "Canvas";
+                  } else if (contentNode.updates && contentNode.updates[0]) {
+                    // Update operation
+                    content = contentNode.updates[0].replacement || "";
+                    const existing = latestCanvasData.get(textdoc_id);
+                    if (existing) {
+                      title = existing.title; // Carry over title from previous version
+                    }
+                  }
+
+                  const tokens = enc.encode(content).length;
 
                   if (attachToMessageId) {
                     const existing = latestCanvasData.get(textdoc_id);
