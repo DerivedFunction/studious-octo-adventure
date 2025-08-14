@@ -89,9 +89,8 @@ async function getConversationFromDB(conversationId) {
 async function processBackendData(conversationId) {
   const storageKey = `backend_data_${conversationId}`;
   const cacheDuration = 3 * 60 * 1000; // 3 minutes
-  const maxRetries = 3;
+  const maxRetries = 3; // Try to load from cache first
 
-  // Try to load from cache first
   try {
     const result = await chrome.storage.local.get(storageKey);
     if (result[storageKey]) {
@@ -101,9 +100,8 @@ async function processBackendData(conversationId) {
     }
   } catch (e) {
     console.error("Error reading from local storage cache:", e);
-  }
+  } // If no cache, proceed with fetching, including retry logic.
 
-  // If no cache, proceed with fetching, including retry logic.
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     if (fetchController) {
       fetchController.abort();
@@ -143,9 +141,8 @@ async function processBackendData(conversationId) {
       }
 
       const conversationApiData = await response.json();
-      const additionalDataMap = new Map();
+      const additionalDataMap = new Map(); // Process the mapping to find file, canvas, and custom instructions metadata
 
-      // Process the mapping to find file and canvas metadata
       if (conversationApiData && conversationApiData.mapping) {
         for (const messageId in conversationApiData.mapping) {
           const node = conversationApiData.mapping[messageId];
@@ -153,14 +150,15 @@ async function processBackendData(conversationId) {
             const { metadata, content } = node.message;
             let fileInfo = null;
             let canvasInfo = null;
-            let targetMessageId = node.message.id;
+            let customInstructionsInfo = null;
+            let targetMessageId = node.message.id; // Extract file info
 
             if (metadata.attachments && metadata.attachments.length > 0) {
               fileInfo = metadata.attachments.map((file) => ({
                 name: file.name,
                 tokens: file.file_token_size || 0,
               }));
-            }
+            } // Extract canvas info
 
             if (
               node.message.recipient === "canmore.create_textdoc" &&
@@ -182,20 +180,28 @@ async function processBackendData(conversationId) {
               } catch (e) {
                 console.error("Error parsing canvas content:", e);
               }
-            }
+            } // MODIFICATION: Extract custom instructions info
+            if (content.content_type === "user_editable_context") {
+              customInstructionsInfo = {
+                profile_tokens: enc.encode(content.user_profile || "").length,
+                instructions_tokens: enc.encode(content.user_instructions || "")
+                  .length,
+              };
+            } // Aggregate all found data
 
-            if (fileInfo || canvasInfo) {
+            if (fileInfo || canvasInfo || customInstructionsInfo) {
               const existingData = additionalDataMap.get(targetMessageId) || {};
               additionalDataMap.set(targetMessageId, {
                 files: fileInfo || existingData.files,
                 canvas: canvasInfo || existingData.canvas,
+                customInstructions:
+                  customInstructionsInfo || existingData.customInstructions,
               });
             }
           }
         }
-      }
+      } // After successful processing, cache the result
 
-      // After successful processing, cache the result
       try {
         const dataToCache = Object.fromEntries(additionalDataMap);
         await chrome.storage.local.set({
@@ -255,10 +261,23 @@ function getEffectiveMessages(
   }));
 
   let baseTokenCost = 0;
-  const truncatedItems = new Set();
+  const truncatedItems = new Set(); // Calculate token cost of checked items and custom instructions first
 
-  // Calculate token cost of checked items first
   additionalDataMap.forEach((data, msgId) => {
+    // MODIFICATION: Add custom instructions tokens to base cost
+    if (data.customInstructions) {
+      const instrTokens =
+        data.customInstructions.profile_tokens +
+        data.customInstructions.instructions_tokens;
+      if (baseTokenCost + instrTokens > limit) {
+        // This case is unlikely but handled for safety
+        baseTokenCost = limit;
+      } else {
+        baseTokenCost += instrTokens;
+      }
+    }
+    if (baseTokenCost === limit) return;
+
     if (data.files) {
       data.files.forEach((file, index) => {
         const itemId = `file-${msgId}-${index}`;
@@ -290,9 +309,8 @@ function getEffectiveMessages(
 
   const remainingLimit = limit - baseTokenCost;
   let currentChatTokens = 0;
-  const effectiveMessages = [];
+  const effectiveMessages = []; // Now, fit chat messages into the remaining space
 
-  // Now, fit chat messages into the remaining space
   for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
     const message = messagesWithTokens[i];
     if (message.tokens === 0) continue;
@@ -529,9 +547,8 @@ function addHoverListeners(
       }
       extraInfoDiv.innerHTML = extraContent;
     }
-  });
+  }); // --- Status Div with Hover Popup ---
 
-  // --- Status Div with Hover Popup ---
   let statusContainer = document.querySelector(".token-status-container");
   const parent = document.querySelector(
     "#thread-bottom-container > div.text-token-text-secondary"
@@ -564,7 +581,8 @@ function addHoverListeners(
     }
 
     let fileDetailsHTML = "",
-      canvasDetailsHTML = "";
+      canvasDetailsHTML = "",
+      customInstructionsHTML = "";
 
     additionalDataMap.forEach((data, msgId) => {
       if (data.files) {
@@ -600,6 +618,19 @@ function addHoverListeners(
                   </label>
                   <span>${data.canvas.tokens}</span>
               </div>`;
+      } // MODIFICATION: Build HTML for custom instructions
+      if (data.customInstructions) {
+        customInstructionsHTML += `
+            <h4>Custom Instructions</h4>
+            <div class="token-item">
+                <span>👤 User Profile</span>
+                <span>${data.customInstructions.profile_tokens}</span>
+            </div>
+            <div class="token-item">
+                <span>🤖 Model Instructions</span>
+                <span>${data.customInstructions.instructions_tokens}</span>
+            </div>
+        `;
       }
     });
 
@@ -611,25 +642,24 @@ function addHoverListeners(
           <div class="token-section">
               <div class="token-item"><span>Chat Tokens (Effective/Total)</span> <span>${totalChatTokens} / ${maxcumulativeTokens}</span></div>
           </div>
+          ${customInstructionsHTML}
           ${
-            fileDetailsHTML
-              ? `<h4>Files</h4>
+      fileDetailsHTML
+        ? `<h4>Files</h4>
                 ${fileDetailsHTML}`
-              : ""
-          }
+        : ""
+    }
           ${
-            canvasDetailsHTML
-              ? `<h4>Canvas</h4>
+      canvasDetailsHTML
+        ? `<h4>Canvas</h4>
                 ${canvasDetailsHTML}`
-              : ""
-          }
+        : ""
+    }
           <div class="token-total-line">
               <span>Selected Total:</span>
               <span id="popup-total-tokens">${effectiveTotal} / ${maxTotal}</span>
           </div>
-           <div class="token-total-line" id="refreshData">Refresh</div>
-          
-
+          <div class="token-total-line" id="refreshData" style="cursor: pointer;">Refresh</div>
       `;
     statusDiv.textContent = `Effective tokens: ${effectiveTotal}/${limit} tokens.`;
     const conversationId = window.location.pathname.split("/")[2];
@@ -807,8 +837,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     changes.isScriptingEnabled
   ) {
     applyTheme();
-  }
-  // Re-run if the context window or checked items change for the current convo
+  } // Re-run if the context window or checked items change for the current convo
   const conversationId = window.location.pathname.split("/")[2];
   const checkedItemsKey = `checked_items_${conversationId}`;
   if (changes.contextWindow || (conversationId && changes[checkedItemsKey])) {
