@@ -166,7 +166,7 @@
                 background-color: var(--main-surface-primary, #ffffff); color: var(--text-primary, #000000);
                 border: 1px solid var(--border-medium, #e5e5e5);
                 border-radius: 16px; /* Increased border-radius for a softer look */
-                width: 75vw; height: 80vw; display: flex; flex-direction: column;
+                width: 80vw; height: 80vh; display: flex; flex-direction: column;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden;
                 transform: scale(0.95);
                 transition: transform 0.2s ease-in-out;
@@ -187,12 +187,25 @@
             #chm-content { flex-grow: 1; padding: 16px 20px; overflow-y: auto; }
             .chm-action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border-light); }
             .chm-action-bar-group { display: flex; align-items: center; gap: 12px; }
-            .chm-btn { padding: 8px 16px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; cursor: pointer; border: 1px solid var(--border-medium); transition: background-color 0.2s, border-color 0.2s; }
-            .chm-btn.action-archive { background-color: var(--main-surface-secondary); color: var(--text-primary); }
+            .chm-btn { 
+                padding: 8px 16px; 
+                border-radius: 9999px; /* Pill shape */
+                font-size: var(--text-sm, 0.875rem);
+                font-weight: var(--font-weight-medium, 500);
+                cursor: pointer; 
+                border-width: 1px;
+                border-style: solid;
+                transition: background-color 0.2s, border-color 0.2s; 
+            }
+            .chm-btn.action-archive { 
+                background-color: var(--main-surface-secondary); 
+                color: var(--text-primary); 
+                border-color: var(--border-medium);
+            }
             .chm-btn.action-archive:hover { background-color: var(--surface-hover); }
-            .chm-btn.action-delete { background-color: var(--text-danger, #ef4444); color: var(--main-surface-primary, #fff); border: none; }
-            .chm-btn.action-restore { background-color: var(--tag-blue, #08f); color: var(--main-surface-primary, #fff); border: none; }
-            .chm-btn.action-delete-perm { background-color: var(--text-danger, #ef4444); color: var(--main-surface-primary, #fff); border: none; }
+            .chm-btn.action-delete { background-color: var(--text-danger, #ef4444); color: #fff; border: none; }
+            .chm-btn.action-restore { background-color: var(--main-surface-secondary); color: var(--text-primary); border-color: var(--border-medium); }
+            .chm-btn.action-delete-perm { background-color: var(--text-danger, #ef4444); color: #fff; border: none; }
             .chm-conversation-item { display: flex; align-items: center; padding: 12px; border-radius: 8px; border: 1px solid transparent; transition: background-color 0.2s, border-color 0.2s; }
             .chm-conversation-item:hover { background-color: var(--surface-hover); }
             .chm-conversation-item .title { flex-grow: 1; margin: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -585,7 +598,6 @@
       toggleUiVisibility(!isVisible);
     }
   });
-
   console.log(
     "✅ [History Manager] Content script loaded. Press Ctrl+H to open."
   );
