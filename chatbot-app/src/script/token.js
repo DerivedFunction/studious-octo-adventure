@@ -10,6 +10,74 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
   /* eslint-disable no-undef */
 
+  // --- IndexedDB CACHE HELPER ---
+
+  const DB_NAME = "TokenManagerCacheDB";
+  const DB_VERSION = 1;
+  const STORE_NAME = "conversationCache";
+  let db; // To hold the database instance
+
+  /**
+   * Opens and initializes the IndexedDB for caching.
+   * @returns {Promise<IDBDatabase>} The database instance.
+   */
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      if (db) return resolve(db);
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onerror = (e) => reject("IndexedDB error: " + e.target.errorCode);
+      request.onsuccess = (e) => {
+        db = e.target.result;
+        resolve(db);
+      };
+      request.onupgradeneeded = (e) => {
+        const dbInstance = e.target.result;
+        if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
+          dbInstance.createObjectStore(STORE_NAME, { keyPath: "id" });
+        }
+      };
+    });
+  }
+
+  /**
+   * Retrieves an item from the IndexedDB cache.
+   * @param {string} id The conversation ID (key).
+   * @returns {Promise<object|null>} The cached data object or null.
+   */
+  async function getCacheFromDB(id) {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => resolve(null); // Resolve with null on error
+    });
+  }
+
+  /**
+   * Stores an item in the IndexedDB cache with a timestamp.
+   * @param {string} id The conversation ID (key).
+   * @param {object} data The data to cache.
+   */
+  async function setCacheInDB(id, data) {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    store.put({ id, data, timestamp: Date.now() });
+  }
+
+  /**
+   * Deletes an item from the IndexedDB cache.
+   * @param {string} id The conversation ID (key).
+   */
+  async function deleteCacheFromDB(id) {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    store.delete(id);
+  }
+
   // --- UTILITY FUNCTIONS ---
 
   /**
@@ -52,7 +120,10 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       accessToken = session.accessToken;
       return accessToken;
     } catch (error) {
-      console.error("❌ [Token Manager] Could not retrieve access token:", error);
+      console.error(
+        "❌ [Token Manager] Could not retrieve access token:",
+        error
+      );
       accessToken = null; // Reset on failure
       return null;
     }
@@ -83,27 +154,32 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   }
 
   /**
-   * Fetches detailed conversation data from the backend API, using a short-lived
-   * cache and retry mechanism to ensure data is fetched reliably.
+   * Fetches detailed conversation data from the backend API, using an IndexedDB
+   * cache to avoid redundant fetches.
    * @param {string} conversationId The ID of the conversation to fetch.
    * @returns {Promise<Map<string, object>>} A map where keys are message IDs and values contain file/canvas info.
    */
   async function processBackendData(conversationId) {
-    const storageKey = `backend_data_${conversationId}`;
     const cacheDuration = 3 * 60 * 1000; // 3 minutes
-    const maxRetries = 3; // Try to load from cache first
+    const maxRetries = 3;
 
+    // 1. Check IndexedDB for fresh cached data first.
     try {
-      const result = await chrome.storage.local.get(storageKey);
-      if (result[storageKey]) {
-        const cachedData = JSON.parse(result[storageKey]);
-        console.log(`🗄️ [Token Manager] Using cached backend data for ${conversationId}.`);
-        return new Map(Object.entries(cachedData));
+      const cached = await getCacheFromDB(conversationId);
+      if (cached && Date.now() - cached.timestamp < cacheDuration) {
+        console.log(
+          `🗄️ [Token Manager] Using fresh backend data from IndexedDB for ${conversationId}.`
+        );
+        return new Map(Object.entries(cached.data));
       }
     } catch (e) {
-      console.error("❌ [Token Manager] Error reading from local storage cache:", e);
-    } // If no cache, proceed with fetching, including retry logic.
+      console.error(
+        "❌ [Token Manager] Error reading from IndexedDB cache:",
+        e
+      );
+    }
 
+    // 2. If no fresh cache, proceed with fetching.
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       if (fetchController) {
         fetchController.abort();
@@ -133,7 +209,9 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         );
 
         if (response.status === 401 || response.status === 403) {
-          console.log("❌ [Token Manager] Access token expired or invalid. Refreshing...");
+          console.log(
+            "❌ [Token Manager] Access token expired or invalid. Refreshing..."
+          );
           accessToken = null; // Clear the global token to force a refresh
           throw new Error("❌ Authentication failed, retrying...");
         }
@@ -310,31 +388,30 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
           }
         }
 
+        // 3. After successful fetch, cache the data in IndexedDB.
         try {
           const dataToCache = Object.fromEntries(additionalDataMap);
-          await chrome.storage.local.set({
-            [storageKey]: JSON.stringify(dataToCache),
-          });
+          await setCacheInDB(conversationId, dataToCache);
           console.log(
-            `💾 Cached backend data for ${conversationId}. It will be removed in ${
-              cacheDuration / 1000
-            }s.`
+            `💾 [Token Manager] Cached backend data for ${conversationId} in IndexedDB.`
           );
-
-          setTimeout(() => {
-            chrome.storage.local.remove(storageKey, () => {
-              console.log(`🗑️ [Token Manager] Cache for ${conversationId} has been cleared.`);
-            });
-          }, cacheDuration);
         } catch (e) {
-          console.error("❌ [Token Manager] Error writing to local storage cache:", e);
+          console.error(
+            "❌ [Token Manager] Error writing to IndexedDB cache:",
+            e
+          );
         }
 
-        console.log("✅ [Token Manager] Backend data processed.", additionalDataMap);
+        console.log(
+          "✅ [Token Manager] Backend data processed.",
+          additionalDataMap
+        );
         return additionalDataMap; // Success, return the data
       } catch (error) {
         if (error.name === "AbortError") {
-          console.log("❌ [Token Manager] Fetch aborted for previous conversation.");
+          console.log(
+            "❌ [Token Manager] Fetch aborted for previous conversation."
+          );
           return new Map(); // Don't retry on abort
         }
         console.error(`❌ Attempt ${attempt} failed:`, error.message);
@@ -1029,7 +1106,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         if (e.target.id === "refreshData") {
           e.target.textContent = "Refreshing...";
           lastCheckState = {};
-          await chrome.storage.local.remove(`backend_data_${conversationId}`);
+          // UPDATED: Delete from IndexedDB instead of storage.local
+          await deleteCacheFromDB(conversationId);
           debouncedRunTokenCheck();
         }
       });
@@ -1185,7 +1263,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         const totalEffectiveTokens =
           tokenData.baseTokenCost + tokenData.totalChatTokens;
         console.log(
-          `📊 TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${totalEffectiveTokens} / ${contextWindow}`
+          `📊 [Token Manager] TOTAL TOKENS IN CONTEXT for "${conversationData.title}": ${totalEffectiveTokens} / ${contextWindow}`
         );
 
         addHoverListeners(
@@ -1225,17 +1303,9 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
   const debouncedRunTokenCheck = debounce(runTokenCheck, 3000);
   debouncedRunTokenCheck();
-  function clearOldCache() {
-    console.log("🗑️ [Token Manager] Clearing old cache...");
-    chrome.storage.local.get(null, (items) => {
-      for (const key in items) {
-        if (key.startsWith("backend_data_")) {
-          chrome.storage.local.remove(key);
-        }
-      }
-    });
-  }
-  clearOldCache();
+
+  // REMOVED: clearOldCache() is no longer needed as cache is managed by timestamps.
+
   let lastUrl = location.href;
   new MutationObserver((mutationList) => {
     const url = location.href;
