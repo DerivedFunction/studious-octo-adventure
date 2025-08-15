@@ -12,7 +12,7 @@
     DB_VERSION: 3, // Incremented version to force schema upgrade for all users
     CONVERSATION_STORE: "conversations",
     METADATA_STORE: "metadata",
-    CACHE_EXPIRATION_MS: 12 * 60 * 60 * 1000, // 12 hours
+    CACHE_EXPIRATION_MS: 60 * 1000, // 1 minute
     db: null,
 
     /**
@@ -199,9 +199,21 @@
   /**
    * Fetches ALL conversations (paged) from the server to fully sync the local cache.
    * This is the main data fetching function called on refresh or when cache is stale.
+   * Full load continues to load all conversations, while only loads the first iteration.
+   *
    */
-  async function syncAllConversationsWithServer() {
-    showLoader("Syncing with server...");
+  async function syncAllConversationsWithServer(fullLoad = 999) {
+    showLoader(
+      `${
+        fullLoad === 0
+          ? "Loading"
+          : `${
+              fullLoad === 999
+                ? "Syncing full history..."
+                : "Syncing partial history. Click refresh to fetch all"
+            }`
+      }`
+    );
     const token = await getAccessToken();
     if (!token) {
       hideLoader();
@@ -211,26 +223,36 @@
 
     try {
       let allItems = [];
+
       // Fetch both active and archived conversations
       for (const isArchived of [false, true]) {
         let offset = 0;
         let hasMore = true;
-        while (hasMore) {
+
+        let iterationCount = 0;
+
+        while (hasMore && iterationCount < fullLoad) {
           const response = await fetch(
             `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=100&is_archived=${isArchived}`,
             { headers: { authorization: `Bearer ${token}` } }
           );
-          if (!response.ok)
+
+          if (!response.ok) {
             throw new Error(
               `API request failed with status ${response.status}`
             );
+          }
+
           const data = await response.json();
           const items = data.items || [];
-          // FIX: Store the archive status as a number (1 for true, 0 for false) for robust indexing.
+
+          // Store the archive status as a number (1 for true, 0 for false) for robust indexing.
           items.forEach((item) => (item.is_archive = isArchived ? 1 : 0));
           allItems.push(...items);
+
           offset += items.length;
           hasMore = items.length > 0 && offset < data.total;
+          iterationCount++;
         }
       }
 
@@ -239,7 +261,7 @@
       );
 
       // Perform a clean sync: clear old data, add new data, and set the timestamp
-      await cacheManager.clearConversations();
+      if (fullLoad === 999) await cacheManager.clearConversations();
       await cacheManager.bulkAddConversations(allItems);
       await cacheManager.setMetadata("lastSyncTimestamp", Date.now());
 
@@ -553,9 +575,9 @@
           .forEach((cb) => (cb.checked = e.target.checked));
       });
     // Add listener for the new refresh button
-    document
-      .getElementById("chm-refresh-btn")
-      .addEventListener("click", syncAllConversationsWithServer);
+    document.getElementById("chm-refresh-btn").addEventListener("click", () => {
+      syncAllConversationsWithServer();
+    });
   }
 
   /**
@@ -747,10 +769,13 @@
     const lastSync = await cacheManager.getMetadata("lastSyncTimestamp");
     // If there's no cache or it's older than the expiration time, force a sync
     if (!lastSync || Date.now() - lastSync > cacheManager.CACHE_EXPIRATION_MS) {
-      console.log(`[History Manager] Cache is stale or missing. Forcing sync.`);
-      await syncAllConversationsWithServer();
+      console.log(
+        `[History Manager] Cache is stale or missing. Forcing minor sync.`
+      );
+      await syncAllConversationsWithServer(1);
     } else {
       console.log(`[History Manager] Cache is fresh. Loading from IndexedDB.`);
+      await syncAllConversationsWithServer(0);
       await loadConversationsForView(view);
     }
   }
