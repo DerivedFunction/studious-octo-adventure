@@ -691,7 +691,9 @@
               <input type="checkbox" data-id="${item.id}">
               <span class="chm-custom-checkbox"></span>
             </label>
-            <span class="title">${item.title || "Untitled"}</span>
+            <span class="title"><a href='$./c/${item.id}' target='_blank'>${
+            item.title || "Untitled"
+          }</a></span>
             <span class="time">${new Date(item.update_time).toLocaleTimeString(
               [],
               { hour: "numeric", minute: "2-digit" }
