@@ -1,27 +1,18 @@
 (() => {
-  // This IIFE (Immediately Invoked Function Expression) encapsulates the entire script
-  // to prevent conflicts with the ChatGPT page's own JavaScript.
-
-  // --- State Variables ---
   let accessToken = null;
-  let allConversations = []; // Store all fetched conversations for the current view
+  let allConversations = [];
   let currentView = "history";
   let uiInjected = false;
-  // ADDED: State for pagination
   let historyOffset = 0;
   let archivedOffset = 0;
   let historyTotal = 0;
   let archivedTotal = 0;
   let isLoadingMore = false;
 
-  // ADDED: Constants for caching
   const HISTORY_CACHE_KEY = "chm_history_cache";
   const ARCHIVED_CACHE_KEY = "chm_archived_cache";
 
-  // ADDED: Clear cache on initial load to ensure freshness
   clearCache();
-
-  // --- API Functions ---
 
   /**
    * Fetches and stores the access token. Caches the token after the first fetch.
@@ -60,11 +51,10 @@
   /**
    * Fetches conversations from the ChatGPT API.
    * @param {boolean} isArchived - Whether to fetch archived conversations.
-   * @param {number} offset - The starting point for fetching conversations. // CHANGED
-   * @returns {Promise<object>} An object containing conversation items and total count. // CHANGED
+   * @param {number} offset - The starting point for fetching conversations.
+   * @returns {Promise<object>} An object containing conversation items and total count.
    */
   async function fetchConversations(isArchived = false, offset = 0) {
-    // This function no longer shows the main loader, as it's used for loading more as well
     const token = await getAccessToken();
     if (!token) {
       return { items: [], total: 0 };
@@ -82,7 +72,6 @@
       if (!response.ok)
         throw new Error(`API request failed. Status: ${response.status}`);
       const data = await response.json();
-      // CHANGED: Return both items and total for pagination logic
       return { items: data.items || [], total: data.total || 0 };
     } catch (error) {
       console.error(
@@ -158,15 +147,34 @@
     }
   }
 
-  // --- UI Creation and Injection ---
-
   /**
    * Creates and injects the UI and CSS into the page.
    */
   function injectUI() {
     if (uiInjected) return;
 
-    // --- CSS Template ---
+    // Helper function to create elements with attributes and children
+    function createElement(tag, attributes, children = []) {
+      const el = document.createElement(tag);
+      for (const key in attributes) {
+        if (key === "className") {
+          el.className = attributes[key];
+        } else if (key === "style") {
+          Object.assign(el.style, attributes[key]);
+        } else {
+          el.setAttribute(key, attributes[key]);
+        }
+      }
+      children.forEach((child) => {
+        if (typeof child === "string") {
+          el.appendChild(document.createTextNode(child));
+        } else {
+          el.appendChild(child);
+        }
+      });
+      return el;
+    }
+
     const cssTemplate = `
               #chm-container {
                   position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -231,7 +239,6 @@
               
                   .chm-btn.action-secondary:hover { background-color: var(--surface-hover); }
               .chm-btn.action-delete, .chm-btn.action-delete-perm { background-color: var(--text-danger, #ef4444); color: #fff; border-color: transparent; }
-              /* ADDED: Style for the "Load More" button */
               .chm-load-more-btn { 
                   display: block; 
                   margin: 16px auto; 
@@ -285,68 +292,114 @@
               .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox::after { display: block; }
         `;
 
-    // --- HTML Template ---
-    const htmlTemplate = `
-        <div id="chm-modal">
-            <button id="chm-close-btn">&times;</button>
-            <div id="chm-tabs">
-                <button id="historyTab" class="active">History</button>
-                <button id="archivedTab">Archived</button>
-            </div>
-            <div id="chm-content">
-                <div id="historyView">
-                    <div class="chm-action-bar">
-                        <div class="chm-action-bar-group">
-                            <label for="selectAllHistory" class="chm-checkbox-label">
-                                <input type="checkbox" id="selectAllHistory">
-                                <span class="chm-custom-checkbox"></span>
-                                <span>Select All</span>
-                            </label>
-                            <select id="chm-time-filter">
-                                <option value="all">All time</option>
-                                <option value="1h">Last hour</option>
-                                <option value="24h">Last 24 hours</option>
-                                <option value="7d">Last 7 days</option>
-                                <option value="30d">Last 30 days</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div id="historyList"></div>
-                </div>
-                <div id="archivedView" style="display: none;">
-                    <div class="chm-action-bar">
-                            <div class="chm-action-bar-group">
-                             <label for="selectAllArchived" class="chm-checkbox-label">
-                                <input type="checkbox" id="selectAllArchived">
-                                <span class="chm-custom-checkbox"></span>
-                                <span>Select All</span>
-                            </label>
-                        </div>
-                    </div>
-                    <div id="archivedList"></div>
-                </div>
-            </div>
-            <div id="chm-footer">
-                <div id="history-actions">
-                       <button id="archiveSelectedBtn" class="chm-btn action-secondary">Archive</button>
-                       <button id="deleteSelectedBtn" class="chm-btn action-delete">Delete</button>
-                </div>
-                <div id="archived-actions" style="display: none;">
-                    <button id="restoreSelectedBtn" class="chm-btn action-secondary">Restore</button>
-                    <button id="deletePermanentBtn" class="chm-btn action-delete-perm">Delete Permanently</button>
-                </div>
-                
-            </div>
-            <div id="chm-loader" style="display: none;"><div></div></div>
-        </div>
-      `;
     const styleSheet = document.createElement("style");
-    styleSheet.innerText = cssTemplate;
+    styleSheet.textContent = cssTemplate;
     document.head.appendChild(styleSheet);
-    const container = document.createElement("div");
-    container.id = "chm-container";
-    container.innerHTML = htmlTemplate;
+
+    // Programmatically create all UI elements
+    const modal = createElement("div", { id: "chm-modal" }, [
+      createElement("button", { id: "chm-close-btn" }, ["×"]),
+      createElement("div", { id: "chm-tabs" }, [
+        createElement("button", { id: "historyTab", className: "active" }, [
+          "History",
+        ]),
+        createElement("button", { id: "archivedTab" }, ["Archived"]),
+      ]),
+      createElement("div", { id: "chm-content" }, [
+        createElement("div", { id: "historyView" }, [
+          createElement("div", { className: "chm-action-bar" }, [
+            createElement("div", { className: "chm-action-bar-group" }, [
+              createElement(
+                "label",
+                { for: "selectAllHistory", className: "chm-checkbox-label" },
+                [
+                  createElement("input", {
+                    type: "checkbox",
+                    id: "selectAllHistory",
+                  }),
+                  createElement("span", { className: "chm-custom-checkbox" }),
+                  createElement("span", {}, ["Select All"]),
+                ]
+              ),
+              createElement("select", { id: "chm-time-filter" }, [
+                createElement("option", { value: "all" }, ["All time"]),
+                createElement("option", { value: "1h" }, ["Last hour"]),
+                createElement("option", { value: "24h" }, ["Last 24 hours"]),
+                createElement("option", { value: "7d" }, ["Last 7 days"]),
+                createElement("option", { value: "30d" }, ["Last 30 days"]),
+              ]),
+            ]),
+          ]),
+          createElement("div", { id: "historyList" }),
+        ]),
+        createElement(
+          "div",
+          { id: "archivedView", style: { display: "none" } },
+          [
+            createElement("div", { className: "chm-action-bar" }, [
+              createElement("div", { className: "chm-action-bar-group" }, [
+                createElement(
+                  "label",
+                  { for: "selectAllArchived", className: "chm-checkbox-label" },
+                  [
+                    createElement("input", {
+                      type: "checkbox",
+                      id: "selectAllArchived",
+                    }),
+                    createElement("span", { className: "chm-custom-checkbox" }),
+                    createElement("span", {}, ["Select All"]),
+                  ]
+                ),
+              ]),
+            ]),
+            createElement("div", { id: "archivedList" }),
+          ]
+        ),
+      ]),
+      createElement("div", { id: "chm-footer" }, [
+        createElement("div", { id: "history-actions" }, [
+          createElement(
+            "button",
+            { id: "archiveSelectedBtn", className: "chm-btn action-secondary" },
+            ["Archive"]
+          ),
+          createElement(
+            "button",
+            { id: "deleteSelectedBtn", className: "chm-btn action-delete" },
+            ["Delete"]
+          ),
+        ]),
+        createElement(
+          "div",
+          { id: "archived-actions", style: { display: "none" } },
+          [
+            createElement(
+              "button",
+              {
+                id: "restoreSelectedBtn",
+                className: "chm-btn action-secondary",
+              },
+              ["Restore"]
+            ),
+            createElement(
+              "button",
+              {
+                id: "deletePermanentBtn",
+                className: "chm-btn action-delete-perm",
+              },
+              ["Delete Permanently"]
+            ),
+          ]
+        ),
+      ]),
+      createElement("div", { id: "chm-loader", style: { display: "none" } }, [
+        createElement("div", {}),
+      ]),
+    ]);
+
+    const container = createElement("div", { id: "chm-container" }, [modal]);
     document.body.appendChild(container);
+
     uiInjected = true;
     addEventListeners();
   }
@@ -398,8 +451,6 @@
       });
   }
 
-  // --- UI Logic and Event Handlers ---
-
   function toggleUiVisibility(show) {
     if (!uiInjected) {
       if (show) {
@@ -420,7 +471,6 @@
       }, 10);
     } else {
       container.classList.remove("visible");
-      // ADDED: Clear cache when the popup is closed
       clearCache();
       setTimeout(() => {
         container.style.display = "none";
@@ -429,7 +479,6 @@
   }
 
   function groupAndSortConversations(items) {
-    // Sort by update_time descending
     items.sort((a, b) => new Date(b.update_time) - new Date(a.update_time));
 
     const groups = {
@@ -474,28 +523,18 @@
 
   function renderConversations(groupedItems, containerId) {
     const container = document.getElementById(containerId);
-    // CHANGED: Don't clear innerHTML if we are loading more.
-    // We will clear it manually before the first render.
     let hasContent = allConversations.length > 0;
 
-    // Remove any existing "Load More" button before re-rendering
     const existingLoadMoreBtn = container.querySelector(".chm-load-more-btn");
     if (existingLoadMoreBtn) {
       existingLoadMoreBtn.remove();
     }
 
-    // Clear the container only if it's the first page load for this view
-    if (
-      (containerId === "historyList" && historyOffset === 100) ||
-      (containerId === "archivedList" && archivedOffset === 100)
-    ) {
-      container.innerHTML = "";
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
     }
 
-    // If it's the very first load, the container will be empty.
-    // If we are loading more, we just append new groups.
-    // This logic is simplified by re-grouping and re-rendering the whole list.
-    container.innerHTML = "";
+    const fragment = document.createDocumentFragment();
 
     for (const groupName in groupedItems) {
       const items = groupedItems[groupName];
@@ -503,34 +542,61 @@
         const header = document.createElement("h3");
         header.className = "chm-date-group-header";
         header.textContent = groupName;
-        container.appendChild(header);
+        fragment.appendChild(header);
 
         items.forEach((item) => {
           const itemEl = document.createElement("div");
           itemEl.className = "chm-conversation-item";
-          itemEl.innerHTML = `
-                          <label class="chm-checkbox-label">
-                              <input type="checkbox" data-id="${item.id}">
-                              <span class="chm-custom-checkbox"></span>
-                          </label>
-                          <span class="title">${item.title}</span>
-                          <span class="time">${new Date(
-                            item.update_time
-                          ).toLocaleTimeString([], {
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}</span>
-                      `;
-          container.appendChild(itemEl);
+
+          const itemFragment = document.createDocumentFragment();
+
+          const label = document.createElement("label");
+          label.className = "chm-checkbox-label";
+
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.dataset.id = item.id;
+
+          const customCheckbox = document.createElement("span");
+          customCheckbox.className = "chm-custom-checkbox";
+
+          label.appendChild(checkbox);
+          label.appendChild(customCheckbox);
+
+          const titleSpan = document.createElement("span");
+          titleSpan.className = "title";
+          titleSpan.textContent = item.title;
+
+          const timeSpan = document.createElement("span");
+          timeSpan.className = "time";
+          timeSpan.textContent = new Date(item.update_time).toLocaleTimeString(
+            [],
+            {
+              hour: "numeric",
+              minute: "2-digit",
+            }
+          );
+
+          itemFragment.appendChild(label);
+          itemFragment.appendChild(titleSpan);
+          itemFragment.appendChild(timeSpan);
+
+          itemEl.appendChild(itemFragment);
+          fragment.appendChild(itemEl);
         });
       }
     }
+    container.appendChild(fragment);
 
     if (!hasContent) {
-      container.innerHTML = `<p style="color: var(--text-tertiary); text-align: center; padding: 1rem;">No conversations found.</p>`;
+      const p = document.createElement("p");
+      p.style.color = "var(--text-tertiary)";
+      p.style.textAlign = "center";
+      p.style.padding = "1rem";
+      p.textContent = "No conversations found.";
+      container.appendChild(p);
     }
 
-    // ADDED: "Load More" button logic
     const total = currentView === "history" ? historyTotal : archivedTotal;
     if (allConversations.length < total) {
       const loadMoreBtn = document.createElement("button");
@@ -545,13 +611,12 @@
   }
 
   /**
-   * ADDED: Handles loading more conversations for the current view.
+   * Handles loading more conversations for the current view.
    */
   async function loadMoreConversations() {
     if (isLoadingMore) return;
     isLoadingMore = true;
 
-    // Update button state
     applyFilterAndRender();
 
     const isArchived = currentView === "archived";
@@ -561,7 +626,6 @@
 
     if (items.length > 0) {
       allConversations.push(...items);
-      // Update state for the next load
       if (isArchived) {
         archivedOffset += items.length;
         archivedTotal = total;
@@ -569,7 +633,6 @@
         historyOffset += items.length;
         historyTotal = total;
       }
-      // Cache the newly expanded list
       await cacheConversations();
     }
 
@@ -578,7 +641,7 @@
   }
 
   /**
-   * ADDED: Caches the current `allConversations` list to local storage.
+   * Caches the current `allConversations` list to local storage.
    */
   async function cacheConversations() {
     const cacheKey =
@@ -589,7 +652,9 @@
       total: currentView === "history" ? historyTotal : archivedTotal,
       timestamp: Date.now(),
     };
-    await chrome.storage.local.set({ [cacheKey]: dataToCache });
+    await chrome.storage.local.set({
+      [cacheKey]: dataToCache,
+    });
     console.log(
       `💾 [History Manager] Cached ${allConversations.length} conversations for ${currentView} view.`
     );
@@ -604,7 +669,6 @@
     const historyActions = document.getElementById("history-actions");
     const archivedActions = document.getElementById("archived-actions");
 
-    // Reset selection when switching views
     document.getElementById("selectAllHistory").checked = false;
     document.getElementById("selectAllArchived").checked = false;
 
@@ -624,7 +688,6 @@
       archivedActions.style.display = "flex";
     }
 
-    // CHANGED: Caching and loading logic
     showLoader();
     const cacheKey =
       view === "history" ? HISTORY_CACHE_KEY : ARCHIVED_CACHE_KEY;
@@ -647,7 +710,6 @@
       hideLoader();
     } else {
       console.log(`🌐 [History Manager] Fetching fresh ${view} conversations.`);
-      // Reset state for a fresh load
       allConversations = [];
       if (view === "history") {
         historyOffset = 0;
@@ -656,7 +718,6 @@
         archivedOffset = 0;
         archivedTotal = 0;
       }
-      // loadMore will fetch, set state, cache, and render
       await loadMoreConversations();
     }
     hideLoader();
@@ -667,7 +728,6 @@
     const listId = isArchived ? "archivedList" : "historyList";
     let conversationsToRender = allConversations;
 
-    // Filtering only applies to the history view
     if (!isArchived) {
       const range = document.getElementById("chm-time-filter").value;
       if (range !== "all") {
@@ -705,15 +765,11 @@
     ].map((cb) => cb.dataset.id);
 
     let targetIds = selectedIds;
-    let isOperatingOnAll = false;
 
     if (targetIds.length === 0) {
       alert("Please select at least one conversation.");
       return;
     }
-
-    // Special handling for bulk delete is now just a normal operation on selected items
-    // The "delete all" function is separate.
 
     let message, payload;
     switch (action) {
@@ -740,15 +796,13 @@
       const promises = targetIds.map((id) => updateConversation(id, payload));
       await Promise.all(promises);
 
-      // ADDED: Clear cache after a successful bulk action
       clearCache();
 
-      await switchView(currentView); // This will now force a fresh reload from the API
+      await switchView(currentView);
       hideLoader();
     }
   }
 
-  // --- Utility Functions ---
   function showLoader() {
     if (uiInjected)
       document.getElementById("chm-loader").style.display = "flex";
@@ -764,16 +818,14 @@
   }
 
   /**
-   * ADDED: Clears the conversation cache from local storage.
+   * Clears the conversation cache from local storage.
    */
   function clearCache() {
-    // This API is asynchronous but we often don't need to wait for it.
     chrome.storage.local.remove([HISTORY_CACHE_KEY, ARCHIVED_CACHE_KEY], () => {
       console.log("🧹 [History Manager] Local cache cleared.");
     });
   }
 
-  // --- Entry Point ---
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.key.toLowerCase() === "h") {
       e.preventDefault();
@@ -796,43 +848,96 @@
 
     const injectionLogic = () => {
       if (document.getElementById("chm-sidebar-btn")) {
-        return true; // Already injected
+        return true;
       }
       const sidebarNav = document.querySelector("aside");
       if (!sidebarNav) {
-        return false; // Target not found
+        return false;
       }
 
       console.log("🚀 [History Manager] Injecting sidebar button...");
 
-      const historyIconSVG = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
-          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-          <path d="M3 3v5h5" />
-          <path d="M12 7v5l4 2" />
-        </svg>
-      `;
+      // Helper function for creating namespaced SVG elements
+      function createSvgElement(tag, attributes) {
+        const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        for (const key in attributes) {
+          el.setAttribute(key, attributes[key]);
+        }
+        return el;
+      }
 
-      const buttonWrapper = document.createElement("div");
-      buttonWrapper.innerHTML = `
-        <div id="chm-sidebar-btn" tabindex="0" class="group __menu-item hoverable cursor-pointer">
-            <div class="flex min-w-0 items-center gap-1.5">
-                <div class="flex items-center justify-center icon">${historyIconSVG}</div>
-                <div class="flex min-w-0 grow items-center gap-2.5">
-                    <div class="truncate">History Manager</div>
-                </div>
-            </div>
-            <div class="trailing highlight text-token-text-tertiary">
-                <div class="touch:hidden">
-                    <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']">
-                        <kbd aria-label="Control"><span class="min-w-[1em]">Ctrl</span></kbd>
-                        <kbd><span class="min-w-[1em]">H</span></kbd>
-                    </div>
-                </div>
-            </div>
-        </div>
-      `;
-      const buttonElement = buttonWrapper.firstElementChild;
+      // Create SVG icon programmatically
+      const svgIcon = createSvgElement("svg", {
+        xmlns: "http://www.w3.org/2000/svg",
+        width: "20",
+        height: "20",
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        class: "icon",
+      });
+      svgIcon.appendChild(
+        createSvgElement("path", {
+          d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
+        })
+      );
+      svgIcon.appendChild(createSvgElement("path", { d: "M3 3v5h5" }));
+      svgIcon.appendChild(createSvgElement("path", { d: "M12 7v5l4 2" }));
+
+      // Create button structure programmatically
+      const buttonElement = document.createElement("div");
+      buttonElement.id = "chm-sidebar-btn";
+      buttonElement.tabIndex = 0;
+      buttonElement.className = "group __menu-item hoverable cursor-pointer";
+
+      const contentWrapper = document.createElement("div");
+      contentWrapper.className = "flex min-w-0 items-center gap-1.5";
+
+      const iconWrapper = document.createElement("div");
+      iconWrapper.className = "flex items-center justify-center icon";
+      iconWrapper.appendChild(svgIcon);
+
+      const textWrapper = document.createElement("div");
+      textWrapper.className = "flex min-w-0 grow items-center gap-2.5";
+      const text = document.createElement("div");
+      text.className = "truncate";
+      text.textContent = "History Manager";
+      textWrapper.appendChild(text);
+
+      contentWrapper.appendChild(iconWrapper);
+      contentWrapper.appendChild(textWrapper);
+
+      const trailingWrapper = document.createElement("div");
+      trailingWrapper.className = "trailing highlight text-token-text-tertiary";
+      const shortcutWrapper = document.createElement("div");
+      shortcutWrapper.className = "touch:hidden";
+      const shortcutInner = document.createElement("div");
+      shortcutInner.className =
+        "inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']";
+
+      const kbdCtrl = document.createElement("kbd");
+      kbdCtrl.setAttribute("aria-label", "Control");
+      const spanCtrl = document.createElement("span");
+      spanCtrl.className = "min-w-[1em]";
+      spanCtrl.textContent = "Ctrl";
+      kbdCtrl.appendChild(spanCtrl);
+
+      const kbdH = document.createElement("kbd");
+      const spanH = document.createElement("span");
+      spanH.className = "min-w-[1em]";
+      spanH.textContent = "H";
+      kbdH.appendChild(spanH);
+
+      shortcutInner.appendChild(kbdCtrl);
+      shortcutInner.appendChild(kbdH);
+      shortcutWrapper.appendChild(shortcutInner);
+      trailingWrapper.appendChild(shortcutWrapper);
+
+      buttonElement.appendChild(contentWrapper);
+      buttonElement.appendChild(trailingWrapper);
 
       buttonElement.addEventListener("click", (e) => {
         e.preventDefault();
@@ -844,7 +949,7 @@
       return true;
     };
 
-    const observer = new MutationObserver((mutations) => {
+    const observer = new MutationObserver(() => {
       injectionLogic();
     });
 
