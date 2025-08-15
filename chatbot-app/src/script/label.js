@@ -536,11 +536,6 @@
     const assignedLabelIds = new Set(chatLabels[conversationId] || []);
 
     const labelItems = Object.entries(labels).map(([id, { name, color }]) => {
-      console.log("Assigned labels:", assignedLabelIds);
-      console.log("Label ID:", id);
-      console.log("Label name:", name);
-      console.log("Label color:", color);
-      console.log(assignedLabelIds.has(id));
       return createElement("div", { className: "le-popover-label-item" }, [
         createElement("input", {
           type: "checkbox",
