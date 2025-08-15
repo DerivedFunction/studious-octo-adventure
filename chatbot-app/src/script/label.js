@@ -203,7 +203,7 @@
       .le-label-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; color: white; }
       .le-label-pill-clickable { cursor: pointer; transition: all 0.2s ease; padding: 8px 12px; font-size: 0.85rem; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
       .le-label-pill-clickable:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
-      .le-label-count { background-color: rgba(255,255,255,0.25); padding: 2px 6px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; margin-left: 4px; }
+      .le-label-count { padding: 2px 6px; border-radius: 50%; font-size: 1rem; font-weight: 600; margin-left: 6px; }
       .le-available-labels-grid { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 600px; margin: 0 auto; }
       .le-label-pill.in-search { cursor: pointer; }
       .le-label-pills-container { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -593,7 +593,7 @@
           style: { backgroundColor: color },
           "data-labelId": id,
           "data-labelName": name,
-          title: "Single-click to search. Double-click to delete.",
+          title: "Single-click to search.",
         },
         [name]
       );
@@ -602,7 +602,16 @@
         searchInput.value = name;
         handleSearch();
       });
-      pill.addEventListener("dblclick", () => handleDeleteLabel(id));
+      const deleteLabelBtn = createElement(
+        "span",
+        {
+          className: "le-label-count",
+          title: `Delete ${name}`,
+        },
+        ["×"]
+      );
+      pill.appendChild(deleteLabelBtn);
+      deleteLabelBtn.addEventListener("click", () => handleDeleteLabel(id));
       return pill;
     });
     const availableLabelsView = createElement(
@@ -631,7 +640,7 @@
               marginTop: "1.5rem",
             },
           },
-          ["Click a label to search, or double-click to delete it."]
+          ["Click a label to search"]
         ),
       ]
     );

@@ -191,7 +191,6 @@
         "❌ [History Manager] Could not retrieve access token:",
         error
       );
-      showError("Could not get access token. Please log into ChatGPT.");
       return null;
     }
   }
@@ -217,7 +216,6 @@
     const token = await getAccessToken();
     if (!token) {
       hideLoader();
-      showError("Could not sync. Invalid access token.");
       return;
     }
 
@@ -274,7 +272,6 @@
         "❌ [History Manager] Failed to sync conversations:",
         error
       );
-      showError("Failed to sync conversations. Please try again.");
     } finally {
       hideLoader();
     }
@@ -384,7 +381,7 @@
         #historyList > .chm-conversation-item + .chm-conversation-item, #archivedList > .chm-conversation-item + .chm-conversation-item { margin-top: 4px; }
         #chm-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border-light); }
         #chm-footer > div { display: flex; gap: 12px; }
-        #chm-loader { position: absolute; inset: 0; background: rgba(var(--main-surface-primary-rgb, 255, 255, 255), 0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-primary); }
+        #chm-loader { position: absolute; inset: 0; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-primary); }
         #chm-loader div { width: 24px; height: 24px; border: 4px solid var(--border-light); border-top-color: var(--text-primary); border-radius: 50%; animation: spin 1s linear infinite; }
         #chm-time-filter { background-color: var(--main-surface-secondary); border: 1px solid var(--border-medium); border-radius: 8px; padding: 8px; font-size: 0.875rem; color: var(--text-primary); }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -744,7 +741,6 @@
         "❌ [History Manager] Failed to load conversations from DB:",
         error
       );
-      showError("Could not load conversations from cache.");
     } finally {
       hideLoader();
     }
@@ -792,6 +788,7 @@
    * Applies the time filter (if active) and re-renders the current view's conversations.
    */
   function applyFilterAndRender() {
+    if (!uiInjected) return;
     const isArchived = currentView === "archived";
     const listId = isArchived ? "archivedList" : "historyList";
     let conversationsToRender = allConversations;
@@ -899,7 +896,7 @@
       }
 
       // Refresh the current view from the updated local cache (which is very fast)
-      await loadConversationsForView(currentView);
+      if (uiInjected) await loadConversationsForView(currentView);
       hideLoader();
     }
   }
@@ -915,9 +912,6 @@
   function hideLoader() {
     if (uiInjected)
       document.getElementById("chm-loader").style.display = "none";
-  }
-  function showError(message) {
-    alert(`[History Manager Error] ${message}`);
   }
 
   // --- Keyboard Shortcut (Ctrl+H) ---
