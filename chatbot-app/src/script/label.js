@@ -618,11 +618,11 @@
 
     if (labelEntries.length === 0) {
       contentArea.innerHTML = `
-        <div style="text-align: center; color: var(--text-tertiary); padding: 2rem;">
-          <p style="margin-bottom: 1rem;">No labels created yet.</p>
-          <p style="font-size: 0.9rem;">Click the tag icon next to any conversation to create your first label!</p>
-        </div>
-      `;
+      <div style="text-align: center; color: var(--text-tertiary); padding: 2rem;">
+        <p style="margin-bottom: 1rem;">No labels created yet.</p>
+        <p style="font-size: 0.9rem;">Click the tag icon next to any conversation to create your first label!</p>
+      </div>
+    `;
       return;
     }
 
@@ -637,39 +637,75 @@
     const pillsHTML = labelEntries
       .map(([id, { name, color }]) => {
         return `
-          <div class="le-label-pill le-label-pill-clickable" 
-               style="background-color:${color};" 
-               data-label-name="${name}"
-               title="Click to search for conversations with '${name}' label">
-            ${name}
-          </div>
-        `;
+        <div class="le-label-pill le-label-pill-clickable" 
+             style="background-color:${color};" 
+             data-label-id="${id}"
+             data-label-name="${name}"
+             title="Single-click to search.">
+          ${name}
+        </div>
+      `;
       })
       .join("");
 
     contentArea.innerHTML = `
-      <div style="text-align: center; padding: 2rem 1rem;">
-        <h3 style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 1rem; font-weight: 500;">
-          Available Labels
-        </h3>
-        <div class="le-available-labels-grid">
-          ${pillsHTML}
-        </div>
-        <p style="color: var(--text-tertiary); font-size: 0.85rem; margin-top: 1.5rem;">
-          Click on a label to search for conversations, or start typing to filter.
-        </p>
+    <div style="text-align: center; padding: 2rem 1rem;">
+      <h3 style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 1rem; font-weight: 500;">
+        Available Labels
+      </h3>
+      <div class="le-available-labels-grid">
+        ${pillsHTML}
       </div>
-    `;
+      <p style="color: var(--text-tertiary); font-size: 0.85rem; margin-top: 1.5rem;">
+        Click on a label to search, or double-click to delete it.
+      </p>
+    </div>
+  `;
 
-    // Add click handlers to the pills
+    // --- Attach Event Listeners ---
     contentArea.querySelectorAll(".le-label-pill-clickable").forEach((pill) => {
+      // SINGLE-CLICK: Trigger search
       pill.addEventListener("click", () => {
         const labelName = pill.dataset.labelName;
         const searchInput = document.getElementById("le-search-input");
         searchInput.value = labelName;
-        handleSearch(); // Trigger search with the clicked label
+        handleSearch();
+      });
+      // DOUBLE-CLICK: Trigger delete
+      pill.addEventListener("dblclick", () => {
+        const labelId = pill.dataset.labelId;
+        handleDeleteLabel(labelId);
       });
     });
+  }
+  /**
+   * Deletes a label and all its associations from the stored data.
+   * @param {string} labelIdToDelete - The ID of the label to delete.
+   */
+  async function handleDeleteLabel(labelIdToDelete) {
+    if (!labelIdToDelete) return;
+
+    console.log(`[Label Explorer] Deleting label ID: ${labelIdToDelete}`);
+
+    // 1. Remove the label definition itself from the 'labels' object.
+    delete appState.data.labels[labelIdToDelete];
+
+    // 2. Go through every chat and remove any reference to the deleted label.
+    for (const chatId in appState.data.chatLabels) {
+      appState.data.chatLabels[chatId] = appState.data.chatLabels[
+        chatId
+      ].filter((id) => id !== labelIdToDelete);
+      // If a chat no longer has any labels, remove its entry to keep data clean.
+      if (appState.data.chatLabels[chatId].length === 0) {
+        delete appState.data.chatLabels[chatId];
+      }
+    }
+
+    // 3. Save the changes to storage.
+    await saveStoredData(appState.data);
+
+    // 4. Refresh the UI to show the label is gone.
+    showAvailableLabels();
   }
 
   /**
@@ -685,31 +721,94 @@
       return;
     }
 
-    contentArea.innerHTML = "";
+    contentArea.innerHTML = ""; // Clear previous results
     const fragment = document.createDocumentFragment();
+
     conversations.forEach((convo) => {
-      const itemEl = document.createElement("a");
+      const itemEl = document.createElement("div");
       itemEl.className = "le-conversation-item";
-      itemEl.href = `/c/${convo.id}`;
-      itemEl.target = "_blank"; // Open in new tab for convenience
 
       const assignedLabelIds = chatLabels[convo.id] || [];
+
+      // MODIFICATION 1: Add data-attributes to each pill for identification.
       const pillsHTML = assignedLabelIds
         .map((id) => {
           const label = labels[id];
           return label
-            ? `<div class="le-label-pill" style="background-color:${label.color};">${label.name}</div>`
+            ? `<div class="le-label-pill" 
+                 data-label-id="${id}" 
+                 data-convo-id="${convo.id}" 
+                 style="background-color:${label.color};" 
+                 title="Double-click to remove label">
+                 ${label.name}
+            </div>`
             : "";
         })
         .join("");
 
       itemEl.innerHTML = `
-        <span class="title">${convo.title}</span>
-        <div class="le-label-pills-container">${pillsHTML}</div>
-      `;
+      <a class="title" href="/c/${convo.id}" target="_blank">${convo.title}</a>
+      <div class="le-label-pills-container">${pillsHTML}</div>
+    `;
       fragment.appendChild(itemEl);
     });
+
     contentArea.appendChild(fragment);
+
+    // MODIFICATION 2: Add event listeners for the new delete functionality.
+    contentArea.querySelectorAll(".le-label-pill").forEach((pill) => {
+      // Double-click to INITIATE removal
+      pill.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // If already confirming, do nothing
+        if (pill.dataset.confirmDelete) return;
+
+        const originalText = pill.textContent.trim();
+        pill.dataset.originalText = originalText; // Store original text
+        pill.dataset.confirmDelete = "true";
+        pill.innerHTML = `<del>${originalText}</del>`; // Strikethrough for visual cue
+        pill.style.opacity = "0.8";
+
+        // Set a timer to revert the pill's state if not confirmed
+        setTimeout(() => {
+          if (pill.dataset.confirmDelete === "true") {
+            pill.textContent = pill.dataset.originalText;
+            delete pill.dataset.confirmDelete;
+            delete pill.dataset.originalText;
+            pill.style.opacity = "1";
+          }
+        }, 3000); // 3-second window to confirm
+      });
+
+      // Single-click to CONFIRM removal
+      pill.addEventListener("click", async (e) => {
+        if (pill.dataset.confirmDelete === "true") {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const labelId = pill.dataset.labelId;
+          const convoId = pill.dataset.convoId;
+          const chatLabelsForConvo = appState.data.chatLabels[convoId];
+
+          if (chatLabelsForConvo) {
+            // Remove the label ID from the array
+            appState.data.chatLabels[convoId] = chatLabelsForConvo.filter(
+              (id) => id !== labelId
+            );
+
+            // If no labels are left for this chat, remove the chat entry
+            if (appState.data.chatLabels[convoId].length === 0) {
+              delete appState.data.chatLabels[convoId];
+            }
+
+            await saveStoredData(appState.data);
+            pill.remove(); // Remove the pill from the DOM for instant feedback
+          }
+        }
+      });
+    });
   }
 
   // --- 4. SIDEBAR BUTTON INJECTION ---
