@@ -960,7 +960,7 @@
     if (navElement) {
       observer.observe(navElement, { childList: true, subtree: true });
       // Initial run for already present chats
-      setTimeout(navElement.querySelectorAll('a[href^="/c/"]').forEach(injectSidebarUI), 3000);
+      setTimeout(() => { navElement.querySelectorAll('a[href^="/c/"]').forEach(injectSidebarUI) }, 3000);
     } else {
       // If nav isn't ready, retry
       setTimeout(initializeSidebarObserver, 1000);
