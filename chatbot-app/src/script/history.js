@@ -263,7 +263,8 @@
       // Perform a clean sync: clear old data, add new data, and set the timestamp
       if (fullLoad === 999) await cacheManager.clearConversations();
       await cacheManager.bulkAddConversations(allItems);
-      await cacheManager.setMetadata("lastSyncTimestamp", Date.now());
+      if (fullLoad > 0)
+        await cacheManager.setMetadata("lastSyncTimestamp", Date.now());
 
       // Refresh the current view with the newly synced data
       await loadConversationsForView(currentView);
