@@ -1,90 +1,264 @@
 (() => {
+  // Global state variables
   let accessToken = null;
-  let allConversations = [];
+  let allConversations = []; // This now holds only the conversations for the *current* view
   let currentView = "history";
   let uiInjected = false;
-  let historyOffset = 0;
-  let archivedOffset = 0;
-  let historyTotal = 0;
-  let archivedTotal = 0;
-  let isLoadingMore = false;
 
-  const HISTORY_CACHE_KEY = "chm_history_cache";
-  const ARCHIVED_CACHE_KEY = "chm_archived_cache";
+  // --- IndexedDB Cache Manager ---
+  // This object handles all interactions with the local database.
+  const cacheManager = {
+    DB_NAME: "ConversationManagerDB",
+    DB_VERSION: 3, // Incremented version to force schema upgrade for all users
+    CONVERSATION_STORE: "conversations",
+    METADATA_STORE: "metadata",
+    CACHE_EXPIRATION_MS: 12 * 60 * 60 * 1000, // 12 hours
+    db: null,
 
-  clearCache();
+    /**
+     * Opens and initializes the IndexedDB database.
+     * @returns {Promise<IDBDatabase>} The database instance.
+     */
+    async openDB() {
+      if (this.db) return this.db;
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+        request.onerror = (e) =>
+          reject("IndexedDB error: " + e.target.errorCode);
+        request.onsuccess = (e) => {
+          this.db = e.target.result;
+          resolve(this.db);
+        };
+        // This function runs only when the DB_VERSION changes or DB is first created.
+        request.onupgradeneeded = (e) => {
+          console.log("[History Manager] Upgrading IndexedDB schema...");
+          const dbInstance = e.target.result;
+          const transaction = e.target.transaction;
+
+          // --- Conversation Store Setup ---
+          let conversationStore;
+          // Create store if it doesn't exist
+          if (!dbInstance.objectStoreNames.contains(this.CONVERSATION_STORE)) {
+            conversationStore = dbInstance.createObjectStore(
+              this.CONVERSATION_STORE,
+              { keyPath: "id" }
+            );
+          } else {
+            // Otherwise, get a reference to the existing store
+            conversationStore = transaction.objectStore(
+              this.CONVERSATION_STORE
+            );
+          }
+
+          // Defensively check for and create the index. This is the key fix.
+          if (!conversationStore.indexNames.contains("is_archived_idx")) {
+            conversationStore.createIndex("is_archived_idx", "is_archive", {
+              unique: false,
+            });
+            console.log("[History Manager] Created 'is_archived_idx' index.");
+          }
+
+          // --- Metadata Store Setup ---
+          if (!dbInstance.objectStoreNames.contains(this.METADATA_STORE)) {
+            dbInstance.createObjectStore(this.METADATA_STORE, {
+              keyPath: "key",
+            });
+          }
+        };
+      });
+    },
+
+    /**
+     * Retrieves a metadata value (e.g., last sync timestamp).
+     * @param {string} key The key for the metadata entry.
+     * @returns {Promise<any|null>} The metadata value or null.
+     */
+    async getMetadata(key) {
+      const db = await this.openDB();
+      return new Promise((resolve) => {
+        const transaction = db.transaction(this.METADATA_STORE, "readonly");
+        const store = transaction.objectStore(this.METADATA_STORE);
+        const request = store.get(key);
+        request.onsuccess = () =>
+          resolve(request.result ? request.result.value : null);
+        request.onerror = () => resolve(null);
+      });
+    },
+
+    /**
+     * Stores a metadata value.
+     * @param {string} key The key for the metadata entry.
+     * @param {any} value The value to store.
+     */
+    async setMetadata(key, value) {
+      const db = await this.openDB();
+      const transaction = db.transaction(this.METADATA_STORE, "readwrite");
+      const store = transaction.objectStore(this.METADATA_STORE);
+      store.put({ key, value });
+    },
+
+    /**
+     * Retrieves all conversations for a specific view (history or archived).
+     * @param {boolean} isArchived - True to get archived, false for history.
+     * @returns {Promise<Array>} An array of conversation objects.
+     */
+    async getConversations(isArchived) {
+      const db = await this.openDB();
+      return new Promise((resolve) => {
+        const transaction = db.transaction(this.CONVERSATION_STORE, "readonly");
+        const store = transaction.objectStore(this.CONVERSATION_STORE);
+        const index = store.index("is_archived_idx");
+        // FIX: Use a number (0 or 1) as the key, which is a universally valid key type.
+        const key = isArchived ? 1 : 0;
+        const request = index.getAll(key);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => resolve([]);
+      });
+    },
+
+    /**
+     * Adds or updates a batch of conversations in the database.
+     * @param {Array<object>} conversations - The conversations to add/update.
+     */
+    async bulkAddConversations(conversations) {
+      const db = await this.openDB();
+      const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
+      const store = transaction.objectStore(this.CONVERSATION_STORE);
+      conversations.forEach((convo) => store.put(convo));
+      return new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    },
+
+    /**
+     * Updates a single conversation in the database with new properties.
+     * @param {string} id - The ID of the conversation to update.
+     * @param {object} changes - An object with properties to update (e.g., { is_archive: 1 }).
+     */
+    async updateConversation(id, changes) {
+      const db = await this.openDB();
+      const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
+      const store = transaction.objectStore(this.CONVERSATION_STORE);
+      const request = store.get(id);
+      request.onsuccess = () => {
+        const conversation = request.result;
+        if (conversation) {
+          Object.assign(conversation, changes);
+          store.put(conversation);
+        }
+      };
+    },
+
+    /**
+     * Deletes multiple conversations from the database by their IDs.
+     * @param {Array<string>} ids - An array of conversation IDs to delete.
+     */
+    async deleteConversations(ids) {
+      const db = await this.openDB();
+      const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
+      const store = transaction.objectStore(this.CONVERSATION_STORE);
+      ids.forEach((id) => store.delete(id));
+    },
+
+    /**
+     * Clears all conversations from the database. Used during a full sync.
+     */
+    async clearConversations() {
+      const db = await this.openDB();
+      const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
+      transaction.objectStore(this.CONVERSATION_STORE).clear();
+    },
+  };
+  // --- End of Cache Manager ---
 
   /**
-   * Fetches and stores the access token. Caches the token after the first fetch.
+   * Fetches and stores the access token.
    * @returns {Promise<string|null>} The access token or null if it fails.
    */
   async function getAccessToken() {
-    if (accessToken) {
-      return accessToken;
-    }
+    if (accessToken) return accessToken;
     console.log("🔑 [History Manager] Fetching new access token...");
     try {
       const response = await fetch("https://chatgpt.com/api/auth/session");
-      if (!response.ok)
-        throw new Error(
-          `Failed to fetch auth session. Status: ${response.status}`
-        );
+      if (!response.ok) throw new Error(`Status: ${response.status}`);
       const session = await response.json();
-      if (!session.accessToken)
-        throw new Error("Access token not found in session response.");
+      if (!session.accessToken) throw new Error("Access token not found.");
       accessToken = session.accessToken;
-      console.log("✅ [History Manager] Access token retrieved successfully.");
       return accessToken;
     } catch (error) {
       console.error(
         "❌ [History Manager] Could not retrieve access token:",
         error
       );
-      showError(
-        "Could not get access token. Please make sure you are logged into ChatGPT."
-      );
-      accessToken = null;
+      showError("Could not get access token. Please log into ChatGPT.");
       return null;
     }
   }
 
   /**
-   * Fetches conversations from the ChatGPT API.
-   * @param {boolean} isArchived - Whether to fetch archived conversations.
-   * @param {number} offset - The starting point for fetching conversations.
-   * @returns {Promise<object>} An object containing conversation items and total count.
+   * Fetches ALL conversations (paged) from the server to fully sync the local cache.
+   * This is the main data fetching function called on refresh or when cache is stale.
    */
-  async function fetchConversations(isArchived = false, offset = 0) {
+  async function syncAllConversationsWithServer() {
+    showLoader("Syncing with server...");
     const token = await getAccessToken();
     if (!token) {
-      return { items: [], total: 0 };
+      hideLoader();
+      showError("Could not sync. Invalid access token.");
+      return;
     }
 
     try {
-      const response = await fetch(
-        `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=100&is_archived=${isArchived}`,
-        {
-          headers: {
-            authorization: `Bearer ${token}`,
-          },
+      let allItems = [];
+      // Fetch both active and archived conversations
+      for (const isArchived of [false, true]) {
+        let offset = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const response = await fetch(
+            `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=100&is_archived=${isArchived}`,
+            { headers: { authorization: `Bearer ${token}` } }
+          );
+          if (!response.ok)
+            throw new Error(
+              `API request failed with status ${response.status}`
+            );
+          const data = await response.json();
+          const items = data.items || [];
+          // FIX: Store the archive status as a number (1 for true, 0 for false) for robust indexing.
+          items.forEach((item) => (item.is_archive = isArchived ? 1 : 0));
+          allItems.push(...items);
+          offset += items.length;
+          hasMore = items.length > 0 && offset < data.total;
         }
+      }
+
+      console.log(
+        `[History Manager] Fetched a total of ${allItems.length} conversations. Updating cache.`
       );
-      if (!response.ok)
-        throw new Error(`API request failed. Status: ${response.status}`);
-      const data = await response.json();
-      return { items: data.items || [], total: data.total || 0 };
+
+      // Perform a clean sync: clear old data, add new data, and set the timestamp
+      await cacheManager.clearConversations();
+      await cacheManager.bulkAddConversations(allItems);
+      await cacheManager.setMetadata("lastSyncTimestamp", Date.now());
+
+      // Refresh the current view with the newly synced data
+      await loadConversationsForView(currentView);
+      console.log("✅ [History Manager] Cache sync complete.");
     } catch (error) {
       console.error(
-        `❌ [History Manager] Failed to fetch conversations:`,
+        "❌ [History Manager] Failed to sync conversations:",
         error
       );
-      showError(`Failed to load conversations.`);
-      return { items: [], total: 0 };
+      showError("Failed to sync conversations. Please try again.");
+    } finally {
+      hideLoader();
     }
   }
 
   /**
-   * Updates a conversation's properties (archive, delete, restore).
+   * Updates a single conversation's properties on the server.
    * @param {string} conversationId - The ID of the conversation.
    * @param {object} payload - The data to send in the PATCH request body.
    * @returns {Promise<boolean>} True on success, false on failure.
@@ -92,7 +266,6 @@
   async function updateConversation(conversationId, payload) {
     const token = await getAccessToken();
     if (!token) return false;
-
     try {
       const response = await fetch(
         `https://chatgpt.com/backend-api/conversation/${conversationId}`,
@@ -109,38 +282,6 @@
     } catch (error) {
       console.error(
         `❌ [History Manager] Failed to update conversation ${conversationId}:`,
-        error
-      );
-      return false;
-    }
-  }
-
-  /**
-   * Deletes ALL conversations, including archived ones. This is a destructive action.
-   * @returns {Promise<boolean>} True on success, false on failure.
-   */
-  async function deleteAllConversations() {
-    const token = await getAccessToken();
-    if (!token) return false;
-
-    try {
-      const response = await fetch(
-        `https://chatgpt.com/backend-api/conversations`,
-        {
-          headers: {
-            authorization: `Bearer ${token}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            is_visible: false,
-          }),
-          method: "PATCH",
-        }
-      );
-      return response.ok;
-    } catch (error) {
-      console.error(
-        `❌ [History Manager] Failed to delete all conversations:`,
         error
       );
       return false;
@@ -176,127 +317,92 @@
     }
 
     const cssTemplate = `
-              #chm-container {
-                  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-                  background-color: rgba(0, 0, 0, 0.6); z-index: 9999;
-                  display: flex; align-items: center; justify-content: center; font-family: inherit;
-                  opacity: 0; transition: opacity 0.2s ease-in-out;
-              }
-              #chm-container.visible {
-                  opacity: 1;
-              }
-              #chm-modal {
-                  position: relative;
-                  background-color: var(--main-surface-primary, #ffffff); color: var(--text-primary, #000000);
-                  border: 1px solid var(--border-medium, #e5e5e5);
-                  border-radius: 16px;
-                  width: 80vw; height: 80vh; display: flex; flex-direction: column;
-                  box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden;
-                  transform: scale(0.95);
-                  transition: transform 0.2s ease-in-out;
-              }
-              #chm-container.visible #chm-modal {
-                  transform: scale(1);
-              }
-              #chm-close-btn { 
-                  position: absolute;
-                  top: 8px;
-                  right: 16px;
-                  z-index: 10;
-                  background: none; 
-                  border: none; 
-                  font-size: 1.5rem; 
-                  cursor: pointer; 
-                  color: var(--text-tertiary); 
-                  transition: color 0.2s; 
-              }
-              #chm-close-btn:hover { color: var(--text-secondary); }
-              #chm-tabs { display: flex; border-bottom: 1px solid var(--border-light); padding-top: 8px; padding-left: 16px; padding-right: 16px;}
-              #chm-tabs button { flex-grow: 0; padding: 12px 16px; font-weight: 500; border: none; background: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--text-secondary); }
-              #chm-tabs button.active { color: var(--text-primary); border-bottom-color: var(--text-primary, #000); }
-              #chm-content { 
-                  flex-grow: 1; 
-                  padding: 16px 24px;
-                  overflow-y: auto; 
-              }
-              .chm-action-bar { 
-                  display: flex; 
-                  justify-content: space-between; 
-                  align-items: center; 
-                  margin-bottom: 16px; 
-              }
-              .chm-action-bar-group { display: flex; align-items: center; gap: 12px; }
-              .chm-btn { 
-                  padding: 8px 16px; 
-                  border-radius: 100px; 
-                  font-size: var(--text-sm, 0.875rem);
-                  font-weight: var(--font-weight-medium, 500);
-                  cursor: pointer; 
-                  border-width: 1px;
-                  border-style: solid;
-                  transition: background-color 0.2s, border-color 0.2s; 
-              }
-              
-                  .chm-btn.action-secondary:hover { background-color: var(--surface-hover); }
-              .chm-btn.action-delete, .chm-btn.action-delete-perm { background-color: var(--text-danger, #ef4444); color: #fff; border-color: transparent; }
-              .chm-load-more-btn { 
-                  display: block; 
-                  margin: 16px auto; 
-                  background-color: var(--main-surface-secondary); 
-                  color: var(--text-primary);
-                  border-color: var(--border-medium);
-              }
-              .chm-load-more-btn:hover { background-color: var(--surface-hover); }
-              .chm-conversation-item { 
-                  display: flex; 
-                  align-items: center; 
-                  padding: 8px 12px;
-                  border-radius: 8px; 
-                  border: 1px solid transparent; 
-                  transition: background-color 0.2s, border-color 0.2s; 
-              }
-              .chm-conversation-item:hover { background-color: var(--surface-hover); }
-              .chm-conversation-item .title { flex-grow: 1; margin: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-              .chm-conversation-item .time { font-size: 0.8rem; color: var(--text-tertiary); }
-              #historyList, #archivedList { padding-top: 8px; }
-              .chm-date-group-header { 
-                  font-weight: 500; 
-                  color: var(--text-secondary); 
-                  padding: 12px 4px 4px 4px;
-                  font-size: 0.8rem; 
-                  text-transform: uppercase; 
-              }
-              #historyList > .chm-conversation-item + .chm-conversation-item, #archivedList > .chm-conversation-item + .chm-conversation-item { margin-top: 4px; }
-              #chm-footer {
-                  display: flex;
-                  justify-content: flex-end;
-                  align-items: center;
-                  gap: 12px;
-                  padding: 16px 24px;
-                  border-top: 1px solid var(--border-light);
-              }
-              #chm-footer > div {
-                  display: flex;
-                  gap: 12px;
-              }
-              #chm-loader { position: absolute; inset: 0; background: var(--main-surface-primary); display: flex; align-items: center; justify-content: center; }
-              #chm-loader div { width: 24px; height: 24px; border: 4px solid var(--border-light); border-top-color: var(--text-primary); border-radius: 50%; animation: spin 1s linear infinite; }
-              #chm-time-filter { background-color: var(--main-surface-secondary); border: 1px solid var(--border-medium); border-radius: 8px; padding: 8px; font-size: 0.875rem; color: var(--text-primary); }
-              @keyframes spin { to { transform: rotate(360deg); } }
-              .chm-checkbox-label { display: flex; align-items: center; cursor: pointer; user-select: none; gap: 8px; }
-              .chm-checkbox-label input[type="checkbox"] { position: absolute; opacity: 0; height: 0; width: 0; }
-              .chm-custom-checkbox { position: relative; display: inline-block; width: 18px; height: 18px; background-color: transparent; border: 1px solid var(--text-tertiary, #8e8ea0); border-radius: 4px; transition: all 0.2s ease; }
-              .chm-checkbox-label:hover .chm-custom-checkbox { border-color: var(--text-secondary, #6b6b7b); }
-              .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox { background-color: var(--accent-primary, #10a37f); border-color: var(--accent-primary, #10a37f); }
-              .chm-custom-checkbox::after { content: ''; position: absolute; display: none; left: 6px; top: 2px; width: 4px; height: 9px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); }
-              .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox::after { display: block; }
-        `;
+        #chm-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; font-family: inherit; opacity: 0; transition: opacity 0.2s ease-in-out; }
+        #chm-container.visible { opacity: 1; }
+        #chm-modal { position: relative; background-color: var(--main-surface-primary, #ffffff); color: var(--text-primary, #000000); border: 1px solid var(--border-medium, #e5e5e5); border-radius: 16px; width: 80vw; height: 80vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; transform: scale(0.95); transition: transform 0.2s ease-in-out; }
+        #chm-container.visible #chm-modal { transform: scale(1); }
+        #chm-close-btn { position: absolute; top: 8px; right: 16px; z-index: 10; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-tertiary); transition: color 0.2s; }
+        #chm-close-btn:hover { color: var(--text-secondary); }
+        #chm-tabs { display: flex; border-bottom: 1px solid var(--border-light); padding-top: 8px; padding-left: 16px; padding-right: 16px;}
+        #chm-tabs button { flex-grow: 0; padding: 12px 16px; font-weight: 500; border: none; background: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--text-secondary); }
+        #chm-tabs button.active { color: var(--text-primary); border-bottom-color: var(--text-primary, #000); }
+        #chm-content { flex-grow: 1; padding: 16px 24px; overflow-y: auto; }
+        .chm-action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .chm-action-bar-group { display: flex; align-items: center; gap: 12px; }
+        .chm-btn { padding: 8px 16px; border-radius: 100px; font-size: var(--text-sm, 0.875rem); font-weight: var(--font-weight-medium, 500); cursor: pointer; border-width: 1px; border-style: solid; transition: background-color 0.2s, border-color 0.2s; }
+        .chm-btn.action-secondary { background-color: var(--main-surface-secondary); color: var(--text-primary); border-color: var(--border-medium); }
+        .chm-btn.action-secondary:hover { background-color: var(--surface-hover); }
+        .chm-btn.action-delete, .chm-btn.action-delete-perm { background-color: var(--text-danger, #ef4444); color: #fff; border-color: transparent; }
+        .chm-conversation-item { display: flex; align-items: center; padding: 8px 12px; border-radius: 8px; border: 1px solid transparent; transition: background-color 0.2s, border-color 0.2s; }
+        .chm-conversation-item:hover { background-color: var(--surface-hover); }
+        .chm-conversation-item .title { flex-grow: 1; margin: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chm-conversation-item .time { font-size: 0.8rem; color: var(--text-tertiary); }
+        #historyList, #archivedList { padding-top: 8px; }
+        .chm-date-group-header { font-weight: 500; color: var(--text-secondary); padding: 12px 4px 4px 4px; font-size: 0.8rem; text-transform: uppercase; }
+        #historyList > .chm-conversation-item + .chm-conversation-item, #archivedList > .chm-conversation-item + .chm-conversation-item { margin-top: 4px; }
+        #chm-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border-light); }
+        #chm-footer > div { display: flex; gap: 12px; }
+        #chm-loader { position: absolute; inset: 0; background: rgba(var(--main-surface-primary-rgb, 255, 255, 255), 0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--text-primary); }
+        #chm-loader div { width: 24px; height: 24px; border: 4px solid var(--border-light); border-top-color: var(--text-primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        #chm-time-filter { background-color: var(--main-surface-secondary); border: 1px solid var(--border-medium); border-radius: 8px; padding: 8px; font-size: 0.875rem; color: var(--text-primary); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .chm-checkbox-label { display: flex; align-items: center; cursor: pointer; user-select: none; gap: 8px; }
+        .chm-checkbox-label input[type="checkbox"] { position: absolute; opacity: 0; height: 0; width: 0; }
+        .chm-custom-checkbox { position: relative; display: inline-block; width: 18px; height: 18px; background-color: transparent; border: 1px solid var(--text-tertiary, #8e8ea0); border-radius: 4px; transition: all 0.2s ease; }
+        .chm-checkbox-label:hover .chm-custom-checkbox { border-color: var(--text-secondary, #6b6b7b); }
+        .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox { background-color: var(--accent-primary, #10a37f); border-color: var(--accent-primary, #10a37f); }
+        .chm-custom-checkbox::after { content: ''; position: absolute; display: none; left: 6px; top: 2px; width: 4px; height: 9px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+        .chm-checkbox-label input[type="checkbox"]:checked + .chm-custom-checkbox::after { display: block; }
+    `;
 
     const styleSheet = document.createElement("style");
     styleSheet.textContent = cssTemplate;
     document.head.appendChild(styleSheet);
 
-    // Programmatically create all UI elements
+    // Create action bar with refresh button and status
+    const historyActionBar = createElement(
+      "div",
+      { className: "chm-action-bar" },
+      [
+        createElement("div", { className: "chm-action-bar-group" }, [
+          createElement(
+            "label",
+            { for: "selectAllHistory", className: "chm-checkbox-label" },
+            [
+              createElement("input", {
+                type: "checkbox",
+                id: "selectAllHistory",
+              }),
+              createElement("span", { className: "chm-custom-checkbox" }),
+              createElement("span", {}, ["Select All"]),
+            ]
+          ),
+          createElement("select", { id: "chm-time-filter" }, [
+            createElement("option", { value: "all" }, ["All time"]),
+            createElement("option", { value: "1h" }, ["Last hour"]),
+            createElement("option", { value: "24h" }, ["Last 24 hours"]),
+            createElement("option", { value: "7d" }, ["Last 7 days"]),
+            createElement("option", { value: "30d" }, ["Last 30 days"]),
+          ]),
+        ]),
+        createElement("div", { className: "chm-action-bar-group" }, [
+          createElement("span", {
+            id: "chm-last-updated",
+            style: {
+              fontSize: "0.8rem",
+              color: "var(--text-tertiary)",
+              marginRight: "12px",
+            },
+          }),
+          createElement(
+            "button",
+            { id: "chm-refresh-btn", className: "chm-btn action-secondary" },
+            ["Refresh"]
+          ),
+        ]),
+      ]
+    );
+
     const modal = createElement("div", { id: "chm-modal" }, [
       createElement("button", { id: "chm-close-btn" }, ["×"]),
       createElement("div", { id: "chm-tabs" }, [
@@ -307,29 +413,7 @@
       ]),
       createElement("div", { id: "chm-content" }, [
         createElement("div", { id: "historyView" }, [
-          createElement("div", { className: "chm-action-bar" }, [
-            createElement("div", { className: "chm-action-bar-group" }, [
-              createElement(
-                "label",
-                { for: "selectAllHistory", className: "chm-checkbox-label" },
-                [
-                  createElement("input", {
-                    type: "checkbox",
-                    id: "selectAllHistory",
-                  }),
-                  createElement("span", { className: "chm-custom-checkbox" }),
-                  createElement("span", {}, ["Select All"]),
-                ]
-              ),
-              createElement("select", { id: "chm-time-filter" }, [
-                createElement("option", { value: "all" }, ["All time"]),
-                createElement("option", { value: "1h" }, ["Last hour"]),
-                createElement("option", { value: "24h" }, ["Last 24 hours"]),
-                createElement("option", { value: "7d" }, ["Last 7 days"]),
-                createElement("option", { value: "30d" }, ["Last 30 days"]),
-              ]),
-            ]),
-          ]),
+          historyActionBar,
           createElement("div", { id: "historyList" }),
         ]),
         createElement(
@@ -394,18 +478,18 @@
       ]),
       createElement("div", { id: "chm-loader", style: { display: "none" } }, [
         createElement("div", {}),
+        createElement("span", { id: "chm-loader-text" }),
       ]),
     ]);
 
     const container = createElement("div", { id: "chm-container" }, [modal]);
     document.body.appendChild(container);
-
     uiInjected = true;
     addEventListeners();
   }
 
   /**
-   * Adds event listeners to the UI elements after they are injected.
+   * Adds event listeners to the UI elements.
    */
   function addEventListeners() {
     document.getElementById("chm-container").addEventListener("click", (e) => {
@@ -449,45 +533,56 @@
           .querySelectorAll('#archivedList input[type="checkbox"]')
           .forEach((cb) => (cb.checked = e.target.checked));
       });
+    // Add listener for the new refresh button
+    document
+      .getElementById("chm-refresh-btn")
+      .addEventListener("click", syncAllConversationsWithServer);
   }
 
+  /**
+   * Toggles the main UI visibility.
+   */
   function toggleUiVisibility(show) {
-    if (!uiInjected) {
-      if (show) {
-        injectUI();
-        setTimeout(() => {
-          document.getElementById("chm-container").classList.add("visible");
-          switchView("history");
-        }, 10);
-      }
+    if (!uiInjected && show) {
+      injectUI();
+      setTimeout(() => {
+        document.getElementById("chm-container").classList.add("visible");
+        // On first open, trigger the view switch logic which will check cache
+        switchView(currentView);
+      }, 10);
       return;
     }
+
     const container = document.getElementById("chm-container");
     if (show) {
       container.style.display = "flex";
       setTimeout(() => {
         container.classList.add("visible");
+        // On subsequent opens, also check cache
         switchView(currentView);
       }, 10);
     } else {
       container.classList.remove("visible");
-      clearCache();
+      // The cache is no longer cleared on close, ensuring persistence
       setTimeout(() => {
         container.style.display = "none";
       }, 200);
     }
   }
 
+  /**
+   * Groups conversations by date for rendering.
+   * @param {Array<object>} items - The conversations to group.
+   * @returns {object} An object with keys as date groups and values as arrays of conversations.
+   */
   function groupAndSortConversations(items) {
     items.sort((a, b) => new Date(b.update_time) - new Date(a.update_time));
-
     const groups = {
       Today: [],
       Yesterday: [],
       "Previous 7 Days": [],
       "This Month": [],
     };
-
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today);
@@ -498,7 +593,6 @@
 
     for (const item of items) {
       const itemDate = new Date(item.update_time);
-
       if (itemDate >= today) {
         groups["Today"].push(item);
       } else if (itemDate >= yesterday) {
@@ -521,24 +615,22 @@
     return groups;
   }
 
+  /**
+   * Renders conversations into the specified container.
+   * @param {object} groupedItems - The grouped conversation data.
+   * @param {string} containerId - The ID of the list element ('historyList' or 'archivedList').
+   */
   function renderConversations(groupedItems, containerId) {
     const container = document.getElementById(containerId);
-    let hasContent = allConversations.length > 0;
-
-    const existingLoadMoreBtn = container.querySelector(".chm-load-more-btn");
-    if (existingLoadMoreBtn) {
-      existingLoadMoreBtn.remove();
-    }
-
-    while (container.firstChild) {
-      container.removeChild(container.firstChild);
-    }
+    container.innerHTML = ""; // Clear previous content
 
     const fragment = document.createDocumentFragment();
+    let hasContent = false;
 
     for (const groupName in groupedItems) {
       const items = groupedItems[groupName];
       if (items.length > 0) {
+        hasContent = true;
         const header = document.createElement("h3");
         header.className = "chm-date-group-header";
         header.textContent = groupName;
@@ -547,182 +639,106 @@
         items.forEach((item) => {
           const itemEl = document.createElement("div");
           itemEl.className = "chm-conversation-item";
-
-          const itemFragment = document.createDocumentFragment();
-
-          const label = document.createElement("label");
-          label.className = "chm-checkbox-label";
-
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.dataset.id = item.id;
-
-          const customCheckbox = document.createElement("span");
-          customCheckbox.className = "chm-custom-checkbox";
-
-          label.appendChild(checkbox);
-          label.appendChild(customCheckbox);
-
-          const titleSpan = document.createElement("span");
-          titleSpan.className = "title";
-          titleSpan.textContent = item.title;
-
-          const timeSpan = document.createElement("span");
-          timeSpan.className = "time";
-          timeSpan.textContent = new Date(item.update_time).toLocaleTimeString(
-            [],
-            {
-              hour: "numeric",
-              minute: "2-digit",
-            }
-          );
-
-          itemFragment.appendChild(label);
-          itemFragment.appendChild(titleSpan);
-          itemFragment.appendChild(timeSpan);
-
-          itemEl.appendChild(itemFragment);
+          itemEl.innerHTML = `
+            <label class="chm-checkbox-label">
+              <input type="checkbox" data-id="${item.id}">
+              <span class="chm-custom-checkbox"></span>
+            </label>
+            <span class="title">${item.title || "Untitled"}</span>
+            <span class="time">${new Date(item.update_time).toLocaleTimeString(
+              [],
+              { hour: "numeric", minute: "2-digit" }
+            )}</span>
+          `;
           fragment.appendChild(itemEl);
         });
       }
     }
+
     container.appendChild(fragment);
 
     if (!hasContent) {
-      const p = document.createElement("p");
-      p.style.color = "var(--text-tertiary)";
-      p.style.textAlign = "center";
-      p.style.padding = "1rem";
-      p.textContent = "No conversations found.";
-      container.appendChild(p);
-    }
-
-    const total = currentView === "history" ? historyTotal : archivedTotal;
-    if (allConversations.length < total) {
-      const loadMoreBtn = document.createElement("button");
-      loadMoreBtn.textContent = isLoadingMore
-        ? "Loading..."
-        : `Load More (${allConversations.length} / ${total})`;
-      loadMoreBtn.className = "chm-btn chm-load-more-btn";
-      loadMoreBtn.disabled = isLoadingMore;
-      loadMoreBtn.addEventListener("click", loadMoreConversations);
-      container.appendChild(loadMoreBtn);
+      container.innerHTML = `<p style="text-align: center; padding: 1rem; color: var(--text-tertiary);">No conversations found.</p>`;
     }
   }
 
   /**
-   * Handles loading more conversations for the current view.
+   * Updates the "Last Updated" text in the UI.
    */
-  async function loadMoreConversations() {
-    if (isLoadingMore) return;
-    isLoadingMore = true;
-
-    applyFilterAndRender();
-
-    const isArchived = currentView === "archived";
-    const offset = isArchived ? archivedOffset : historyOffset;
-
-    const { items, total } = await fetchConversations(isArchived, offset);
-
-    if (items.length > 0) {
-      allConversations.push(...items);
-      if (isArchived) {
-        archivedOffset += items.length;
-        archivedTotal = total;
-      } else {
-        historyOffset += items.length;
-        historyTotal = total;
-      }
-      await cacheConversations();
+  async function updateLastUpdatedStatus() {
+    const statusEl = document.getElementById("chm-last-updated");
+    if (!statusEl) return;
+    const lastSync = await cacheManager.getMetadata("lastSyncTimestamp");
+    if (lastSync) {
+      statusEl.textContent = `Last updated: ${new Date(
+        lastSync
+      ).toLocaleString()}`;
+    } else {
+      statusEl.textContent = "Not synced yet.";
     }
-
-    isLoadingMore = false;
-    applyFilterAndRender();
   }
 
   /**
-   * Caches the current `allConversations` list to local storage.
+   * Loads conversation data for the specified view from the local cache.
+   * @param {string} view - 'history' or 'archived'.
    */
-  async function cacheConversations() {
-    const cacheKey =
-      currentView === "history" ? HISTORY_CACHE_KEY : ARCHIVED_CACHE_KEY;
-    const dataToCache = {
-      conversations: allConversations,
-      offset: currentView === "history" ? historyOffset : archivedOffset,
-      total: currentView === "history" ? historyTotal : archivedTotal,
-      timestamp: Date.now(),
-    };
-    await chrome.storage.local.set({
-      [cacheKey]: dataToCache,
-    });
-    console.log(
-      `💾 [History Manager] Cached ${allConversations.length} conversations for ${currentView} view.`
-    );
+  async function loadConversationsForView(view) {
+    showLoader("Loading from cache...");
+    try {
+      const isArchived = view === "archived";
+      const conversations = await cacheManager.getConversations(isArchived);
+      allConversations = conversations; // Update global state for the current view
+      applyFilterAndRender();
+      await updateLastUpdatedStatus();
+    } catch (error) {
+      console.error(
+        "❌ [History Manager] Failed to load conversations from DB:",
+        error
+      );
+      showError("Could not load conversations from cache.");
+    } finally {
+      hideLoader();
+    }
   }
 
+  /**
+   * Main view-switching logic. Checks cache freshness before loading.
+   * @param {string} view - 'history' or 'archived'.
+   */
   async function switchView(view) {
     currentView = view;
-    const historyTab = document.getElementById("historyTab");
-    const archivedTab = document.getElementById("archivedTab");
-    const historyView = document.getElementById("historyView");
-    const archivedView = document.getElementById("archivedView");
-    const historyActions = document.getElementById("history-actions");
-    const archivedActions = document.getElementById("archived-actions");
-
+    // Switch UI elements (tabs, views, action buttons)
+    document
+      .getElementById("historyTab")
+      .classList.toggle("active", view === "history");
+    document
+      .getElementById("archivedTab")
+      .classList.toggle("active", view === "archived");
+    document.getElementById("historyView").style.display =
+      view === "history" ? "block" : "none";
+    document.getElementById("archivedView").style.display =
+      view === "archived" ? "block" : "none";
+    document.getElementById("history-actions").style.display =
+      view === "history" ? "flex" : "none";
+    document.getElementById("archived-actions").style.display =
+      view === "archived" ? "flex" : "none";
     document.getElementById("selectAllHistory").checked = false;
     document.getElementById("selectAllArchived").checked = false;
 
-    if (view === "history") {
-      historyTab.classList.add("active");
-      archivedTab.classList.remove("active");
-      historyView.style.display = "block";
-      archivedView.style.display = "none";
-      historyActions.style.display = "flex";
-      archivedActions.style.display = "none";
+    const lastSync = await cacheManager.getMetadata("lastSyncTimestamp");
+    // If there's no cache or it's older than the expiration time, force a sync
+    if (!lastSync || Date.now() - lastSync > cacheManager.CACHE_EXPIRATION_MS) {
+      console.log(`[History Manager] Cache is stale or missing. Forcing sync.`);
+      await syncAllConversationsWithServer();
     } else {
-      archivedTab.classList.add("active");
-      historyTab.classList.remove("active");
-      historyView.style.display = "none";
-      archivedView.style.display = "block";
-      historyActions.style.display = "none";
-      archivedActions.style.display = "flex";
+      console.log(`[History Manager] Cache is fresh. Loading from IndexedDB.`);
+      await loadConversationsForView(view);
     }
-
-    showLoader();
-    const cacheKey =
-      view === "history" ? HISTORY_CACHE_KEY : ARCHIVED_CACHE_KEY;
-    const result = await chrome.storage.local.get(cacheKey);
-    const cachedData = result[cacheKey];
-
-    if (cachedData) {
-      console.log(
-        `🚀 [History Manager] Loading ${view} conversations from cache.`
-      );
-      allConversations = cachedData.conversations;
-      if (view === "history") {
-        historyOffset = cachedData.offset;
-        historyTotal = cachedData.total;
-      } else {
-        archivedOffset = cachedData.offset;
-        archivedTotal = cachedData.total;
-      }
-      applyFilterAndRender();
-      hideLoader();
-    } else {
-      console.log(`🌐 [History Manager] Fetching fresh ${view} conversations.`);
-      allConversations = [];
-      if (view === "history") {
-        historyOffset = 0;
-        historyTotal = 0;
-      } else {
-        archivedOffset = 0;
-        archivedTotal = 0;
-      }
-      await loadMoreConversations();
-    }
-    hideLoader();
   }
 
+  /**
+   * Applies the time filter (if active) and re-renders the current view's conversations.
+   */
   function applyFilterAndRender() {
     const isArchived = currentView === "archived";
     const listId = isArchived ? "archivedList" : "historyList";
@@ -757,14 +773,15 @@
     renderConversations(grouped, listId);
   }
 
+  /**
+   * Handles bulk actions by updating the server, then updating IndexedDB locally.
+   * @param {string} action - 'archive', 'delete', 'restore', or 'deletePermanent'.
+   */
   async function handleBulkAction(action) {
     const listId = currentView === "history" ? "historyList" : "archivedList";
-    const listContainer = document.getElementById(listId);
-    let selectedIds = [
-      ...listContainer.querySelectorAll('input[type="checkbox"]:checked'),
+    const targetIds = [
+      ...document.querySelectorAll(`#${listId} input[type="checkbox"]:checked`),
     ].map((cb) => cb.dataset.id);
-
-    let targetIds = selectedIds;
 
     if (targetIds.length === 0) {
       alert("Please select at least one conversation.");
@@ -774,58 +791,86 @@
     let message, payload;
     switch (action) {
       case "archive":
-        message = `Are you sure you want to archive ${targetIds.length} conversation(s)?`;
+        message = `Archive ${targetIds.length} conversation(s)?`;
         payload = { is_archived: true };
         break;
       case "delete":
-        message = `Are you sure you want to delete ${targetIds.length} conversation(s)? This will permanently delete them.`;
+        message = `Delete ${targetIds.length} conversation(s)?`;
         payload = { is_visible: false };
         break;
       case "restore":
-        message = `Are you sure you want to restore ${targetIds.length} conversation(s)?`;
+        message = `Restore ${targetIds.length} conversation(s)?`;
         payload = { is_archived: false };
         break;
       case "deletePermanent":
-        message = `This is IRREVERSIBLE. Permanently delete ${targetIds.length} conversation(s)?`;
+        message = `PERMANENTLY delete ${targetIds.length} conversation(s)? This is irreversible.`;
         payload = { is_visible: false };
         break;
     }
 
     if (confirm(message)) {
-      showLoader();
+      showLoader(`Processing ${targetIds.length} items...`);
       const promises = targetIds.map((id) => updateConversation(id, payload));
-      await Promise.all(promises);
+      const results = await Promise.allSettled(promises);
 
-      clearCache();
+      const successfulIds = results
+        .map((res, i) =>
+          res.status === "fulfilled" && res.value ? targetIds[i] : null
+        )
+        .filter(Boolean);
 
-      await switchView(currentView);
+      if (successfulIds.length > 0) {
+        console.log(
+          `[History Manager] Successfully processed ${successfulIds.length} items. Updating local cache.`
+        );
+        // Update IndexedDB directly instead of clearing the whole cache
+        switch (action) {
+          case "archive":
+            // FIX: Use number 1 for true when updating the local cache.
+            await Promise.all(
+              successfulIds.map((id) =>
+                cacheManager.updateConversation(id, { is_archive: 1 })
+              )
+            );
+            break;
+          case "restore":
+            // FIX: Use number 0 for false when updating the local cache.
+            await Promise.all(
+              successfulIds.map((id) =>
+                cacheManager.updateConversation(id, { is_archive: 0 })
+              )
+            );
+            break;
+          case "delete":
+          case "deletePermanent":
+            await cacheManager.deleteConversations(successfulIds);
+            break;
+        }
+      }
+
+      // Refresh the current view from the updated local cache (which is very fast)
+      await loadConversationsForView(currentView);
       hideLoader();
     }
   }
 
-  function showLoader() {
-    if (uiInjected)
-      document.getElementById("chm-loader").style.display = "flex";
+  function showLoader(text = "") {
+    if (!uiInjected) return;
+    const loader = document.getElementById("chm-loader");
+    const loaderText = document.getElementById("chm-loader-text");
+    loaderText.textContent = text;
+    loader.style.display = "flex";
   }
 
   function hideLoader() {
     if (uiInjected)
       document.getElementById("chm-loader").style.display = "none";
   }
-
   function showError(message) {
     alert(`[History Manager Error] ${message}`);
   }
 
-  /**
-   * Clears the conversation cache from local storage.
-   */
-  function clearCache() {
-    chrome.storage.local.remove([HISTORY_CACHE_KEY, ARCHIVED_CACHE_KEY], () => {
-      console.log("🧹 [History Manager] Local cache cleared.");
-    });
-  }
-
+  // --- Keyboard Shortcut (Ctrl+H) ---
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.key.toLowerCase() === "h") {
       e.preventDefault();
@@ -834,117 +879,43 @@
       toggleUiVisibility(!isVisible);
     }
   });
-  console.log(
-    "✅ [History Manager] Content script loaded. Press Ctrl+H to open."
-  );
 
-  injectSidebarButton();
   /**
-   * Injects a button into the sidebar using a MutationObserver to robustly handle
-   * cases where the sidebar is rendered, removed, or re-rendered dynamically.
+   * Injects a button into the sidebar using a MutationObserver to handle dynamic rendering.
    */
   function injectSidebarButton() {
-    waitForAsideAndObserve();
-
     const injectionLogic = () => {
-      if (document.getElementById("chm-sidebar-btn")) {
-        return true;
-      }
-      const sidebarNav = document.querySelector("aside");
-      if (!sidebarNav) {
-        return false;
-      }
+      if (document.getElementById("chm-sidebar-btn")) return true;
+      const sidebarNav = document.querySelector("aside nav");
+      if (!sidebarNav) return false;
 
       console.log("🚀 [History Manager] Injecting sidebar button...");
-
-      // Helper function for creating namespaced SVG elements
-      function createSvgElement(tag, attributes) {
-        const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
-        for (const key in attributes) {
-          el.setAttribute(key, attributes[key]);
-        }
-        return el;
-      }
-
-      // Create SVG icon programmatically
-      const svgIcon = createSvgElement("svg", {
-        xmlns: "http://www.w3.org/2000/svg",
-        width: "20",
-        height: "20",
-        viewBox: "0 0 24 24",
-        fill: "none",
-        stroke: "currentColor",
-        "stroke-width": "2",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        class: "icon",
-      });
-      svgIcon.appendChild(
-        createSvgElement("path", {
-          d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
-        })
-      );
-      svgIcon.appendChild(createSvgElement("path", { d: "M3 3v5h5" }));
-      svgIcon.appendChild(createSvgElement("path", { d: "M12 7v5l4 2" }));
-
-      // Create button structure programmatically
-      const buttonElement = document.createElement("div");
+      const buttonElement = document.createElement("a");
       buttonElement.id = "chm-sidebar-btn";
-      buttonElement.tabIndex = 0;
-      buttonElement.className = "group __menu-item hoverable cursor-pointer";
-
-      const contentWrapper = document.createElement("div");
-      contentWrapper.className = "flex min-w-0 items-center gap-1.5";
-
-      const iconWrapper = document.createElement("div");
-      iconWrapper.className = "flex items-center justify-center icon";
-      iconWrapper.appendChild(svgIcon);
-
-      const textWrapper = document.createElement("div");
-      textWrapper.className = "flex min-w-0 grow items-center gap-2.5";
-      const text = document.createElement("div");
-      text.className = "truncate";
-      text.textContent = "History Manager";
-      textWrapper.appendChild(text);
-
-      contentWrapper.appendChild(iconWrapper);
-      contentWrapper.appendChild(textWrapper);
-
-      const trailingWrapper = document.createElement("div");
-      trailingWrapper.className = "trailing highlight text-token-text-tertiary";
-      const shortcutWrapper = document.createElement("div");
-      shortcutWrapper.className = "touch:hidden";
-      const shortcutInner = document.createElement("div");
-      shortcutInner.className =
-        "inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']";
-
-      const kbdCtrl = document.createElement("kbd");
-      kbdCtrl.setAttribute("aria-label", "Control");
-      const spanCtrl = document.createElement("span");
-      spanCtrl.className = "min-w-[1em]";
-      spanCtrl.textContent = "Ctrl";
-      kbdCtrl.appendChild(spanCtrl);
-
-      const kbdH = document.createElement("kbd");
-      const spanH = document.createElement("span");
-      spanH.className = "min-w-[1em]";
-      spanH.textContent = "H";
-      kbdH.appendChild(spanH);
-
-      shortcutInner.appendChild(kbdCtrl);
-      shortcutInner.appendChild(kbdH);
-      shortcutWrapper.appendChild(shortcutInner);
-      trailingWrapper.appendChild(shortcutWrapper);
-
-      buttonElement.appendChild(contentWrapper);
-      buttonElement.appendChild(trailingWrapper);
-
+      buttonElement.href = "#";
+      buttonElement.className =
+        "flex p-3 items-center gap-3 transition-colors duration-200 text-white cursor-pointer text-sm rounded-md border border-white/20 hover:bg-gray-500/10 h-11";
+      buttonElement.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+          <path d="M3 3v5h5"></path>
+          <path d="M12 7v5l4 2"></path>
+        </svg>
+        History Manager
+      `;
       buttonElement.addEventListener("click", (e) => {
         e.preventDefault();
         toggleUiVisibility(true);
       });
 
-      sidebarNav.appendChild(buttonElement);
+      // Find a good place to inject the button, e.g., before the user settings link
+      const userMenu = sidebarNav.querySelector('a[href="/auth/logout"]');
+      if (userMenu) {
+        userMenu.parentElement.before(buttonElement);
+      } else {
+        sidebarNav.appendChild(buttonElement);
+      }
+
       console.log("✅ [History Manager] Sidebar button injected successfully.");
       return true;
     };
@@ -953,18 +924,18 @@
       injectionLogic();
     });
 
-    function waitForAsideAndObserve() {
-      const interval = setInterval(() => {
-        const aside = document.body.querySelector("aside");
-        if (aside) {
-          clearInterval(interval);
-          observer.observe(aside, {
-            childList: true,
-            subtree: true,
-          });
-          injectionLogic();
-        }
-      }, 2000);
-    }
+    const interval = setInterval(() => {
+      const aside = document.body.querySelector("aside");
+      if (aside) {
+        clearInterval(interval);
+        observer.observe(aside, { childList: true, subtree: true });
+        injectionLogic();
+      }
+    }, 1000);
   }
+
+  injectSidebarButton();
+  console.log(
+    "✅ [History Manager] Content script loaded. Press Ctrl+H to open."
+  );
 })();
