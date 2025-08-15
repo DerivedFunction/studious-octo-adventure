@@ -134,6 +134,34 @@
         display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem;
         padding: 2px 8px; border-radius: 999px; color: white;
       }
+      .le-label-pill-clickable {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        gap: 6px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .le-label-pill-clickable:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      }
+      .le-label-count {
+        background-color: rgba(255,255,255,0.25);
+        padding: 2px 6px;
+        border-radius: 12px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        margin-left: 4px;
+      }
+      .le-available-labels-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        max-width: 600px;
+        margin: 0 auto;
+      }
       .le-label-pill.in-search { cursor: pointer; }
       .le-label-pills-container { display: flex; gap: 6px; flex-wrap: wrap; }
       .le-sidebar-btn {
@@ -238,20 +266,6 @@
     `;
 
     // --- HTML Template for Modal ---
-    const modalTemplate = `
-      <div id="le-modal" class="le-modal">
-        <div class="le-header">
-          <div id="le-search-bar" class="le-search-bar">
-            <input type="text" id="le-search-input" placeholder="Search by labels...">
-          </div>
-        </div>
-        <div id="le-content" class="le-content">
-          <p style="text-align: center; color: var(--text-tertiary); padding: 1rem;">
-            Start typing to search for conversations by label.
-          </p>
-        </div>
-      </div>
-    `;
 
     const styleSheet = document.createElement("style");
     styleSheet.id = "le-styles";
@@ -475,6 +489,9 @@
       if (e.target.id === "le-modal-container") toggleModalVisibility(false);
     });
 
+    // Initial call to show available labels
+    setTimeout(() => showAvailableLabels(), 100);
+
     searchInput.addEventListener("keyup", handleSearch);
   }
 
@@ -483,15 +500,11 @@
    */
   async function handleSearch() {
     const searchInput = document.getElementById("le-search-input");
-    const searchBar = document.getElementById("le-search-bar");
-    const contentArea = document.getElementById("le-content");
     const query = searchInput.value.toLowerCase().trim();
 
-    // Simple search: find conversations that have labels containing the query text.
-    // A more advanced search would use pills like Gmail.
-
     if (!query) {
-      contentArea.innerHTML = `<p style="text-align: center; color: var(--text-tertiary); padding: 1rem;">Start typing to search for conversations by label.</p>`;
+      // Show available labels when search is empty
+      showAvailableLabels();
       return;
     }
 
@@ -499,7 +512,7 @@
     const { labels, chatLabels } = appState.data;
 
     const matchingLabelIds = Object.entries(labels)
-      .filter(([id, { name }]) => name.toLowerCase().includes(query))
+      .filter(([, { name }]) => name.toLowerCase().includes(query))
       .map(([id]) => id);
 
     const filteredConversations = allConversations.filter((convo) => {
@@ -510,6 +523,73 @@
     });
 
     renderSearchResults(filteredConversations);
+  }
+
+  /**
+   * Shows all available labels as clickable pills when search is empty.
+   */
+  function showAvailableLabels() {
+    const contentArea = document.getElementById("le-content");
+    const { labels, chatLabels } = appState.data;
+
+    const labelEntries = Object.entries(labels);
+
+    if (labelEntries.length === 0) {
+      contentArea.innerHTML = `
+        <div style="text-align: center; color: var(--text-tertiary); padding: 2rem;">
+          <p style="margin-bottom: 1rem;">No labels created yet.</p>
+          <p style="font-size: 0.9rem;">Click the tag icon next to any conversation to create your first label!</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Count conversations for each label
+    const labelCounts = {};
+    Object.entries(chatLabels).forEach(([, labelIds]) => {
+      labelIds.forEach((labelId) => {
+        labelCounts[labelId] = (labelCounts[labelId] || 0) + 1;
+      });
+    });
+
+    const pillsHTML = labelEntries
+      .map(([id, { name, color }]) => {
+        const count = labelCounts[id] || 0;
+        return `
+          <div class="le-label-pill le-label-pill-clickable" 
+               style="background-color:${color};" 
+               data-label-name="${name}"
+               title="Click to search for conversations with '${name}' label">
+            ${name}
+            <span class="le-label-count">${count}</span>
+          </div>
+        `;
+      })
+      .join("");
+
+    contentArea.innerHTML = `
+      <div style="text-align: center; padding: 2rem 1rem;">
+        <h3 style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 1rem; font-weight: 500;">
+          Available Labels
+        </h3>
+        <div class="le-available-labels-grid">
+          ${pillsHTML}
+        </div>
+        <p style="color: var(--text-tertiary); font-size: 0.85rem; margin-top: 1.5rem;">
+          Click on a label to search for conversations, or start typing to filter.
+        </p>
+      </div>
+    `;
+
+    // Add click handlers to the pills
+    contentArea.querySelectorAll(".le-label-pill-clickable").forEach((pill) => {
+      pill.addEventListener("click", () => {
+        const labelName = pill.dataset.labelName;
+        const searchInput = document.getElementById("le-search-input");
+        searchInput.value = labelName;
+        handleSearch(); // Trigger search with the clicked label
+      });
+    });
   }
 
   /**
@@ -620,7 +700,7 @@
     // --- Observer Setup ---
 
     // Create an observer to watch for changes in the DOM.
-    const observer = new MutationObserver((mutations) => {
+    const observer = new MutationObserver(() => {
       // When any change happens, try to inject the button.
       // The logic inside handles checking if it's already there.
       injectionLogic();

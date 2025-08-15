@@ -616,10 +616,10 @@
         break;
       case "delete":
         message = isOperatingOnAll
-          ? `Are you sure you want to delete all ${targetIds.length} visible conversation(s)? They will be moved to archived.`
-          : `Are you sure you want to delete ${targetIds.length} conversation(s)? They will be moved to archived.`;
+          ? `Are you sure you want to delete all ${targetIds.length} visible conversation(s)? This will permanently delete them.`
+          : `Are you sure you want to delete ${targetIds.length} conversation(s)? This will permanently delete them.`;
         payload = {
-          is_archived: true,
+          is_visible: false, // FIXED: Actually delete instead of archive
         };
         break;
       case "restore":
