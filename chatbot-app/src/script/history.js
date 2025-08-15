@@ -4,9 +4,22 @@
 
   // --- State Variables ---
   let accessToken = null;
-  let allConversations = []; // Store all fetched conversations for filtering
+  let allConversations = []; // Store all fetched conversations for the current view
   let currentView = "history";
   let uiInjected = false;
+  // ADDED: State for pagination
+  let historyOffset = 0;
+  let archivedOffset = 0;
+  let historyTotal = 0;
+  let archivedTotal = 0;
+  let isLoadingMore = false;
+
+  // ADDED: Constants for caching
+  const HISTORY_CACHE_KEY = "chm_history_cache";
+  const ARCHIVED_CACHE_KEY = "chm_archived_cache";
+
+  // ADDED: Clear cache on initial load to ensure freshness
+  clearCache();
 
   // --- API Functions ---
 
@@ -47,21 +60,20 @@
   /**
    * Fetches conversations from the ChatGPT API.
    * @param {boolean} isArchived - Whether to fetch archived conversations.
-   * @returns {Promise<Array>} A list of conversation items.
+   * @param {number} offset - The starting point for fetching conversations. // CHANGED
+   * @returns {Promise<object>} An object containing conversation items and total count. // CHANGED
    */
-  async function fetchConversations(isArchived = false) {
-    showLoader();
+  async function fetchConversations(isArchived = false, offset = 0) {
+    // This function no longer shows the main loader, as it's used for loading more as well
     const token = await getAccessToken();
     if (!token) {
-      hideLoader();
-      return [];
+      return { items: [], total: 0 };
     }
 
     try {
       const response = await fetch(
-        `https://chatgpt.com/backend-api/conversations?offset=0&limit=100&is_archived=${isArchived}`,
+        `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=100&is_archived=${isArchived}`,
         {
-          // Increased limit
           headers: {
             authorization: `Bearer ${token}`,
           },
@@ -70,16 +82,15 @@
       if (!response.ok)
         throw new Error(`API request failed. Status: ${response.status}`);
       const data = await response.json();
-      return data.items || [];
+      // CHANGED: Return both items and total for pagination logic
+      return { items: data.items || [], total: data.total || 0 };
     } catch (error) {
       console.error(
         `❌ [History Manager] Failed to fetch conversations:`,
         error
       );
       showError(`Failed to load conversations.`);
-      return [];
-    } finally {
-      hideLoader();
+      return { items: [], total: 0 };
     }
   }
 
@@ -167,7 +178,7 @@
                   opacity: 1;
               }
               #chm-modal {
-                  position: relative; /* ADDED: For positioning the close button */
+                  position: relative;
                   background-color: var(--main-surface-primary, #ffffff); color: var(--text-primary, #000000);
                   border: 1px solid var(--border-medium, #e5e5e5);
                   border-radius: 16px;
@@ -179,7 +190,6 @@
               #chm-container.visible #chm-modal {
                   transform: scale(1);
               }
-              /* RE-ADDED: Close button styles */
               #chm-close-btn { 
                   position: absolute;
                   top: 8px;
@@ -218,9 +228,18 @@
                   border-style: solid;
                   transition: background-color 0.2s, border-color 0.2s; 
               }
-             
-                .chm-btn.action-secondary:hover { background-color: var(--surface-hover); }
+              
+                  .chm-btn.action-secondary:hover { background-color: var(--surface-hover); }
               .chm-btn.action-delete, .chm-btn.action-delete-perm { background-color: var(--text-danger, #ef4444); color: #fff; border-color: transparent; }
+              /* ADDED: Style for the "Load More" button */
+              .chm-load-more-btn { 
+                  display: block; 
+                  margin: 16px auto; 
+                  background-color: var(--main-surface-secondary); 
+                  color: var(--text-primary);
+                  border-color: var(--border-medium);
+              }
+              .chm-load-more-btn:hover { background-color: var(--surface-hover); }
               .chm-conversation-item { 
                   display: flex; 
                   align-items: center; 
@@ -296,8 +315,8 @@
                 </div>
                 <div id="archivedView" style="display: none;">
                     <div class="chm-action-bar">
-                           <div class="chm-action-bar-group">
-                            <label for="selectAllArchived" class="chm-checkbox-label">
+                            <div class="chm-action-bar-group">
+                             <label for="selectAllArchived" class="chm-checkbox-label">
                                 <input type="checkbox" id="selectAllArchived">
                                 <span class="chm-custom-checkbox"></span>
                                 <span>Select All</span>
@@ -309,14 +328,14 @@
             </div>
             <div id="chm-footer">
                 <div id="history-actions">
-                     <button id="archiveSelectedBtn" class="chm-btn action-secondary">Archive</button>
-                     <button id="deleteSelectedBtn" class="chm-btn action-delete">Delete</button>
+                       <button id="archiveSelectedBtn" class="chm-btn action-secondary">Archive</button>
+                       <button id="deleteSelectedBtn" class="chm-btn action-delete">Delete</button>
                 </div>
                 <div id="archived-actions" style="display: none;">
                     <button id="restoreSelectedBtn" class="chm-btn action-secondary">Restore</button>
                     <button id="deletePermanentBtn" class="chm-btn action-delete-perm">Delete Permanently</button>
                 </div>
-               
+                
             </div>
             <div id="chm-loader" style="display: none;"><div></div></div>
         </div>
@@ -339,7 +358,6 @@
     document.getElementById("chm-container").addEventListener("click", (e) => {
       if (e.target.id === "chm-container") toggleUiVisibility(false);
     });
-    // RE-ADDED listener for top-right close button
     document
       .getElementById("chm-close-btn")
       .addEventListener("click", () => toggleUiVisibility(false));
@@ -386,7 +404,6 @@
     if (!uiInjected) {
       if (show) {
         injectUI();
-        // Delay adding the 'visible' class to allow the transition to play
         setTimeout(() => {
           document.getElementById("chm-container").classList.add("visible");
           switchView("history");
@@ -403,7 +420,8 @@
       }, 10);
     } else {
       container.classList.remove("visible");
-      // Hide the element after the transition ends
+      // ADDED: Clear cache when the popup is closed
+      clearCache();
       setTimeout(() => {
         container.style.display = "none";
       }, 200);
@@ -441,7 +459,6 @@
       } else if (itemDate >= thisMonth) {
         groups["This Month"].push(item);
       } else {
-        // Group older items by month and year
         const monthYear = itemDate.toLocaleString("default", {
           month: "long",
           year: "numeric",
@@ -457,13 +474,32 @@
 
   function renderConversations(groupedItems, containerId) {
     const container = document.getElementById(containerId);
+    // CHANGED: Don't clear innerHTML if we are loading more.
+    // We will clear it manually before the first render.
+    let hasContent = allConversations.length > 0;
+
+    // Remove any existing "Load More" button before re-rendering
+    const existingLoadMoreBtn = container.querySelector(".chm-load-more-btn");
+    if (existingLoadMoreBtn) {
+      existingLoadMoreBtn.remove();
+    }
+
+    // Clear the container only if it's the first page load for this view
+    if (
+      (containerId === "historyList" && historyOffset === 100) ||
+      (containerId === "archivedList" && archivedOffset === 100)
+    ) {
+      container.innerHTML = "";
+    }
+
+    // If it's the very first load, the container will be empty.
+    // If we are loading more, we just append new groups.
+    // This logic is simplified by re-grouping and re-rendering the whole list.
     container.innerHTML = "";
-    let hasContent = false;
 
     for (const groupName in groupedItems) {
       const items = groupedItems[groupName];
       if (items.length > 0) {
-        hasContent = true;
         const header = document.createElement("h3");
         header.className = "chm-date-group-header";
         header.textContent = groupName;
@@ -493,6 +529,70 @@
     if (!hasContent) {
       container.innerHTML = `<p style="color: var(--text-tertiary); text-align: center; padding: 1rem;">No conversations found.</p>`;
     }
+
+    // ADDED: "Load More" button logic
+    const total = currentView === "history" ? historyTotal : archivedTotal;
+    if (allConversations.length < total) {
+      const loadMoreBtn = document.createElement("button");
+      loadMoreBtn.textContent = isLoadingMore
+        ? "Loading..."
+        : `Load More (${allConversations.length} / ${total})`;
+      loadMoreBtn.className = "chm-btn chm-load-more-btn";
+      loadMoreBtn.disabled = isLoadingMore;
+      loadMoreBtn.addEventListener("click", loadMoreConversations);
+      container.appendChild(loadMoreBtn);
+    }
+  }
+
+  /**
+   * ADDED: Handles loading more conversations for the current view.
+   */
+  async function loadMoreConversations() {
+    if (isLoadingMore) return;
+    isLoadingMore = true;
+
+    // Update button state
+    applyFilterAndRender();
+
+    const isArchived = currentView === "archived";
+    const offset = isArchived ? archivedOffset : historyOffset;
+
+    const { items, total } = await fetchConversations(isArchived, offset);
+
+    if (items.length > 0) {
+      allConversations.push(...items);
+      // Update state for the next load
+      if (isArchived) {
+        archivedOffset += items.length;
+        archivedTotal = total;
+      } else {
+        historyOffset += items.length;
+        historyTotal = total;
+      }
+      // Cache the newly expanded list
+      await cacheConversations();
+    }
+
+    isLoadingMore = false;
+    applyFilterAndRender();
+  }
+
+  /**
+   * ADDED: Caches the current `allConversations` list to local storage.
+   */
+  async function cacheConversations() {
+    const cacheKey =
+      currentView === "history" ? HISTORY_CACHE_KEY : ARCHIVED_CACHE_KEY;
+    const dataToCache = {
+      conversations: allConversations,
+      offset: currentView === "history" ? historyOffset : archivedOffset,
+      total: currentView === "history" ? historyTotal : archivedTotal,
+      timestamp: Date.now(),
+    };
+    await chrome.storage.local.set({ [cacheKey]: dataToCache });
+    console.log(
+      `💾 [History Manager] Cached ${allConversations.length} conversations for ${currentView} view.`
+    );
   }
 
   async function switchView(view) {
@@ -504,6 +604,10 @@
     const historyActions = document.getElementById("history-actions");
     const archivedActions = document.getElementById("archived-actions");
 
+    // Reset selection when switching views
+    document.getElementById("selectAllHistory").checked = false;
+    document.getElementById("selectAllArchived").checked = false;
+
     if (view === "history") {
       historyTab.classList.add("active");
       archivedTab.classList.remove("active");
@@ -511,8 +615,6 @@
       archivedView.style.display = "none";
       historyActions.style.display = "flex";
       archivedActions.style.display = "none";
-      allConversations = await fetchConversations(false);
-      applyFilterAndRender();
     } else {
       archivedTab.classList.add("active");
       historyTab.classList.remove("active");
@@ -520,40 +622,79 @@
       archivedView.style.display = "block";
       historyActions.style.display = "none";
       archivedActions.style.display = "flex";
-      allConversations = await fetchConversations(true);
-      const grouped = groupAndSortConversations(allConversations);
-      renderConversations(grouped, "archivedList");
     }
+
+    // CHANGED: Caching and loading logic
+    showLoader();
+    const cacheKey =
+      view === "history" ? HISTORY_CACHE_KEY : ARCHIVED_CACHE_KEY;
+    const result = await chrome.storage.local.get(cacheKey);
+    const cachedData = result[cacheKey];
+
+    if (cachedData) {
+      console.log(
+        `🚀 [History Manager] Loading ${view} conversations from cache.`
+      );
+      allConversations = cachedData.conversations;
+      if (view === "history") {
+        historyOffset = cachedData.offset;
+        historyTotal = cachedData.total;
+      } else {
+        archivedOffset = cachedData.offset;
+        archivedTotal = cachedData.total;
+      }
+      applyFilterAndRender();
+      hideLoader();
+    } else {
+      console.log(`🌐 [History Manager] Fetching fresh ${view} conversations.`);
+      // Reset state for a fresh load
+      allConversations = [];
+      if (view === "history") {
+        historyOffset = 0;
+        historyTotal = 0;
+      } else {
+        archivedOffset = 0;
+        archivedTotal = 0;
+      }
+      // loadMore will fetch, set state, cache, and render
+      await loadMoreConversations();
+    }
+    hideLoader();
   }
 
   function applyFilterAndRender() {
-    const range = document.getElementById("chm-time-filter").value;
-    let filteredConversations = allConversations;
+    const isArchived = currentView === "archived";
+    const listId = isArchived ? "archivedList" : "historyList";
+    let conversationsToRender = allConversations;
 
-    if (range !== "all") {
-      const now = new Date();
-      let threshold = new Date(now);
-      switch (range) {
-        case "1h":
-          threshold.setHours(now.getHours() - 1);
-          break;
-        case "24h":
-          threshold.setHours(now.getHours() - 24);
-          break;
-        case "7d":
-          threshold.setDate(now.getDate() - 7);
-          break;
-        case "30d":
-          threshold.setDate(now.getDate() - 30);
-          break;
+    // Filtering only applies to the history view
+    if (!isArchived) {
+      const range = document.getElementById("chm-time-filter").value;
+      if (range !== "all") {
+        const now = new Date();
+        let threshold = new Date(now);
+        switch (range) {
+          case "1h":
+            threshold.setHours(now.getHours() - 1);
+            break;
+          case "24h":
+            threshold.setHours(now.getHours() - 24);
+            break;
+          case "7d":
+            threshold.setDate(now.getDate() - 7);
+            break;
+          case "30d":
+            threshold.setDate(now.getDate() - 30);
+            break;
+        }
+        conversationsToRender = allConversations.filter(
+          (c) => new Date(c.update_time) > threshold
+        );
       }
-      filteredConversations = allConversations.filter(
-        (c) => new Date(c.update_time) > threshold
-      );
     }
 
-    const grouped = groupAndSortConversations(filteredConversations);
-    renderConversations(grouped, "historyList");
+    const grouped = groupAndSortConversations(conversationsToRender);
+    renderConversations(grouped, listId);
   }
 
   async function handleBulkAction(action) {
@@ -567,74 +708,30 @@
     let isOperatingOnAll = false;
 
     if (targetIds.length === 0) {
-      const allVisibleIds = [
-        ...listContainer.querySelectorAll('input[type="checkbox"]'),
-      ].map((cb) => cb.dataset.id);
-      if (allVisibleIds.length === 0) {
-        alert("There are no conversations to act upon.");
-        return;
-      }
-      targetIds = allVisibleIds;
-      isOperatingOnAll = true;
-    }
-
-    // Case 2: Special handling for bulk delete from History tab
-    if (action === "delete" && currentView === "history" && isOperatingOnAll) {
-      const confirmation = confirm(
-        "WARNING: This will permanently delete ALL of your conversations, including those in the archive. This action cannot be undone. Are you sure you want to proceed?"
-      );
-      if (confirmation) {
-        showLoader();
-        const success = await deleteAllConversations();
-        if (success) {
-          await switchView("history"); // Refresh view
-        } else {
-          showError("Failed to delete all conversations.");
-        }
-        hideLoader();
-      }
-      return; // End execution for this specific case
-    }
-
-    // Safety Guard for Permanent Delete: Must have specific selections.
-    if (action === "deletePermanent" && isOperatingOnAll) {
-      alert(
-        "For safety, please select specific conversations to permanently delete. 'Delete All' is not available for this action."
-      );
+      alert("Please select at least one conversation.");
       return;
     }
+
+    // Special handling for bulk delete is now just a normal operation on selected items
+    // The "delete all" function is separate.
 
     let message, payload;
     switch (action) {
       case "archive":
-        message = isOperatingOnAll
-          ? `Are you sure you want to archive all ${targetIds.length} visible conversation(s)?`
-          : `Are you sure you want to archive ${targetIds.length} conversation(s)?`;
-        payload = {
-          is_archived: true,
-        };
+        message = `Are you sure you want to archive ${targetIds.length} conversation(s)?`;
+        payload = { is_archived: true };
         break;
       case "delete":
-        message = isOperatingOnAll
-          ? `Are you sure you want to delete all ${targetIds.length} visible conversation(s)? This will permanently delete them.`
-          : `Are you sure you want to delete ${targetIds.length} conversation(s)? This will permanently delete them.`;
-        payload = {
-          is_visible: false, // FIXED: Actually delete instead of archive
-        };
+        message = `Are you sure you want to delete ${targetIds.length} conversation(s)? This will permanently delete them.`;
+        payload = { is_visible: false };
         break;
       case "restore":
-        message = isOperatingOnAll
-          ? `Are you sure you want to restore all ${targetIds.length} conversation(s) in this view?`
-          : `Are you sure you want to restore ${targetIds.length} conversation(s)?`;
-        payload = {
-          is_archived: false,
-        };
+        message = `Are you sure you want to restore ${targetIds.length} conversation(s)?`;
+        payload = { is_archived: false };
         break;
       case "deletePermanent":
         message = `This is IRREVERSIBLE. Permanently delete ${targetIds.length} conversation(s)?`;
-        payload = {
-          is_visible: false,
-        };
+        payload = { is_visible: false };
         break;
     }
 
@@ -642,7 +739,11 @@
       showLoader();
       const promises = targetIds.map((id) => updateConversation(id, payload));
       await Promise.all(promises);
-      await switchView(currentView);
+
+      // ADDED: Clear cache after a successful bulk action
+      clearCache();
+
+      await switchView(currentView); // This will now force a fresh reload from the API
       hideLoader();
     }
   }
@@ -660,6 +761,16 @@
 
   function showError(message) {
     alert(`[History Manager Error] ${message}`);
+  }
+
+  /**
+   * ADDED: Clears the conversation cache from local storage.
+   */
+  function clearCache() {
+    // This API is asynchronous but we often don't need to wait for it.
+    chrome.storage.local.remove([HISTORY_CACHE_KEY, ARCHIVED_CACHE_KEY], () => {
+      console.log("🧹 [History Manager] Local cache cleared.");
+    });
   }
 
   // --- Entry Point ---
@@ -684,20 +795,16 @@
     waitForAsideAndObserve();
 
     const injectionLogic = () => {
-      // 1. Check if the button already exists to prevent duplicates.
       if (document.getElementById("chm-sidebar-btn")) {
         return true; // Already injected
       }
-
-      // 2. Find the target navigation area in the sidebar.
       const sidebarNav = document.querySelector("aside");
       if (!sidebarNav) {
-        return false; // Target not found, do nothing yet.
+        return false; // Target not found
       }
 
       console.log("🚀 [History Manager] Injecting sidebar button...");
 
-      // 3. Define the SVG icon for the button.
       const historyIconSVG = `
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -706,7 +813,6 @@
         </svg>
       `;
 
-      // 4. Create the full button element from an HTML string.
       const buttonWrapper = document.createElement("div");
       buttonWrapper.innerHTML = `
         <div id="chm-sidebar-btn" tabindex="0" class="group __menu-item hoverable cursor-pointer">
@@ -728,24 +834,17 @@
       `;
       const buttonElement = buttonWrapper.firstElementChild;
 
-      // 5. Add the click listener to open your UI.
       buttonElement.addEventListener("click", (e) => {
         e.preventDefault();
         toggleUiVisibility(true);
       });
 
-      // 6. Append the button and confirm success.
       sidebarNav.appendChild(buttonElement);
       console.log("✅ [History Manager] Sidebar button injected successfully.");
       return true;
     };
 
-    // --- Observer Setup ---
-
-    // Create an observer to watch for changes in the DOM.
     const observer = new MutationObserver((mutations) => {
-      // When any change happens, try to inject the button.
-      // The logic inside handles checking if it's already there.
       injectionLogic();
     });
 
@@ -754,15 +853,13 @@
         const aside = document.body.querySelector("aside");
         if (aside) {
           clearInterval(interval);
-          // Start observing the aside for additions/removals of child elements.
           observer.observe(aside, {
             childList: true,
             subtree: true,
           });
-          // Run injection logic right away once aside is found.
           injectionLogic();
         }
-      }, 2000); // check every 2s
+      }, 2000);
     }
   }
 })();

@@ -263,9 +263,34 @@
       .le-popover-close-btn:hover {
         color: var(--text-secondary);
       }
+      /* --- NEW STYLES FOR COLOR PICKER --- */
+      .le-color-swatch-label {
+        position: relative;
+        display: block;
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        border-radius: 50%;
+        margin-left: auto; /* Pushes it to the right */
+      }
+      .le-color-picker-input {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0; /* Hide the input but keep it functional */
+        cursor: pointer;
+      }
+      .le-color-swatch {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        border: 1px solid var(--border-light);
+        pointer-events: none; /* Clicks go through to the input */
+      }
     `;
-
-    // --- HTML Template for Modal ---
 
     const styleSheet = document.createElement("style");
     styleSheet.id = "le-styles";
@@ -359,14 +384,17 @@
     let labelsListHTML = Object.entries(labels)
       .map(
         ([id, { name, color }]) => `
-      <div class="le-popover-label-item">
-        <input type="checkbox" id="le-cb-${id}" data-label-id="${id}" ${
+        <div class="le-popover-label-item">
+          <input type="checkbox" id="le-cb-${id}" data-label-id="${id}" ${
           assignedLabelIds.has(id) ? "checked" : ""
         }>
-        <label for="le-cb-${id}">${name}</label>
-        <div class="le-label-pill" style="background-color:${color}; width: 16px; height: 16px; padding: 0; border-radius: 50%;"></div>
-      </div>
-    `
+          <label for="le-cb-${id}">${name}</label>
+          <label class="le-color-swatch-label" title="Change label color">
+            <input type="color" class="le-color-picker-input" data-label-id="${id}" value="${color}">
+            <span class="le-color-swatch" style="background-color:${color};"></span>
+          </label>
+        </div>
+      `
       )
       .join("");
 
@@ -426,6 +454,26 @@
           );
         }
         await saveStoredData(appState.data);
+      });
+    });
+
+    // --- NEW: Handle color changes ---
+    popover.querySelectorAll(".le-color-picker-input").forEach((picker) => {
+      picker.addEventListener("input", async (e) => {
+        const labelId = e.target.dataset.labelId;
+        const newColor = e.target.value;
+
+        // Update the UI swatch immediately for real-time feedback
+        const swatch = e.target.nextElementSibling;
+        if (swatch) {
+          swatch.style.backgroundColor = newColor;
+        }
+
+        // Update the state and save
+        if (appState.data.labels[labelId]) {
+          appState.data.labels[labelId].color = newColor;
+          await saveStoredData(appState.data);
+        }
       });
     });
 
@@ -554,14 +602,12 @@
 
     const pillsHTML = labelEntries
       .map(([id, { name, color }]) => {
-        const count = labelCounts[id] || 0;
         return `
           <div class="le-label-pill le-label-pill-clickable" 
                style="background-color:${color};" 
                data-label-name="${name}"
                title="Click to search for conversations with '${name}' label">
             ${name}
-            <span class="le-label-count">${count}</span>
           </div>
         `;
       })
