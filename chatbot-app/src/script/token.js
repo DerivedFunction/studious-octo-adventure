@@ -446,7 +446,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   ) {
     const messagesWithTokens = allMessages.map((msg) => ({
       ...msg,
-      tokens: (msg.text || "").trim() ? enc.encode(msg.text).length : 0,
+      tokens: ((msg.text || "").trim() ? enc.encode(msg.text).length : 0) + 4, // Considering Adding 4 tokens due to <|im_start|>user,system,assistant<|im_sep|><|im_end|>
     }));
 
     let currentTotalTokens = 0;
@@ -1241,7 +1241,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       }
 
       if (conversationData && Array.isArray(conversationData.messages)) {
-        const promptTokens = enc.encode(promptText).length;
+        const promptTokens = enc.encode(promptText).length + 4;
         const globalSystemPromptTokens = enc.encode(
           globalSystemPrompt || ""
         ).length;
