@@ -6,21 +6,17 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   console.log("✅ [Token Manager] Tokenizer initialized.");
   let fetchController; // Controller to abort in-flight fetch requests
   let accessToken = null; // Global variable to store the access token
-  let lastCheckState = {}; // Cache state to avoid redundant checks
-
-  /* eslint-disable no-undef */
-
-  // --- IndexedDB CACHE HELPER ---
+  let lastCheckState = {}; /* eslint-disable no-undef */ // Cache state to avoid redundant checks // --- IndexedDB CACHE HELPER ---
 
   const DB_NAME = "TokenManagerCacheDB";
   const DB_VERSION = 2;
   const STORE_NAME = "conversationCache";
   let db; // To hold the database instance
-
   /**
    * Opens and initializes the IndexedDB for caching.
    * @returns {Promise<IDBDatabase>} The database instance.
    */
+
   function openDB() {
     return new Promise((resolve, reject) => {
       if (db) return resolve(db);
@@ -38,12 +34,12 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       };
     });
   }
-
   /**
    * Retrieves an item from the IndexedDB cache.
    * @param {string} id The conversation ID (key).
    * @returns {Promise<object|null>} The cached data object or null.
    */
+
   async function getCacheFromDB(id) {
     const db = await openDB();
     return new Promise((resolve) => {
@@ -54,32 +50,29 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       request.onerror = () => resolve(null); // Resolve with null on error
     });
   }
-
   /**
    * Stores an item in the IndexedDB cache with a timestamp.
    * @param {string} id The conversation ID (key).
    * @param {object} data The data to cache.
    */
+
   async function setCacheInDB(id, data) {
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, "readwrite");
     const store = transaction.objectStore(STORE_NAME);
     store.put({ id, data, timestamp: Date.now() });
   }
-
   /**
    * Deletes an item from the IndexedDB cache.
    * @param {string} id The conversation ID (key).
    */
+
   async function deleteCacheFromDB(id) {
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, "readwrite");
     const store = transaction.objectStore(STORE_NAME);
     store.delete(id);
-  }
-
-  // --- UTILITY FUNCTIONS ---
-
+  } // --- UTILITY FUNCTIONS ---
   /**
    * Creates a debounced function that delays invoking `func` until after `wait`
    * milliseconds have elapsed since the last time the debounced function was invoked.
@@ -87,6 +80,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
    * @param {number} wait The number of milliseconds to delay.
    * @returns {Function} Returns the new debounced function.
    */
+
   function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -97,14 +91,12 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       clearTimeout(timeout);
       timeout = setTimeout(later, wait);
     };
-  }
-
-  // --- TOKEN COUNTING LOGIC ---
-
+  } // --- TOKEN COUNTING LOGIC ---
   /**
    * Fetches and stores the access token globally. Only fetches if the token is not already present.
    * @returns {Promise<string|null>} The access token or null if it fails.
    */
+
   async function getAccessToken() {
     if (accessToken) {
       return accessToken;
@@ -128,12 +120,53 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       return null;
     }
   }
+  /**
+   * Fetches the number of tokens used by the memory feature.
+   * @returns {Promise<number>} The number of tokens used by memory.
+   */
 
+  async function getMemoryTokens() {
+    console.log("🧠 [Token Manager] Fetching memory tokens...");
+    try {
+      const token = await getAccessToken();
+      if (!token)
+        throw new Error("Access token not available for memory fetch.");
+
+      const response = await fetch(
+        "https://chatgpt.com/backend-api/memories?include_memory_entries=true",
+        {
+          headers: {
+            accept: "*/*",
+            authorization: `Bearer ${token}`,
+          },
+          method: "GET",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Memory API request failed with status: ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+      const memoryTokens = data.memory_num_tokens || 0;
+      console.log(`🧠 [Token Manager] Memory tokens fetched: ${memoryTokens}`);
+      return memoryTokens;
+    } catch (error) {
+      console.error(
+        "❌ [Token Manager] Could not retrieve memory tokens:",
+        error
+      );
+      return 0; // Return 0 on failure to avoid breaking the main flow
+    }
+  }
   /**
    * Retrieves a full conversation object from ChatGPT's IndexedDB.
    * @param {string} conversationId The ID of the conversation to fetch.
    * @returns {Promise<object|null>} A promise that resolves with the conversation data.
    */
+
   async function getConversationFromDB(conversationId) {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open("ConversationsDatabase");
@@ -152,18 +185,17 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       };
     });
   }
-
   /**
    * Fetches detailed conversation data from the backend API, using an IndexedDB
    * cache to avoid redundant fetches.
    * @param {string} conversationId The ID of the conversation to fetch.
    * @returns {Promise<Map<string, object>>} A map where keys are message IDs and values contain file/canvas info.
    */
+
   async function processBackendData(conversationId) {
     const cacheDuration = 3 * 60 * 1000; // 3 minutes
-    const maxRetries = 3;
+    const maxRetries = 3; // 1. Check IndexedDB for fresh cached data first.
 
-    // 1. Check IndexedDB for fresh cached data first.
     try {
       const cached = await getCacheFromDB(conversationId);
       if (cached && Date.now() - cached.timestamp < cacheDuration) {
@@ -177,9 +209,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         "❌ [Token Manager] Error reading from IndexedDB cache:",
         e
       );
-    }
+    } // 2. If no fresh cache, proceed with fetching.
 
-    // 2. If no fresh cache, proceed with fetching.
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       if (fetchController) {
         fetchController.abort();
@@ -386,9 +417,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
               toolInstructions: { tokens: toolInstructionTokens },
             });
           }
-        }
+        } // 3. After successful fetch, cache the data in IndexedDB.
 
-        // 3. After successful fetch, cache the data in IndexedDB.
         try {
           const dataToCache = Object.fromEntries(additionalDataMap);
           await setCacheInDB(conversationId, dataToCache);
@@ -424,7 +454,6 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     }
     return new Map(); // Fallback return
   }
-
   /**
    * Processes the full message history, attachments, and prompt to determine what fits
    * within the defined context window limit based on user selections.
@@ -434,27 +463,31 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
    * @param {Set<string>} checkedItems - A set of IDs for checked files/canvases.
    * @param {number} promptTokens - The token count of the current user input in the prompt box.
    * @param {number} globalSystemPromptTokens - The token count of the global system prompt.
+   * @param {number} memoryTokens - The token count of the user's memory.
    * @returns {object} An object containing the effective messages and token breakdown.
    */
+
   function getEffectiveMessages(
     allMessages,
     limit,
     additionalDataMap,
     checkedItems,
     promptTokens = 0,
-    globalSystemPromptTokens = 0
+    globalSystemPromptTokens = 0,
+    memoryTokens = 0
   ) {
     const messagesWithTokens = allMessages.map((msg) => ({
       ...msg,
-      tokens: ((msg.text || "").trim() ? enc.encode(msg.text).length : 0) + 4, // Considering Adding 4 tokens due to <|im_start|>user,system,assistant<|im_sep|><|im_end|>
+      tokens: ((msg.text || "").trim() ? enc.encode(msg.text).length : 0) + 4,
     }));
 
     let currentTotalTokens = 0;
-    const truncatedItems = new Map(); // Store truncated item IDs and their effective token count
+    const truncatedItems = new Map(); // Store truncated item IDs and their effective token count // --- Result variables ---
 
-    // --- Result variables ---
     let globalSystemPromptCost = 0;
     let globalSystemPromptTruncatedFrom = null;
+    let memoryCost = 0;
+    let memoryTruncatedFrom = null;
     let instructionsCost = 0;
     let instructionsTruncatedFrom = null;
     let toolInstructionCost = 0;
@@ -469,9 +502,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     messagesWithTokens.forEach((msg) => {
       maxPossibleTokens += msg.tokens;
       maxChatTokens += msg.tokens;
-    });
+    }); // --- 0. Global System Prompt ---
 
-    // --- 0. Global System Prompt ---
     maxPossibleTokens += globalSystemPromptTokens;
     if (globalSystemPromptTokens > 0) {
       if (globalSystemPromptTokens > limit) {
@@ -481,6 +513,19 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       } else {
         globalSystemPromptCost = globalSystemPromptTokens;
         currentTotalTokens += globalSystemPromptTokens;
+      }
+    } // --- 0.5. Memory ---
+
+    maxPossibleTokens += memoryTokens;
+    if (currentTotalTokens < limit && memoryTokens > 0) {
+      const remainingSpace = limit - currentTotalTokens;
+      if (memoryTokens > remainingSpace) {
+        memoryCost = remainingSpace;
+        memoryTruncatedFrom = memoryTokens;
+        currentTotalTokens = limit;
+      } else {
+        memoryCost = memoryTokens;
+        currentTotalTokens += memoryTokens;
       }
     } // --- 1. Custom Instructions ---
 
@@ -571,9 +616,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
           }
         });
       }
-    });
-    // --- 4. Chat History ---
-
+    }); // --- 4. Chat History ---
     if (currentTotalTokens < limit) {
       const remainingForChat = limit - currentTotalTokens;
       for (let i = messagesWithTokens.length - 1; i >= 0; i--) {
@@ -598,6 +641,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
     const baseTokenCost =
       globalSystemPromptCost +
+      memoryCost +
       instructionsCost +
       toolInstructionCost +
       promptCost +
@@ -617,14 +661,16 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       toolInstructionTruncatedFrom,
       globalSystemPromptCost,
       globalSystemPromptTruncatedFrom,
+      memoryCost,
+      memoryTruncatedFrom,
       maxPossibleTokens,
       maxChatTokens,
     };
   }
-
   /**
    * Injects CSS for the hover popup into the document head.
    */
+
   function injectPopupCSS() {
     const styleId = "token-popup-styles";
     if (document.getElementById(styleId)) return;
@@ -707,7 +753,6 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     `;
     document.head.appendChild(style);
   }
-
   /**
    * Attaches a token count display to each chat bubble and the summary status.
    * @param {Array<object>} allMessages - The complete list of messages from the DB.
@@ -718,7 +763,9 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
    * @param {Array<object>} messagesWithTokens - All messages with their token counts.
    * @param {Map<string, object>} additionalDataMap - Map with file and canvas token data.
    * @param {Set<string>} checkedItems - A set of IDs for currently checked items.
+   * @param {boolean} isMemoryEnabled - Whether memory is enabled for this chat.
    */
+
   function addHoverListeners(
     allMessages,
     effectiveMessageIds,
@@ -727,7 +774,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     tokenData,
     messagesWithTokens,
     additionalDataMap,
-    checkedItems
+    checkedItems,
+    isMemoryEnabled
   ) {
     injectPopupCSS(); // Ensure CSS is present
 
@@ -904,7 +952,30 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         popupFragment.appendChild(globalPromptSection);
       }
 
-      // This section is now consolidated and uses effective/total logic
+      const memorySection = document.createElement("div");
+      memorySection.className = "token-item";
+      const memoryLabel = document.createElement("label");
+      memoryLabel.htmlFor = "toggle-memory";
+      const memoryCheckbox = document.createElement("input");
+      memoryCheckbox.type = "checkbox";
+      memoryCheckbox.id = "toggle-memory";
+      memoryCheckbox.checked = isMemoryEnabled;
+      memoryLabel.appendChild(memoryCheckbox);
+      memoryLabel.append(" 🧠 Memory");
+
+      const memoryValueSpan = document.createElement("span");
+      const originalTokens =
+        tokenData.memoryTruncatedFrom ?? tokenData.memoryCost;
+      if (tokenData.memoryTruncatedFrom) {
+        memoryValueSpan.textContent = `${tokenData.memoryCost} / ${originalTokens}`;
+      } else {
+        memoryValueSpan.textContent = originalTokens;
+      }
+
+      memorySection.appendChild(memoryLabel);
+      memorySection.appendChild(memoryValueSpan);
+      popupFragment.appendChild(memorySection); // This section is now consolidated and uses effective/total logic
+
       if (
         tokenData.instructionsCost > 0 ||
         tokenData.instructionsTruncatedFrom
@@ -1006,8 +1077,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
             checkbox.dataset.tokens = f.tokens;
             label.appendChild(checkbox);
             label.append(` 📎 ${f.name} `);
-            const valueSpan = document.createElement("span");
-            // New logic for effective/total display
+            const valueSpan = document.createElement("span"); // New logic for effective/total display
             if (truncatedItems.has(id)) {
               const effectiveTokens = truncatedItems.get(id);
               valueSpan.textContent = `${effectiveTokens} / ${f.tokens}`;
@@ -1035,8 +1105,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
             checkbox.dataset.tokens = canvas.tokens;
             label.appendChild(checkbox);
             label.append(` 🎨 ${canvas.title} `);
-            const valueSpan = document.createElement("span");
-            // New logic for effective/total display
+            const valueSpan = document.createElement("span"); // New logic for effective/total display
             if (truncatedItems.has(id)) {
               const effectiveTokens = truncatedItems.get(id);
               valueSpan.textContent = `${effectiveTokens} / ${canvas.tokens}`;
@@ -1094,32 +1163,40 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       popupDiv.addEventListener("change", async (e) => {
         if (e.target.type === "checkbox") {
           if (!conversationId) return;
-          const storageKey = `checked_items_${conversationId}`;
-          const currentChecked = Array.from(
-            popupDiv.querySelectorAll("input:checked")
-          ).map((cb) => cb.id);
-          await chrome.storage.local.set({ [storageKey]: currentChecked });
+          if (e.target.id === "toggle-memory") {
+            const memoryStorageKey = `memory_enabled_${conversationId}`;
+            await chrome.storage.local.set({
+              [memoryStorageKey]: e.target.checked,
+            });
+          } else {
+            const storageKey = `checked_items_${conversationId}`;
+            const currentChecked = Array.from(
+              popupDiv.querySelectorAll(
+                'input[type="checkbox"]:not(#toggle-memory):checked'
+              )
+            ).map((cb) => cb.id);
+            await chrome.storage.local.set({ [storageKey]: currentChecked });
+          }
         }
       });
 
       popupDiv.addEventListener("click", async (e) => {
         if (e.target.id === "refreshData") {
           e.target.textContent = "Refreshing...";
-          lastCheckState = {};
-          // UPDATED: Delete from IndexedDB instead of storage.local
+          lastCheckState = {}; // UPDATED: Delete from IndexedDB instead of storage.local
           await deleteCacheFromDB(conversationId);
           debouncedRunTokenCheck();
         }
       });
     }
   }
-
   /**
    * Updates the UI element showing the token count for the prompt box.
    * @param {number} promptCost - The number of tokens for the current prompt.
    * @param {number|null} promptTruncatedFrom - The original token count if truncated.
    * @param {number} limit - The context window limit.
    */
+
   function updatePromptTokenUI(promptCost, promptTruncatedFrom, limit) {
     const form = document.querySelector("form");
     if (!form) return;
@@ -1162,10 +1239,10 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       promptTokenDiv.textContent = "";
     }
   }
-
   /**
    * Removes all token count UI elements and resets message styles.
    */
+
   function clearTokenUI() {
     console.log("🗑️ [Token Manager] Clearing token UI...");
     document
@@ -1177,10 +1254,10 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       turn.style.opacity = "1";
     });
   }
-
   /**
    * Fetches the current conversation, processes it, and updates the UI.
    */
+
   async function runTokenCheck() {
     const { contextWindow, isScriptingEnabled, globalSystemPrompt } =
       await chrome.storage.local.get([
@@ -1201,8 +1278,11 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
     const conversationId = pathParts[2];
     const storageKey = `checked_items_${conversationId}`;
-    const { [storageKey]: checkedItemsRaw = [] } =
-      await chrome.storage.local.get(storageKey);
+    const memoryStorageKey = `memory_enabled_${conversationId}`;
+    const {
+      [storageKey]: checkedItemsRaw = [],
+      [memoryStorageKey]: isMemoryEnabled = true, // Default to true
+    } = await chrome.storage.local.get([storageKey, memoryStorageKey]);
     const checkedItems = new Set(checkedItemsRaw);
 
     const promptBox = document.querySelector("[contenteditable='true']");
@@ -1216,21 +1296,21 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       turns: turnCount,
       checked: checkedItemsStr,
       contextWindow,
+      isMemoryEnabled,
     };
 
-    if (
-      Object.values(lastCheckState) === Object.values(newState) &&
-      checkedItemsStr === lastCheckState.checked
-    ) {
+    if (JSON.stringify(lastCheckState) === JSON.stringify(newState)) {
       return; // No meaningful change detected, skip the check
     }
     lastCheckState = newState;
 
     try {
-      const [conversationData, additionalDataMap] = await Promise.all([
-        getConversationFromDB(conversationId),
-        processBackendData(conversationId),
-      ]);
+      const [conversationData, additionalDataMap, memoryTokens] =
+        await Promise.all([
+          getConversationFromDB(conversationId),
+          processBackendData(conversationId),
+          isMemoryEnabled ? getMemoryTokens() : Promise.resolve(0), // Fetch conditionally
+        ]);
 
       const currentConversationId = window.location.pathname.split("/")[2];
       if (conversationId !== currentConversationId) {
@@ -1241,7 +1321,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       }
 
       if (conversationData && Array.isArray(conversationData.messages)) {
-        const promptTokens = enc.encode(promptText).length + 4;
+        const promptTokens = enc.encode(promptText).length;
         const globalSystemPromptTokens = enc.encode(
           globalSystemPrompt || ""
         ).length;
@@ -1251,7 +1331,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
           additionalDataMap,
           checkedItems,
           promptTokens,
-          globalSystemPromptTokens
+          globalSystemPromptTokens,
+          memoryTokens
         );
         const { effectiveMessages, messagesWithTokens } = tokenData;
 
@@ -1274,7 +1355,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
           tokenData,
           messagesWithTokens,
           additionalDataMap,
-          checkedItems
+          checkedItems,
+          isMemoryEnabled
         );
 
         updatePromptTokenUI(
@@ -1296,15 +1378,17 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     }
     const conversationId = window.location.pathname.split("/")[2];
     const checkedItemsKey = `checked_items_${conversationId}`;
-    if (changes.contextWindow || (conversationId && changes[checkedItemsKey])) {
+    const memoryKey = `memory_enabled_${conversationId}`;
+    if (
+      changes.contextWindow ||
+      (conversationId && (changes[checkedItemsKey] || changes[memoryKey]))
+    ) {
       runTokenCheck();
     }
   });
 
   const debouncedRunTokenCheck = debounce(runTokenCheck, 3000);
-  debouncedRunTokenCheck();
-
-  // REMOVED: clearOldCache() is no longer needed as cache is managed by timestamps.
+  debouncedRunTokenCheck(); // REMOVED: clearOldCache() is no longer needed as cache is managed by timestamps.
 
   let lastUrl = location.href;
   new MutationObserver((mutationList) => {
