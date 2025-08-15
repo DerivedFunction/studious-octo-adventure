@@ -182,8 +182,8 @@
               /* RE-ADDED: Close button styles */
               #chm-close-btn { 
                   position: absolute;
-                  top: 16px;
-                  right: 20px;
+                  top: 8px;
+                  right: 16px;
                   z-index: 10;
                   background: none; 
                   border: none; 
@@ -193,7 +193,7 @@
                   transition: color 0.2s; 
               }
               #chm-close-btn:hover { color: var(--text-secondary); }
-              #chm-tabs { display: flex; border-bottom: 1px solid var(--border-light); padding: 0 16px; }
+              #chm-tabs { display: flex; border-bottom: 1px solid var(--border-light); padding-top: 8px; padding-left: 16px; padding-right: 16px;}
               #chm-tabs button { flex-grow: 0; padding: 12px 16px; font-weight: 500; border: none; background: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--text-secondary); }
               #chm-tabs button.active { color: var(--text-primary); border-bottom-color: var(--text-primary, #000); }
               #chm-content { 
@@ -210,7 +210,7 @@
               .chm-action-bar-group { display: flex; align-items: center; gap: 12px; }
               .chm-btn { 
                   padding: 8px 16px; 
-                  border-radius: 8px; 
+                  border-radius: 100px; 
                   font-size: var(--text-sm, 0.875rem);
                   font-weight: var(--font-weight-medium, 500);
                   cursor: pointer; 
@@ -218,12 +218,8 @@
                   border-style: solid;
                   transition: background-color 0.2s, border-color 0.2s; 
               }
-              .chm-btn.action-cancel, .chm-btn.action-secondary { 
-                  background-color: var(--main-surface-secondary); 
-                  color: var(--text-primary); 
-                  border-color: var(--border-medium);
-              }
-               .chm-btn.action-cancel:hover, .chm-btn.action-secondary:hover { background-color: var(--surface-hover); }
+             
+                .chm-btn.action-secondary:hover { background-color: var(--surface-hover); }
               .chm-btn.action-delete, .chm-btn.action-delete-perm { background-color: var(--text-danger, #ef4444); color: #fff; border-color: transparent; }
               .chm-conversation-item { 
                   display: flex; 
@@ -320,7 +316,7 @@
                     <button id="restoreSelectedBtn" class="chm-btn action-secondary">Restore</button>
                     <button id="deletePermanentBtn" class="chm-btn action-delete-perm">Delete Permanently</button>
                 </div>
-                <button id="chm-cancel-btn" class="chm-btn action-cancel">Cancel</button>
+               
             </div>
             <div id="chm-loader" style="display: none;"><div></div></div>
         </div>
@@ -346,10 +342,6 @@
     // RE-ADDED listener for top-right close button
     document
       .getElementById("chm-close-btn")
-      .addEventListener("click", () => toggleUiVisibility(false));
-    // ADDED listener for footer cancel button
-    document
-      .getElementById("chm-cancel-btn")
       .addEventListener("click", () => toggleUiVisibility(false));
     document
       .getElementById("historyTab")
