@@ -295,13 +295,20 @@
     if (uiInjected) return;
 
     // Helper function to create elements with attributes and children
-    function createElement(tag, attributes, children = []) {
+    function createElement(tag, attributes = {}, children = []) {
       const el = document.createElement(tag);
       for (const key in attributes) {
         if (key === "className") {
           el.className = attributes[key];
         } else if (key === "style") {
           Object.assign(el.style, attributes[key]);
+        } else if (key.startsWith("data-")) {
+          el.dataset[key.substring(5)] = attributes[key];
+        } else if (key.startsWith("checked")) {
+          // add the attribute if it is true, else don't add it
+          if (attributes[key]) {
+            el.setAttribute(key, "");
+          }
         } else {
           el.setAttribute(key, attributes[key]);
         }
@@ -309,7 +316,7 @@
       children.forEach((child) => {
         if (typeof child === "string") {
           el.appendChild(document.createTextNode(child));
-        } else {
+        } else if (child) {
           el.appendChild(child);
         }
       });
@@ -886,7 +893,7 @@
   function injectSidebarButton() {
     const injectionLogic = () => {
       if (document.getElementById("chm-sidebar-btn")) return true;
-      const sidebarNav = document.querySelector("aside nav");
+      const sidebarNav = document.querySelector("aside");
       if (!sidebarNav) return false;
 
       console.log("🚀 [History Manager] Injecting sidebar button...");
@@ -894,7 +901,7 @@
       buttonElement.id = "chm-sidebar-btn";
       buttonElement.href = "#";
       buttonElement.className =
-        "flex p-3 items-center gap-3 transition-colors duration-200 text-white cursor-pointer text-sm rounded-md border border-white/20 hover:bg-gray-500/10 h-11";
+        "flex p-3 items-center gap-3 transition-colors duration-200 text-white cursor-pointer text-sm rounded-md hover:bg-gray-500/10 h-11";
       buttonElement.innerHTML = `
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
@@ -908,14 +915,13 @@
         toggleUiVisibility(true);
       });
 
-      // Find a good place to inject the button, e.g., before the user settings link
-      const userMenu = sidebarNav.querySelector('a[href="/auth/logout"]');
-      if (userMenu) {
-        userMenu.parentElement.before(buttonElement);
+      // Find a good place to inject the button, e.g., before the labels
+      const leMenu = sidebarNav.querySelector("#le-sidebar-btn");
+      if (leMenu) {
+        leMenu.parentElement.before(buttonElement);
       } else {
         sidebarNav.appendChild(buttonElement);
       }
-
       console.log("✅ [History Manager] Sidebar button injected successfully.");
       return true;
     };
