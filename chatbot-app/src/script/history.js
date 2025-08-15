@@ -361,14 +361,14 @@
     const cssTemplate = `
         #chm-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; font-family: inherit; opacity: 0; transition: opacity 0.2s ease-in-out; }
         #chm-container.visible { opacity: 1; }
-        #chm-modal { position: relative; background-color: var(--main-surface-primary, #ffffff); color: var(--text-primary, #000000); border: 1px solid var(--border-medium, #e5e5e5); border-radius: 16px; width: 80vw; height: 80vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; transform: scale(0.95); transition: transform 0.2s ease-in-out; }
+        #chm-modal { position: relative; background-color: var(--main-surface-primary, #ffffff); color: var(--text-primary, #000000); border: 1px solid var(--border-medium, #e5e5e5); border-radius: 16px; width: 80vw; height: 80vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; transform: scale(0.95); transition: transform 0.2s ease-in-out; contain: layout style paint; }
         #chm-container.visible #chm-modal { transform: scale(1); }
         #chm-close-btn { position: absolute; top: 8px; right: 16px; z-index: 10; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-tertiary); transition: color 0.2s; }
         #chm-close-btn:hover { color: var(--text-secondary); }
         #chm-tabs { display: flex; border-bottom: 1px solid var(--border-light); padding-top: 8px; padding-left: 16px; padding-right: 16px;}
         #chm-tabs button { flex-grow: 0; padding: 12px 16px; font-weight: 500; border: none; background: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--text-secondary); }
         #chm-tabs button.active { color: var(--text-primary); border-bottom-color: var(--text-primary, #000); }
-        #chm-content { flex-grow: 1; padding: 16px 24px; overflow-y: auto; }
+        #chm-content { flex-grow: 1; padding: 16px 24px; overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth; contain: layout style paint; }
         .chm-action-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .chm-action-bar-group { display: flex; align-items: center; gap: 12px; }
         .chm-btn { padding: 8px 16px; border-radius: 100px; font-size: var(--text-sm, 0.875rem); font-weight: var(--font-weight-medium, 500); cursor: pointer; border-width: 1px; border-style: solid; transition: background-color 0.2s, border-color 0.2s; }
@@ -379,7 +379,7 @@
         .chm-conversation-item:hover { background-color: var(--surface-hover); }
         .chm-conversation-item .title { flex-grow: 1; margin: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .chm-conversation-item .time { font-size: 0.8rem; color: var(--text-tertiary); }
-        #historyList, #archivedList { padding-top: 8px; }
+        #historyList, #archivedList { padding-top: 8px; overscroll-behavior: contain; contain: layout style; }
         .chm-date-group-header { font-weight: 500; color: var(--text-secondary); padding: 12px 4px 4px 4px; font-size: 0.8rem; text-transform: uppercase; }
         #historyList > .chm-conversation-item + .chm-conversation-item, #archivedList > .chm-conversation-item + .chm-conversation-item { margin-top: 4px; }
         #chm-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border-light); }
