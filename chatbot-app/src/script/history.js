@@ -557,7 +557,7 @@
       .addEventListener("click", () => handleBulkAction("restore"));
     document
       .getElementById("deletePermanentBtn")
-      .addEventListener("click", () => handleBulkAction("deletePermanent"));
+      .addEventListener("click", () => handleBulkAction("delete"));
     document
       .getElementById("chm-time-filter")
       .addEventListener("change", applyFilterAndRender);
@@ -844,7 +844,6 @@
         payload = { is_archived: false };
         break;
       case "delete":
-      case "deletePermanent":
         message = `PERMANENTLY delete ${targetIds.length} conversation(s)? This is irreversible.`;
         payload = { is_visible: false };
         break;
@@ -884,7 +883,6 @@
             );
             break;
           case "delete":
-          case "deletePermanent":
             await cacheManager.deleteConversations(successfulIds);
             break;
         }
