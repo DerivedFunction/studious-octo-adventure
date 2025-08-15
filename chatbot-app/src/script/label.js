@@ -19,13 +19,13 @@
    */
   async function getStoredData() {
     try {
-      const result = await chrome.storage.local.get(STORAGE_KEY);
+      const result = await chrome.storage.sync.get(STORAGE_KEY);
       const data = result[STORAGE_KEY];
       if (data && data.labels && data.chatLabels) {
         return data;
       }
     } catch (e) {
-      console.error("[Label Explorer] Error reading from storage:", e);
+      console.error("❌ [Label Explorer] Error reading from storage:", e);
     }
     return { labels: {}, chatLabels: {} };
   }
@@ -36,9 +36,9 @@
    */
   async function saveStoredData(data) {
     try {
-      await chrome.storage.local.set({ [STORAGE_KEY]: data });
+      await chrome.storage.sync.set({ [STORAGE_KEY]: data });
     } catch (e) {
-      console.error("[Label Explorer] Error saving to storage:", e);
+      console.error("❌ [Label Explorer] Error saving to storage:", e);
     }
   }
 
@@ -57,7 +57,7 @@
       appState.accessToken = session.accessToken;
       return appState.accessToken;
     } catch (error) {
-      console.error("[Label Explorer] Could not retrieve access token:", error);
+      console.error("❌ [Label Explorer] Could not retrieve access token:", error);
       return null;
     }
   }
@@ -444,10 +444,6 @@
     const assignedLabelIds = new Set(chatLabels[conversationId] || []);
     
     const labelItems = Object.entries(labels).map(([id, { name, color }]) => {
-      console.log("Assigned labels:", assignedLabelIds);
-      console.log("Label ID:", id);
-      console.log("Label name:", name);
-      console.log("Label color:", color);
       console.log(assignedLabelIds.has(id))
       return createElement("div", { className: "le-popover-label-item" }, [
         createElement("input", {
