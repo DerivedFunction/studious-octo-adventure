@@ -13,7 +13,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   // --- IndexedDB CACHE HELPER ---
 
   const DB_NAME = "TokenManagerCacheDB";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE_NAME = "conversationCache";
   let db; // To hold the database instance
 
