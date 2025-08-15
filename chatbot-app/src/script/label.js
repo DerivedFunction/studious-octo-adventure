@@ -512,12 +512,39 @@
     });
 
     // Handle new label creation
+    // Handle new label creation
     const newLabelInput = document.getElementById("le-new-label-input");
     newLabelInput.addEventListener("keydown", async (e) => {
+      /**
+       * Converts an HSL color value to Hex.
+       * @param {number} h - Hue (0-360)
+       * @param {number} s - Saturation (0-100)
+       * @param {number} l - Lightness (0-100)
+       * @returns {string} The hex color code (e.g., "#aabbcc")
+       */
+      function hslToHex(h, s, l) {
+        l /= 100;
+        const a = (s * Math.min(l, 1 - l)) / 100;
+        const f = (n) => {
+          const k = (n + h / 30) % 12;
+          const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+          return Math.round(255 * color)
+            .toString(16)
+            .padStart(2, "0"); // convert to Hex and prefix with "0" if needed
+        };
+        return `#${f(0)}${f(8)}${f(4)}`;
+      }
       if (e.key === "Enter" && newLabelInput.value.trim()) {
         const newName = newLabelInput.value.trim();
         const newId = `l-${Date.now()}`;
-        const newColor = `hsl(${Math.random() * 360}, 70%, 50%)`;
+
+        // --- FIXED ---
+        // 1. Generate random HSL values
+        const randomHue = Math.random() * 360;
+        // 2. Convert them to the required #rrggbb hex format
+        const newColor = hslToHex(randomHue, 70, 50);
+        // --- END FIX ---
+
         appState.data.labels[newId] = { name: newName, color: newColor };
         await saveStoredData(appState.data);
         closeLabelAssignmentPopover(); // Close and reopen to refresh the list
