@@ -287,41 +287,53 @@
       return false;
     }
   }
+  /**
+   * Helper function to create SVG elements.
+   * @param {string} tag - The SVG tag (e.g., 'svg', 'path').
+   * @param {object} attributes - An object of SVG attributes.
+   * @returns {SVGElement} The created SVG element.
+   */
+  function createSvgElement(tag, attributes = {}) {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const key in attributes) {
+      el.setAttribute(key, attributes[key]);
+    }
+    return el;
+  }
 
+  // Helper function to create elements with attributes and children
+  function createElement(tag, attributes = {}, children = []) {
+    const el = document.createElement(tag);
+    for (const key in attributes) {
+      if (key === "className") {
+        el.className = attributes[key];
+      } else if (key === "style") {
+        Object.assign(el.style, attributes[key]);
+      } else if (key.startsWith("data-")) {
+        el.dataset[key.substring(5)] = attributes[key];
+      } else if (key.startsWith("checked")) {
+        // add the attribute if it is true, else don't add it
+        if (attributes[key]) {
+          el.setAttribute(key, "");
+        }
+      } else {
+        el.setAttribute(key, attributes[key]);
+      }
+    }
+    children.forEach((child) => {
+      if (typeof child === "string") {
+        el.appendChild(document.createTextNode(child));
+      } else if (child) {
+        el.appendChild(child);
+      }
+    });
+    return el;
+  }
   /**
    * Creates and injects the UI and CSS into the page.
    */
   function injectUI() {
     if (uiInjected) return;
-
-    // Helper function to create elements with attributes and children
-    function createElement(tag, attributes = {}, children = []) {
-      const el = document.createElement(tag);
-      for (const key in attributes) {
-        if (key === "className") {
-          el.className = attributes[key];
-        } else if (key === "style") {
-          Object.assign(el.style, attributes[key]);
-        } else if (key.startsWith("data-")) {
-          el.dataset[key.substring(5)] = attributes[key];
-        } else if (key.startsWith("checked")) {
-          // add the attribute if it is true, else don't add it
-          if (attributes[key]) {
-            el.setAttribute(key, "");
-          }
-        } else {
-          el.setAttribute(key, attributes[key]);
-        }
-      }
-      children.forEach((child) => {
-        if (typeof child === "string") {
-          el.appendChild(document.createTextNode(child));
-        } else if (child) {
-          el.appendChild(child);
-        }
-      });
-      return el;
-    }
 
     const cssTemplate = `
         #chm-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.6); z-index: 9999; display: flex; align-items: center; justify-content: center; font-family: inherit; opacity: 0; transition: opacity 0.2s ease-in-out; }
@@ -897,26 +909,97 @@
       if (!sidebarNav) return false;
 
       console.log("🚀 [History Manager] Injecting sidebar button...");
-      const buttonElement = document.createElement("a");
-      buttonElement.id = "chm-sidebar-btn";
-      buttonElement.href = "#";
-      buttonElement.className =
-        "flex p-3 items-center gap-3 transition-colors duration-200 text-white cursor-pointer text-sm rounded-md hover:bg-gray-500/10 h-11";
-      buttonElement.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-          <path d="M3 3v5h5"></path>
-          <path d="M12 7v5l4 2"></path>
-        </svg>
-        History Manager
-      `;
+      const svgIcon = createSvgElement("svg", {
+        width: "20",
+        height: "20",
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        class: "icon",
+      });
+      svgIcon.appendChild(
+        createSvgElement("path", {
+          d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
+        })
+      );
+      svgIcon.appendChild(
+        createSvgElement("path", {
+          d: "M3 3v5h5",
+        })
+      );
+      svgIcon.appendChild(
+        createSvgElement("path", {
+          d: "M12 7v5l4 2",
+        })
+      );
+      const buttonElement = createElement(
+        "div",
+        {
+          id: "chm-sidebar-btn",
+          tabindex: "0",
+          className: "group __menu-item hoverable cursor-pointer",
+        },
+        [
+          createElement(
+            "div",
+            { className: "flex min-w-0 items-center gap-1.5" },
+            [
+              createElement(
+                "div",
+                { className: "flex items-center justify-center icon" },
+                [svgIcon]
+              ),
+              createElement(
+                "div",
+                { className: "flex min-w-0 grow items-center gap-2.5" },
+                [
+                  createElement("div", { className: "truncate" }, [
+                    "History Manager",
+                  ]),
+                ]
+              ),
+            ]
+          ),
+          createElement(
+            "div",
+            { className: "trailing highlight text-token-text-tertiary" },
+            [
+              createElement("div", { className: "touch:hidden" }, [
+                createElement(
+                  "div",
+                  {
+                    className:
+                      "inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']",
+                  },
+                  [
+                    createElement("kbd", { "aria-label": "Control" }, [
+                      createElement("span", { className: "min-w-[1em]" }, [
+                        "Ctrl",
+                      ]),
+                    ]),
+                    createElement("kbd", {}, [
+                      createElement("span", { className: "min-w-[1em]" }, [
+                        "H",
+                      ]),
+                    ]),
+                  ]
+                ),
+              ]),
+            ]
+          ),
+        ]
+      );
+
       buttonElement.addEventListener("click", (e) => {
         e.preventDefault();
         toggleUiVisibility(true);
       });
 
       // Find a good place to inject the button, e.g., before the labels
-      const leMenu = sidebarNav.querySelector("#le-sidebar-btn");
+      const leMenu = sidebarNav.querySelector("#chm-sidebar-btn");
       if (leMenu) {
         leMenu.parentElement.before(buttonElement);
       } else {
