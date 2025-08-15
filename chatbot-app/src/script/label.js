@@ -1,5 +1,4 @@
 (() => {
-  // This IIFE encapsulates the entire script to prevent conflicts.
   console.log(
     "🚀 [Label Explorer] Content script loaded. Press Ctrl+L to open."
   );
@@ -28,7 +27,6 @@
     } catch (e) {
       console.error("[Label Explorer] Error reading from storage:", e);
     }
-    // Return a default empty structure if data is invalid or not found
     return { labels: {}, chatLabels: {} };
   }
 
@@ -74,13 +72,11 @@
 
     let allItems = [];
     let offset = 0;
-    // Set total to a high number initially; it will be updated by the first API call.
     let total = Number.MAX_SAFE_INTEGER;
     const limit = 100;
 
     console.log("🔄 [Label Explorer] Starting to fetch all conversations...");
 
-    // Continue looping as long as we haven't fetched everything we expect.
     while (allItems.length < total) {
       try {
         const response = await fetch(
@@ -91,17 +87,13 @@
         );
 
         if (!response.ok) {
-          // If a specific page fails, throw an error to be caught below.
           throw new Error(`API request failed: ${response.status}`);
         }
 
         const data = await response.json();
         const currentItems = data.items || [];
-
-        // Update the total with the actual value from the API.
         total = data.total || 0;
 
-        // If the API returns no items, we're done.
         if (currentItems.length === 0) {
           break;
         }
@@ -113,7 +105,6 @@
           `[Label Explorer] Failed on page at offset ${offset}. Returning the ${allItems.length} items fetched so far.`,
           error
         );
-        // On failure, break the loop and proceed to return what we have.
         break;
       }
     }
@@ -123,15 +114,59 @@
     );
     return allItems;
   }
+
   // --- 2. UI, STYLES, AND INJECTION ---
+
+  /**
+   * Helper function to create DOM elements with attributes and children.
+   * @param {string} tag - The HTML tag for the element.
+   * @param {object} attributes - An object of attributes to set on the element.
+   * @param {Array<HTMLElement|string>} children - An array of child elements or text strings.
+   * @returns {HTMLElement} The created element.
+   */
+  function createElement(tag, attributes = {}, children = []) {
+    const el = document.createElement(tag);
+    for (const key in attributes) {
+      if (key === "className") {
+        el.className = attributes[key];
+      } else if (key === "style") {
+        Object.assign(el.style, attributes[key]);
+      } else if (key.startsWith("data-")) {
+        el.dataset[key.substring(5)] = attributes[key];
+      } else {
+        el.setAttribute(key, attributes[key]);
+      }
+    }
+    children.forEach((child) => {
+      if (typeof child === "string") {
+        el.appendChild(document.createTextNode(child));
+      } else if (child) {
+        el.appendChild(child);
+      }
+    });
+    return el;
+  }
+
+  /**
+   * Helper function to create SVG elements.
+   * @param {string} tag - The SVG tag (e.g., 'svg', 'path').
+   * @param {object} attributes - An object of SVG attributes.
+   * @returns {SVGElement} The created SVG element.
+   */
+  function createSvgElement(tag, attributes = {}) {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const key in attributes) {
+      el.setAttribute(key, attributes[key]);
+    }
+    return el;
+  }
 
   /**
    * Injects the CSS styles into the page immediately.
    */
   function injectStyles() {
-    if (document.getElementById("le-styles")) return; // Already injected
+    if (document.getElementById("le-styles")) return;
 
-    // --- CSS Template ---
     const cssTemplate = `
       .le-modal-container {
         position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -163,7 +198,7 @@
         transition: background-color 0.2s; cursor: pointer;
       }
       .le-conversation-item:hover { background-color: var(--surface-hover); }
-      .le-conversation-item .title { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .le-conversation-item .title { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); text-decoration: none; }
       .le-label-pill {
         display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem;
         padding: 2px 8px; border-radius: 999px; color: white;
@@ -201,6 +236,7 @@
       .le-sidebar-btn {
         color: var(--text-secondary); margin-left: auto; padding: 4px;
         border-radius: 4px; transition: background-color 0.2s, color 0.2s;
+        background: none; border: none; cursor: pointer; display: flex; align-items: center;
       }
       .le-sidebar-btn:hover { background-color: var(--surface-hover); color: var(--text-primary); }
       .le-popover {
@@ -232,9 +268,7 @@
         opacity: 0;
         transition: opacity 0.2s ease-in-out;
       }
-      .le-popover-backdrop.visible {
-        opacity: 1;
-      }
+      .le-popover-backdrop.visible { opacity: 1; }
       .le-popover-section { margin-bottom: 16px; }
       .le-popover-section:last-child { margin-bottom: 0; }
       .le-popover-section h4 { 
@@ -253,18 +287,9 @@
         padding: 8px 0; 
         border-bottom: 1px solid var(--border-light);
       }
-      .le-popover-label-item:last-child {
-        border-bottom: none;
-      }
-      .le-popover-label-item label { 
-        flex-grow: 1; 
-        cursor: pointer;
-        font-size: 0.9rem;
-      }
-      .le-popover-label-item input[type="checkbox"] {
-        margin-right: 8px;
-        cursor: pointer;
-      }
+      .le-popover-label-item:last-child { border-bottom: none; }
+      .le-popover-label-item label { flex-grow: 1; cursor: pointer; font-size: 0.9rem; }
+      .le-popover-label-item input[type="checkbox"] { margin-right: 8px; cursor: pointer; }
       .le-popover-new-label-input { 
         width: 100%; 
         padding: 10px; 
@@ -273,63 +298,33 @@
         background: var(--main-surface-secondary);
         color: var(--text-primary);
         font-size: 0.9rem;
+        box-sizing: border-box;
       }
-      .le-popover-new-label-input:focus {
-        outline: none;
-        border-color: var(--accent-primary, #10a37f);
-      }
+      .le-popover-new-label-input:focus { outline: none; border-color: var(--accent-primary, #10a37f); }
       .le-popover-close-btn {
-        position: absolute;
-        top: 8px;
-        right: 12px;
-        background: none;
-        border: none;
-        font-size: 1.5rem;
-        cursor: pointer;
-        color: var(--text-tertiary);
-        transition: color 0.2s;
-        width: 24px;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        position: absolute; top: 8px; right: 12px; background: none; border: none;
+        font-size: 1.5rem; cursor: pointer; color: var(--text-tertiary);
+        transition: color 0.2s; width: 24px; height: 24px;
+        display: flex; align-items: center; justify-content: center;
       }
-      .le-popover-close-btn:hover {
-        color: var(--text-secondary);
-      }
-      /* --- NEW STYLES FOR COLOR PICKER --- */
+      .le-popover-close-btn:hover { color: var(--text-secondary); }
       .le-color-swatch-label {
-        position: relative;
-        display: flex;
-        width: 100%;
-        height: 20px;
-        cursor: pointer;
-        flex-direction: row-reverse;
-        align-items: center;
-        margin-left: auto; /* Pushes it to the right */
+        position: relative; display: flex; width: 100%; height: 20px;
+        cursor: pointer; flex-direction: row-reverse; align-items: center;
+        margin-left: auto;
       }
       .le-color-picker-input {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        opacity: 0; /* Hide the input but keep it functional */
-        cursor: pointer;
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        opacity: 0; cursor: pointer;
       }
       .le-color-swatch {
-        display: block;
-        width: 25px;
-        height: 25px;
-        border-radius: 50%;
-        border: 1px solid var(--border-light);
-        pointer-events: none; /* Clicks go through to the input */
+        display: block; width: 25px; height: 25px; border-radius: 50%;
+        border: 1px solid var(--border-light); pointer-events: none;
       }
     `;
 
-    const styleSheet = document.createElement("style");
-    styleSheet.id = "le-styles";
-    styleSheet.innerText = cssTemplate;
+    const styleSheet = createElement("style", { id: "le-styles" });
+    styleSheet.textContent = cssTemplate;
     document.head.appendChild(styleSheet);
   }
 
@@ -339,26 +334,44 @@
   function injectModal() {
     if (appState.uiInjected) return;
 
-    // --- HTML Template for Modal ---
-    const modalTemplate = `
-      <div id="le-modal" class="le-modal">
-        <div class="le-header">
-          <div id="le-search-bar" class="le-search-bar">
-            <input type="text" id="le-search-input" placeholder="Search by labels...">
-          </div>
-        </div>
-        <div id="le-content" class="le-content">
-          <p style="text-align: center; color: var(--text-tertiary); padding: 1rem;">
-            Start typing to search for conversations by label.
-          </p>
-        </div>
-      </div>
-    `;
+    const modal = createElement(
+      "div",
+      { id: "le-modal", className: "le-modal" },
+      [
+        createElement("div", { className: "le-header" }, [
+          createElement(
+            "div",
+            { id: "le-search-bar", className: "le-search-bar" },
+            [
+              createElement("input", {
+                type: "text",
+                id: "le-search-input",
+                placeholder: "Search by labels...",
+              }),
+            ]
+          ),
+        ]),
+        createElement("div", { id: "le-content", className: "le-content" }, [
+          createElement(
+            "p",
+            {
+              style: {
+                textAlign: "center",
+                color: "var(--text-tertiary)",
+                padding: "1rem",
+              },
+            },
+            ["Start typing to search for conversations by label."]
+          ),
+        ]),
+      ]
+    );
 
-    const container = document.createElement("div");
-    container.id = "le-modal-container";
-    container.className = "le-modal-container";
-    container.innerHTML = modalTemplate;
+    const container = createElement(
+      "div",
+      { id: "le-modal-container", className: "le-modal-container" },
+      [modal]
+    );
     document.body.appendChild(container);
 
     appState.uiInjected = true;
@@ -377,10 +390,30 @@
     const titleContainer = chatElement.querySelector("div.truncate");
     if (!titleContainer) return;
 
-    // Create and inject the label icon button
-    const labelButton = document.createElement("button");
-    labelButton.className = "le-sidebar-btn";
-    labelButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>`;
+    const svgIcon = createSvgElement("svg", {
+      width: "16",
+      height: "16",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+    });
+    svgIcon.appendChild(
+      createSvgElement("path", {
+        d: "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z",
+      })
+    );
+    svgIcon.appendChild(
+      createSvgElement("line", { x1: "7", y1: "7", x2: "7.01", y2: "7" })
+    );
+
+    const labelButton = createElement(
+      "button",
+      { className: "le-sidebar-btn" },
+      [svgIcon]
+    );
 
     labelButton.addEventListener("click", (e) => {
       e.preventDefault();
@@ -388,8 +421,7 @@
       showLabelAssignmentPopover(conversationId);
     });
 
-    // Append button to the same container as the title
-    titleContainer.parentElement.style.display = "flex"; // Ensure flex layout
+    titleContainer.parentElement.style.display = "flex";
     titleContainer.parentElement.appendChild(labelButton);
   }
 
@@ -400,77 +432,96 @@
    * @param {string} conversationId - The ID of the conversation.
    */
   function showLabelAssignmentPopover(conversationId) {
-    // Close any existing popover
     closeLabelAssignmentPopover();
-
-    // Create backdrop
-    const backdrop = document.createElement("div");
-    backdrop.id = "le-popover-backdrop";
-    backdrop.className = "le-popover-backdrop";
-
-    // Create popover
-    const popover = document.createElement("div");
-    popover.id = "le-popover";
-    popover.className = "le-popover";
 
     const { labels, chatLabels } = appState.data;
     const assignedLabelIds = new Set(chatLabels[conversationId] || []);
 
-    let labelsListHTML = Object.entries(labels)
-      .map(
-        ([id, { name, color }]) => `
-        <div class="le-popover-label-item">
-          <input type="checkbox" id="le-cb-${id}" data-label-id="${id}" ${
-          assignedLabelIds.has(id) ? "checked" : ""
-        }>
-          <label for="le-cb-${id}">${name}</label>
-          <label class="le-color-swatch-label" title="Change label color">
-            <input type="color" class="le-color-picker-input" data-label-id="${id}" value="${color}">
-            <span class="le-color-swatch" style="background-color:${color};"></span>
-          </label>
-        </div>
-      `
-      )
-      .join("");
+    const labelItems = Object.entries(labels).map(([id, { name, color }]) => {
+      return createElement("div", { className: "le-popover-label-item" }, [
+        createElement("input", {
+          type: "checkbox",
+          id: `le-cb-${id}`,
+          "data-labelId": id,
+          checked: assignedLabelIds.has(id) ? true : undefined,
+        }),
+        createElement("label", { for: `le-cb-${id}` }, [name]),
+        createElement(
+          "label",
+          { className: "le-color-swatch-label", title: "Change label color" },
+          [
+            createElement("input", {
+              type: "color",
+              className: "le-color-picker-input",
+              "data-labelId": id,
+              value: color,
+            }),
+            createElement("span", {
+              className: "le-color-swatch",
+              style: { backgroundColor: color },
+            }),
+          ]
+        ),
+      ]);
+    });
 
-    popover.innerHTML = `
-      <button class="le-popover-close-btn">&times;</button>
-      <div class="le-popover-section">
-        <h4>Apply Labels</h4>
-        <div class="le-popover-labels-list">${
-          labelsListHTML ||
-          '<p style="font-size: 0.85rem; color: var(--text-tertiary); text-align: center; padding: 1rem;">No labels created yet.</p>'
-        }</div>
-      </div>
-      <div class="le-popover-section">
-        <h4>Create New Label</h4>
-        <input type="text" id="le-new-label-input" placeholder="Enter label name..." class="le-popover-new-label-input">
-      </div>
-    `;
+    const popover = createElement(
+      "div",
+      { id: "le-popover", className: "le-popover" },
+      [
+        createElement("button", { className: "le-popover-close-btn" }, ["×"]),
+        createElement("div", { className: "le-popover-section" }, [
+          createElement("h4", {}, ["Apply Labels"]),
+          createElement(
+            "div",
+            { className: "le-popover-labels-list" },
+            labelItems.length > 0
+              ? labelItems
+              : [
+                  createElement(
+                    "p",
+                    {
+                      style: {
+                        fontSize: "0.85rem",
+                        color: "var(--text-tertiary)",
+                        textAlign: "center",
+                        padding: "1rem",
+                      },
+                    },
+                    ["No labels created yet."]
+                  ),
+                ]
+          ),
+        ]),
+        createElement("div", { className: "le-popover-section" }, [
+          createElement("h4", {}, ["Create New Label"]),
+          createElement("input", {
+            type: "text",
+            id: "le-new-label-input",
+            placeholder: "Enter label name...",
+            className: "le-popover-new-label-input",
+          }),
+        ]),
+      ]
+    );
 
-    // Append to backdrop, then backdrop to body
-    backdrop.appendChild(popover);
+    const backdrop = createElement(
+      "div",
+      { id: "le-popover-backdrop", className: "le-popover-backdrop" },
+      [popover]
+    );
     document.body.appendChild(backdrop);
-
-    // Show with animation
     setTimeout(() => backdrop.classList.add("visible"), 10);
 
-    // --- Popover Event Listeners ---
-
-    // Close button
+    // Popover Event Listeners
     popover
       .querySelector(".le-popover-close-btn")
       .addEventListener("click", closeLabelAssignmentPopover);
-
-    // Close on backdrop click
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) closeLabelAssignmentPopover();
     });
-
-    // Prevent popover clicks from closing
     popover.addEventListener("click", (e) => e.stopPropagation());
 
-    // Handle checkbox changes
     popover.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       cb.addEventListener("change", async () => {
         const labelId = cb.dataset.labelId;
@@ -492,19 +543,12 @@
       });
     });
 
-    // --- NEW: Handle color changes ---
     popover.querySelectorAll(".le-color-picker-input").forEach((picker) => {
       picker.addEventListener("input", async (e) => {
         const labelId = e.target.dataset.labelId;
         const newColor = e.target.value;
-
-        // Update the UI swatch immediately for real-time feedback
         const swatch = e.target.nextElementSibling;
-        if (swatch) {
-          swatch.style.backgroundColor = newColor;
-        }
-
-        // Update the state and save
+        if (swatch) swatch.style.backgroundColor = newColor;
         if (appState.data.labels[labelId]) {
           appState.data.labels[labelId].color = newColor;
           await saveStoredData(appState.data);
@@ -512,17 +556,8 @@
       });
     });
 
-    // Handle new label creation
-    // Handle new label creation
     const newLabelInput = document.getElementById("le-new-label-input");
     newLabelInput.addEventListener("keydown", async (e) => {
-      /**
-       * Converts an HSL color value to Hex.
-       * @param {number} h - Hue (0-360)
-       * @param {number} s - Saturation (0-100)
-       * @param {number} l - Lightness (0-100)
-       * @returns {string} The hex color code (e.g., "#aabbcc")
-       */
       function hslToHex(h, s, l) {
         l /= 100;
         const a = (s * Math.min(l, 1 - l)) / 100;
@@ -531,28 +566,21 @@
           const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
           return Math.round(255 * color)
             .toString(16)
-            .padStart(2, "0"); // convert to Hex and prefix with "0" if needed
+            .padStart(2, "0");
         };
         return `#${f(0)}${f(8)}${f(4)}`;
       }
       if (e.key === "Enter" && newLabelInput.value.trim()) {
         const newName = newLabelInput.value.trim();
         const newId = `l-${Date.now()}`;
-
-        // --- FIXED ---
-        // 1. Generate random HSL values
         const randomHue = Math.random() * 360;
-        // 2. Convert them to the required #rrggbb hex format
         const newColor = hslToHex(randomHue, 70, 50);
-        // --- END FIX ---
-
         appState.data.labels[newId] = { name: newName, color: newColor };
         await saveStoredData(appState.data);
-        closeLabelAssignmentPopover(); // Close and reopen to refresh the list
+        showLabelAssignmentPopover(conversationId); // Re-render the popover
       }
     });
 
-    // Focus the input for immediate typing
     setTimeout(() => newLabelInput.focus(), 100);
   }
 
@@ -583,6 +611,7 @@
       const input = document.getElementById("le-search-input");
       input.value = "";
       input.focus();
+      showAvailableLabels();
     } else {
       container.classList.remove("visible");
       setTimeout(() => (container.style.display = "none"), 200);
@@ -600,9 +629,6 @@
       if (e.target.id === "le-modal-container") toggleModalVisibility(false);
     });
 
-    // Initial call to show available labels
-    setTimeout(() => showAvailableLabels(), 100);
-
     searchInput.addEventListener("keyup", handleSearch);
   }
 
@@ -614,7 +640,6 @@
     const query = searchInput.value.toLowerCase().trim();
 
     if (!query) {
-      // Show available labels when search is empty
       showAvailableLabels();
       return;
     }
@@ -641,72 +666,89 @@
    */
   function showAvailableLabels() {
     const contentArea = document.getElementById("le-content");
-    const { labels, chatLabels } = appState.data;
-
+    contentArea.innerHTML = ""; // Clear previous content
+    const { labels } = appState.data;
     const labelEntries = Object.entries(labels);
 
     if (labelEntries.length === 0) {
-      contentArea.innerHTML = `
-      <div style="text-align: center; color: var(--text-tertiary); padding: 2rem;">
-        <p style="margin-bottom: 1rem;">No labels created yet.</p>
-        <p style="font-size: 0.9rem;">Click the tag icon next to any conversation to create your first label!</p>
-      </div>
-    `;
+      const noLabelsMessage = createElement(
+        "div",
+        {
+          style: {
+            textAlign: "center",
+            color: "var(--text-tertiary)",
+            padding: "2rem",
+          },
+        },
+        [
+          createElement("p", { style: { marginBottom: "1rem" } }, [
+            "No labels created yet.",
+          ]),
+          createElement("p", { style: { fontSize: "0.9rem" } }, [
+            "Click the tag icon next to any conversation to create your first label!",
+          ]),
+        ]
+      );
+      contentArea.appendChild(noLabelsMessage);
       return;
     }
 
-    // Count conversations for each label
-    const labelCounts = {};
-    Object.entries(chatLabels).forEach(([, labelIds]) => {
-      labelIds.forEach((labelId) => {
-        labelCounts[labelId] = (labelCounts[labelId] || 0) + 1;
-      });
-    });
+    const pills = labelEntries.map(([id, { name, color }]) => {
+      const pill = createElement(
+        "div",
+        {
+          className: "le-label-pill le-label-pill-clickable",
+          style: { backgroundColor: color },
+          "data-labelId": id,
+          "data-labelName": name,
+          title: "Single-click to search. Double-click to delete.",
+        },
+        [name]
+      );
 
-    const pillsHTML = labelEntries
-      .map(([id, { name, color }]) => {
-        return `
-        <div class="le-label-pill le-label-pill-clickable" 
-             style="background-color:${color};" 
-             data-label-id="${id}"
-             data-label-name="${name}"
-             title="Single-click to search.">
-          ${name}
-        </div>
-      `;
-      })
-      .join("");
-
-    contentArea.innerHTML = `
-    <div style="text-align: center; padding: 2rem 1rem;">
-      <h3 style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 1rem; font-weight: 500;">
-        Available Labels
-      </h3>
-      <div class="le-available-labels-grid">
-        ${pillsHTML}
-      </div>
-      <p style="color: var(--text-tertiary); font-size: 0.85rem; margin-top: 1.5rem;">
-        Click on a label to search, or double-click to delete it.
-      </p>
-    </div>
-  `;
-
-    // --- Attach Event Listeners ---
-    contentArea.querySelectorAll(".le-label-pill-clickable").forEach((pill) => {
-      // SINGLE-CLICK: Trigger search
       pill.addEventListener("click", () => {
-        const labelName = pill.dataset.labelName;
         const searchInput = document.getElementById("le-search-input");
-        searchInput.value = labelName;
+        searchInput.value = name;
         handleSearch();
       });
-      // DOUBLE-CLICK: Trigger delete
-      pill.addEventListener("dblclick", () => {
-        const labelId = pill.dataset.labelId;
-        handleDeleteLabel(labelId);
-      });
+      pill.addEventListener("dblclick", () => handleDeleteLabel(id));
+      return pill;
     });
+
+    const availableLabelsView = createElement(
+      "div",
+      { style: { textAlign: "center", padding: "2rem 1rem" } },
+      [
+        createElement(
+          "h3",
+          {
+            style: {
+              color: "var(--text-secondary)",
+              marginBottom: "1.5rem",
+              fontSize: "1rem",
+              fontWeight: "500",
+            },
+          },
+          ["Available Labels"]
+        ),
+        createElement("div", { className: "le-available-labels-grid" }, pills),
+        createElement(
+          "p",
+          {
+            style: {
+              color: "var(--text-tertiary)",
+              fontSize: "0.85rem",
+              marginTop: "1.5rem",
+            },
+          },
+          ["Click a label to search, or double-click to delete it."]
+        ),
+      ]
+    );
+
+    contentArea.appendChild(availableLabelsView);
   }
+
   /**
    * Deletes a label and all its associations from the stored data.
    * @param {string} labelIdToDelete - The ID of the label to delete.
@@ -714,26 +756,25 @@
   async function handleDeleteLabel(labelIdToDelete) {
     if (!labelIdToDelete) return;
 
-    console.log(`[Label Explorer] Deleting label ID: ${labelIdToDelete}`);
+    const labelName = appState.data.labels[labelIdToDelete]?.name;
+    if (
+      !confirm(
+        `Are you sure you want to permanently delete the label "${labelName}"? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
 
-    // 1. Remove the label definition itself from the 'labels' object.
     delete appState.data.labels[labelIdToDelete];
-
-    // 2. Go through every chat and remove any reference to the deleted label.
     for (const chatId in appState.data.chatLabels) {
       appState.data.chatLabels[chatId] = appState.data.chatLabels[
         chatId
       ].filter((id) => id !== labelIdToDelete);
-      // If a chat no longer has any labels, remove its entry to keep data clean.
       if (appState.data.chatLabels[chatId].length === 0) {
         delete appState.data.chatLabels[chatId];
       }
     }
-
-    // 3. Save the changes to storage.
     await saveStoredData(appState.data);
-
-    // 4. Refresh the UI to show the label is gone.
     showAvailableLabels();
   }
 
@@ -743,192 +784,196 @@
    */
   function renderSearchResults(conversations) {
     const contentArea = document.getElementById("le-content");
+    contentArea.innerHTML = ""; // Clear previous results
     const { labels, chatLabels } = appState.data;
 
     if (conversations.length === 0) {
-      contentArea.innerHTML = `<p style="text-align: center; color: var(--text-tertiary); padding: 1rem;">No conversations found with matching labels.</p>`;
+      contentArea.appendChild(
+        createElement(
+          "p",
+          {
+            style: {
+              textAlign: "center",
+              color: "var(--text-tertiary)",
+              padding: "1rem",
+            },
+          },
+          ["No conversations found with matching labels."]
+        )
+      );
       return;
     }
 
-    contentArea.innerHTML = ""; // Clear previous results
     const fragment = document.createDocumentFragment();
-
     conversations.forEach((convo) => {
-      const itemEl = document.createElement("div");
-      itemEl.className = "le-conversation-item";
-
       const assignedLabelIds = chatLabels[convo.id] || [];
-
-      // MODIFICATION 1: Add data-attributes to each pill for identification.
-      const pillsHTML = assignedLabelIds
+      const pills = assignedLabelIds
         .map((id) => {
           const label = labels[id];
-          return label
-            ? `<div class="le-label-pill" 
-                 data-label-id="${id}" 
-                 data-convo-id="${convo.id}" 
-                 style="background-color:${label.color};" 
-                 title="Double-click to remove label">
-                 ${label.name}
-            </div>`
-            : "";
-        })
-        .join("");
+          if (!label) return null;
 
-      itemEl.innerHTML = `
-      <a class="title" href="/c/${convo.id}" target="_blank">${convo.title}</a>
-      <div class="le-label-pills-container">${pillsHTML}</div>
-    `;
+          const pill = createElement(
+            "div",
+            {
+              className: "le-label-pill",
+              "data-labelId": id,
+              "data-convoId": convo.id,
+              style: { backgroundColor: label.color },
+              title: "Double-click to remove label",
+            },
+            [label.name]
+          );
+
+          pill.addEventListener("dblclick", async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const currentLabels = appState.data.chatLabels[convo.id] || [];
+            appState.data.chatLabels[convo.id] = currentLabels.filter(
+              (labelId) => labelId !== id
+            );
+            if (appState.data.chatLabels[convo.id].length === 0) {
+              delete appState.data.chatLabels[convo.id];
+            }
+            await saveStoredData(appState.data);
+            pill.remove();
+          });
+
+          return pill;
+        })
+        .filter(Boolean); // Filter out nulls if a label was deleted but still referenced
+
+      const itemEl = createElement(
+        "div",
+        { className: "le-conversation-item" },
+        [
+          createElement(
+            "a",
+            { className: "title", href: `/c/${convo.id}`, target: "_blank" },
+            [convo.title]
+          ),
+          createElement(
+            "div",
+            { className: "le-label-pills-container" },
+            pills
+          ),
+        ]
+      );
       fragment.appendChild(itemEl);
     });
 
     contentArea.appendChild(fragment);
-
-    // MODIFICATION 2: Add event listeners for the new delete functionality.
-    contentArea.querySelectorAll(".le-label-pill").forEach((pill) => {
-      // Double-click to INITIATE removal
-      pill.addEventListener("dblclick", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        // If already confirming, do nothing
-        if (pill.dataset.confirmDelete) return;
-
-        const originalText = pill.textContent.trim();
-        pill.dataset.originalText = originalText; // Store original text
-        pill.dataset.confirmDelete = "true";
-        pill.innerHTML = `<del>${originalText}</del>`; // Strikethrough for visual cue
-        pill.style.opacity = "0.8";
-
-        // Set a timer to revert the pill's state if not confirmed
-        setTimeout(() => {
-          if (pill.dataset.confirmDelete === "true") {
-            pill.textContent = pill.dataset.originalText;
-            delete pill.dataset.confirmDelete;
-            delete pill.dataset.originalText;
-            pill.style.opacity = "1";
-          }
-        }, 3000); // 3-second window to confirm
-      });
-
-      // Single-click to CONFIRM removal
-      pill.addEventListener("click", async (e) => {
-        if (pill.dataset.confirmDelete === "true") {
-          e.preventDefault();
-          e.stopPropagation();
-
-          const labelId = pill.dataset.labelId;
-          const convoId = pill.dataset.convoId;
-          const chatLabelsForConvo = appState.data.chatLabels[convoId];
-
-          if (chatLabelsForConvo) {
-            // Remove the label ID from the array
-            appState.data.chatLabels[convoId] = chatLabelsForConvo.filter(
-              (id) => id !== labelId
-            );
-
-            // If no labels are left for this chat, remove the chat entry
-            if (appState.data.chatLabels[convoId].length === 0) {
-              delete appState.data.chatLabels[convoId];
-            }
-
-            await saveStoredData(appState.data);
-            pill.remove(); // Remove the pill from the DOM for instant feedback
-          }
-        }
-      });
-    });
   }
 
   // --- 4. SIDEBAR BUTTON INJECTION ---
 
   /**
-   * Injects a button into the sidebar using a MutationObserver to robustly handle
-   * cases where the sidebar is rendered, removed, or re-rendered dynamically.
+   * Injects a button into the sidebar using a MutationObserver.
    */
   function injectSidebarButton() {
-    waitForAsideAndObserve();
-
     const injectionLogic = () => {
-      // 1. Check if the button already exists to prevent duplicates.
-      if (document.getElementById("le-sidebar-btn")) {
-        return true; // Already injected
-      }
-
-      // 2. Find the target navigation area in the sidebar.
+      if (document.getElementById("le-sidebar-btn")) return true;
       const sidebarNav = document.querySelector("aside");
-      if (!sidebarNav) {
-        return false; // Target not found, do nothing yet.
-      }
+      if (!sidebarNav) return false;
 
       console.log("🚀 [Label Explorer] Injecting sidebar button...");
 
-      // 3. Define the SVG icon for the button.
-      const labelIconSVG = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
-          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-          <line x1="7" y1="7" x2="7.01" y2="7"></line>
-        </svg>
-      `;
+      const svgIcon = createSvgElement("svg", {
+        width: "20",
+        height: "20",
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        class: "icon",
+      });
+      svgIcon.appendChild(
+        createSvgElement("path", {
+          d: "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z",
+        })
+      );
+      svgIcon.appendChild(
+        createSvgElement("line", { x1: "7", y1: "7", x2: "7.01", y2: "7" })
+      );
 
-      // 4. Create the full button element from an HTML string.
-      const buttonWrapper = document.createElement("div");
-      buttonWrapper.innerHTML = `
-        <div id="le-sidebar-btn" tabindex="0" class="group __menu-item hoverable cursor-pointer">
-            <div class="flex min-w-0 items-center gap-1.5">
-                <div class="flex items-center justify-center icon">${labelIconSVG}</div>
-                <div class="flex min-w-0 grow items-center gap-2.5">
-                    <div class="truncate">Label Manager</div>
-                </div>
-            </div>
-            <div class="trailing highlight text-token-text-tertiary">
-                <div class="touch:hidden">
-                    <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']">
-                        <kbd aria-label="Control"><span class="min-w-[1em]">Ctrl</span></kbd>
-                        <kbd><span class="min-w-[1em]">L</span></kbd>
-                    </div>
-                </div>
-            </div>
-        </div>
-      `;
-      const buttonElement = buttonWrapper.firstElementChild;
+      const buttonElement = createElement(
+        "div",
+        {
+          id: "le-sidebar-btn",
+          tabindex: "0",
+          className: "group __menu-item hoverable cursor-pointer",
+        },
+        [
+          createElement(
+            "div",
+            { className: "flex min-w-0 items-center gap-1.5" },
+            [
+              createElement(
+                "div",
+                { className: "flex items-center justify-center icon" },
+                [svgIcon]
+              ),
+              createElement(
+                "div",
+                { className: "flex min-w-0 grow items-center gap-2.5" },
+                [
+                  createElement("div", { className: "truncate" }, [
+                    "Label Manager",
+                  ]),
+                ]
+              ),
+            ]
+          ),
+          createElement(
+            "div",
+            { className: "trailing highlight text-token-text-tertiary" },
+            [
+              createElement("div", { className: "touch:hidden" }, [
+                createElement(
+                  "div",
+                  {
+                    className:
+                      "inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']",
+                  },
+                  [
+                    createElement("kbd", { "aria-label": "Control" }, [
+                      createElement("span", { className: "min-w-[1em]" }, [
+                        "Ctrl",
+                      ]),
+                    ]),
+                    createElement("kbd", {}, [
+                      createElement("span", { className: "min-w-[1em]" }, [
+                        "L",
+                      ]),
+                    ]),
+                  ]
+                ),
+              ]),
+            ]
+          ),
+        ]
+      );
 
-      // 5. Add the click listener to open your UI.
       buttonElement.addEventListener("click", (e) => {
         e.preventDefault();
         toggleModalVisibility(true);
       });
 
-      // 6. Append the button and confirm success.
       sidebarNav.appendChild(buttonElement);
       console.log("✅ [Label Explorer] Sidebar button injected successfully.");
       return true;
     };
 
-    // --- Observer Setup ---
-
-    // Create an observer to watch for changes in the DOM.
-    const observer = new MutationObserver(() => {
-      // When any change happens, try to inject the button.
-      // The logic inside handles checking if it's already there.
-      injectionLogic();
-    });
-
-    function waitForAsideAndObserve() {
-      const interval = setInterval(() => {
-        const aside = document.body.querySelector("aside");
-        if (aside) {
-          clearInterval(interval);
-          // Start observing the aside for additions/removals of child elements.
-          observer.observe(aside, {
-            childList: true,
-            subtree: true,
-          });
-          // Run injection logic right away once aside is found.
-          injectionLogic();
-        }
-      }, 2000); // check every 2s
-    }
+    const observer = new MutationObserver(injectionLogic);
+    const interval = setInterval(() => {
+      const aside = document.body.querySelector("aside");
+      if (aside) {
+        clearInterval(interval);
+        observer.observe(aside, { childList: true, subtree: true });
+        injectionLogic();
+      }
+    }, 2000);
   }
 
   // --- 5. INITIALIZATION & OBSERVERS ---
@@ -938,15 +983,12 @@
    */
   function initializeSidebarObserver() {
     const observer = new MutationObserver((mutations) => {
-      // Use a Set to avoid processing the same element multiple times
       const newChatLinks = new Set();
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === 1) {
             // ELEMENT_NODE
-            if (node.matches('a[href^="/c/"]')) {
-              newChatLinks.add(node);
-            }
+            if (node.matches('a[href^="/c/"]')) newChatLinks.add(node);
             node
               .querySelectorAll('a[href^="/c/"]')
               .forEach((link) => newChatLinks.add(link));
@@ -959,10 +1001,10 @@
     const navElement = document.querySelector("nav");
     if (navElement) {
       observer.observe(navElement, { childList: true, subtree: true });
-      // Initial run for already present chats
-      setTimeout(() => { navElement.querySelectorAll('a[href^="/c/"]').forEach(injectSidebarUI) }, 3000);
+      setTimeout(() => {
+        navElement.querySelectorAll('a[href^="/c/"]').forEach(injectSidebarUI);
+      }, 3000);
     } else {
-      // If nav isn't ready, retry
       setTimeout(initializeSidebarObserver, 1000);
     }
   }
@@ -972,25 +1014,17 @@
    */
   async function main() {
     appState.data = await getStoredData();
-
-    // Inject styles immediately when script loads
     injectStyles();
 
-    // Hotkey to open the modal
     document.addEventListener("keydown", (e) => {
       if (e.ctrlKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
-        const isVisible = document
-          .getElementById("le-modal-container")
-          ?.classList.contains("visible");
+        const container = document.getElementById("le-modal-container");
+        const isVisible = container && container.style.display !== "none";
         toggleModalVisibility(!isVisible);
-      }
-    });
-
-    // Close popover on escape key
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
+      } else if (e.key === "Escape") {
         closeLabelAssignmentPopover();
+        toggleModalVisibility(false);
       }
     });
 
@@ -998,6 +1032,5 @@
     injectSidebarButton();
   }
 
-  // Run the script
   main();
 })();
