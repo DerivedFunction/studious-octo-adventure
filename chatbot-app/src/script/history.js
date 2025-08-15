@@ -199,7 +199,7 @@
   /**
    * Fetches ALL conversations (paged) from the server to fully sync the local cache.
    * This is the main data fetching function called on refresh or when cache is stale.
-   * Full load continues to load all conversations, while only loads the first iteration.
+   * Full load continues to load all for N iterations of 100 conversations
    *
    */
   async function syncAllConversationsWithServer(fullLoad = 999) {
@@ -1055,6 +1055,7 @@
   }
 
   injectSidebarButton();
+  syncAllConversationsWithServer(1);
   console.log(
     "✅ [History Manager] Content script loaded. Press Ctrl+H to open."
   );

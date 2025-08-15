@@ -339,7 +339,7 @@
           "No conversations found in the local cache.",
         ]),
         createElement("p", { style: { fontSize: "0.9rem" } }, [
-          "Please open the History Manager (Ctrl+H) and click 'Refresh' to sync your conversations first.",
+          "Please open the History Manager (Ctrl+H) to sync your conversations first.",
         ]),
       ]
     );
