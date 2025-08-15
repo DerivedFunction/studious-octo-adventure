@@ -419,12 +419,14 @@
               createElement("span", {}, ["Select All"]),
             ]
           ),
+          createElement("span", {}, ["Time Range: "]),
           createElement("select", { id: "chm-time-filter" }, [
-            createElement("option", { value: "all" }, ["All time"]),
+            createElement("option", { value: "15m" }, ["Last 15 min"]),
             createElement("option", { value: "1h" }, ["Last hour"]),
             createElement("option", { value: "24h" }, ["Last 24 hours"]),
             createElement("option", { value: "7d" }, ["Last 7 days"]),
             createElement("option", { value: "30d" }, ["Last 30 days"]),
+            createElement("option", { value: "all" }, ["All time"]),
           ]),
         ]),
         createElement("div", { className: "chm-action-bar-group" }, [
@@ -560,7 +562,10 @@
       .addEventListener("click", () => handleBulkAction("delete"));
     document
       .getElementById("chm-time-filter")
-      .addEventListener("change", applyFilterAndRender);
+      .addEventListener("change", () => {
+        applyFilterAndRender();
+        document.getElementById("selectAllHistory").checked = false;
+      });
     document
       .getElementById("selectAllHistory")
       .addEventListener("change", (e) => {
@@ -795,6 +800,9 @@
         const now = new Date();
         let threshold = new Date(now);
         switch (range) {
+          case "15m":
+            threshold.setMinutes(now.getMinutes() - 15);
+            break;
           case "1h":
             threshold.setHours(now.getHours() - 1);
             break;
