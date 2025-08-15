@@ -680,7 +680,7 @@
         const newColor = hslToHex(randomHue, 70, 50);
         appState.data.labels[newId] = { name: newName, color: newColor };
         await saveStoredData(appState.data);
-        showLabelAssignmentPopover(conversationId); // Re-render the popover
+        closeLabelAssignmentPopover();
       }
     });
 
