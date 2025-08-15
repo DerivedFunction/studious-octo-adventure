@@ -65,30 +65,64 @@
   }
 
   /**
-   * Fetches all conversations from the ChatGPT API.
-   * @returns {Promise<Array>} A list of conversation items.
+   * Fetches ALL conversations, handling pagination and returning partial results on failure.
+   * @returns {Promise<Array>} A list of all successfully fetched conversation items.
    */
   async function fetchAllConversations() {
     const token = await getAccessToken();
     if (!token) return [];
-    try {
-      // Note: In a real-world scenario, you might need to handle pagination if limit is capped.
-      const response = await fetch(
-        `https://chatgpt.com/backend-api/conversations?offset=0&limit=100&order=updated`,
-        {
-          headers: { authorization: `Bearer ${token}` },
-        }
-      );
-      if (!response.ok)
-        throw new Error(`API request failed: ${response.status}`);
-      const data = await response.json();
-      return data.items || [];
-    } catch (error) {
-      console.error("[Label Explorer] Failed to fetch conversations:", error);
-      return [];
-    }
-  }
 
+    let allItems = [];
+    let offset = 0;
+    // Set total to a high number initially; it will be updated by the first API call.
+    let total = Number.MAX_SAFE_INTEGER;
+    const limit = 100;
+
+    console.log("🔄 [Label Explorer] Starting to fetch all conversations...");
+
+    // Continue looping as long as we haven't fetched everything we expect.
+    while (allItems.length < total) {
+      try {
+        const response = await fetch(
+          `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=${limit}&order=updated`,
+          {
+            headers: { authorization: `Bearer ${token}` },
+          }
+        );
+
+        if (!response.ok) {
+          // If a specific page fails, throw an error to be caught below.
+          throw new Error(`API request failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const currentItems = data.items || [];
+
+        // Update the total with the actual value from the API.
+        total = data.total || 0;
+
+        // If the API returns no items, we're done.
+        if (currentItems.length === 0) {
+          break;
+        }
+
+        allItems.push(...currentItems);
+        offset += currentItems.length;
+      } catch (error) {
+        console.error(
+          `[Label Explorer] Failed on page at offset ${offset}. Returning the ${allItems.length} items fetched so far.`,
+          error
+        );
+        // On failure, break the loop and proceed to return what we have.
+        break;
+      }
+    }
+
+    console.log(
+      `✅ [Label Explorer] Fetched ${allItems.length} of ${total} conversations (may be partial).`
+    );
+    return allItems;
+  }
   // --- 2. UI, STYLES, AND INJECTION ---
 
   /**
