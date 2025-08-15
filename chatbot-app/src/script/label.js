@@ -4,41 +4,134 @@
   );
 
   // --- Configuration & State ---
-  const STORAGE_KEY = "chatgptLabelExplorerData";
   let appState = {
     data: { labels: {}, chatLabels: {} },
     uiInjected: false,
     accessToken: null,
   };
 
-  // --- 1. CORE LOGIC & DATA MANAGEMENT ---
+  // --- 1. CORE LOGIC & DATA MANAGEMENT (with IndexedDB) ---
+
+  // --- IndexedDB Helper ---
+  const DB_NAME = "LabelExplorerDB";
+  const DB_VERSION = 1;
+  const STORE_NAME = "labelData";
+  const DATA_KEY = "appData"; // The single key we'll use in our object store
+
+  let db; // To hold the database instance
 
   /**
-   * Fetches data from chrome.storage.local or returns a default structure.
+   * Opens and initializes the IndexedDB database.
+   * @returns {Promise<IDBDatabase>} The database instance.
+   */
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      // If the database connection is already open, resolve with it.
+      if (db) {
+        return resolve(db);
+      }
+
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onerror = (event) => {
+        console.error("[Label Explorer] IndexedDB error:", event.target.error);
+        reject("IndexedDB error");
+      };
+
+      request.onsuccess = (event) => {
+        db = event.target.result;
+        resolve(db);
+      };
+
+      // This event only runs if the database doesn't exist or a new version is requested.
+      request.onupgradeneeded = (event) => {
+        const dbInstance = event.target.result;
+        // Create an object store to hold our data. We use 'id' as the keyPath.
+        if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
+          dbInstance.createObjectStore(STORE_NAME, { keyPath: "id" });
+          console.log("[Label Explorer] IndexedDB object store created.");
+        }
+      };
+    });
+  }
+
+  /**
+   * Gets a value from the IndexedDB object store.
+   * @param {string} key - The key of the item to retrieve.
+   * @returns {Promise<any>} The retrieved value or null if not found.
+   */
+  async function getFromDB(key) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readonly");
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get(key);
+
+      request.onerror = (event) => {
+        console.error("[Label Explorer] DB Get Error:", event.target.error);
+        reject("Error getting data from DB");
+      };
+
+      request.onsuccess = () => {
+        // The stored object is {id: key, value: data}, so we return the value.
+        resolve(request.result ? request.result.value : null);
+      };
+    });
+  }
+
+  /**
+   * Puts a value into the IndexedDB object store (creates or updates).
+   * @param {string} key - The key of the item to set.
+   * @param {any} value - The value to store.
+   * @returns {Promise<void>}
+   */
+  async function setToDB(key, value) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      // We store the data in an object format that matches our keyPath.
+      const request = store.put({ id: key, value: value });
+
+      request.onerror = (event) => {
+        console.error("[Label Explorer] DB Set Error:", event.target.error);
+        reject("Error setting data in DB");
+      };
+
+      request.onsuccess = () => {
+        resolve();
+      };
+    });
+  }
+  // --- End of IndexedDB Helper ---
+
+  /**
+   * Fetches data from IndexedDB or returns a default structure.
    * @returns {Promise<object>} The stored data.
    */
   async function getStoredData() {
     try {
-      const result = await chrome.storage.local.get(STORAGE_KEY);
-      const data = result[STORAGE_KEY];
+      const data = await getFromDB(DATA_KEY);
+      // Ensure the retrieved data has the expected structure.
       if (data && data.labels && data.chatLabels) {
         return data;
       }
     } catch (e) {
-      console.error("[Label Explorer] Error reading from storage:", e);
+      console.error("[Label Explorer] Error reading from IndexedDB:", e);
     }
+    // Return a default structure if nothing is found or an error occurs.
     return { labels: {}, chatLabels: {} };
   }
 
   /**
-   * Saves the provided data object to chrome.storage.local.
+   * Saves the provided data object to IndexedDB.
    * @param {object} data - The data to save.
    */
   async function saveStoredData(data) {
     try {
-      await chrome.storage.local.set({ [STORAGE_KEY]: data });
+      await setToDB(DATA_KEY, data);
     } catch (e) {
-      console.error("[Label Explorer] Error saving to storage:", e);
+      console.error("[Label Explorer] Error saving to IndexedDB:", e);
     }
   }
 
@@ -138,8 +231,7 @@
         if (attributes[key]) {
           el.setAttribute(key, "");
         }
-      } else
-      {
+      } else {
         el.setAttribute(key, attributes[key]);
       }
     }
@@ -442,19 +534,19 @@
 
     const { labels, chatLabels } = appState.data;
     const assignedLabelIds = new Set(chatLabels[conversationId] || []);
-    
+
     const labelItems = Object.entries(labels).map(([id, { name, color }]) => {
       console.log("Assigned labels:", assignedLabelIds);
       console.log("Label ID:", id);
       console.log("Label name:", name);
       console.log("Label color:", color);
-      console.log(assignedLabelIds.has(id))
+      console.log(assignedLabelIds.has(id));
       return createElement("div", { className: "le-popover-label-item" }, [
         createElement("input", {
           type: "checkbox",
           id: `le-cb-${id}`,
           "data-labelId": id,
-          checked: assignedLabelIds.has(id)
+          checked: assignedLabelIds.has(id),
         }),
         createElement("label", { for: `le-cb-${id}` }, [name]),
         createElement(
