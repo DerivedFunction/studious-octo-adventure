@@ -513,7 +513,7 @@
                 id: "deletePermanentBtn",
                 className: "chm-btn action-delete-perm",
               },
-              ["Delete Permanently"]
+              ["Delete"]
             ),
           ]
         ),
@@ -839,14 +839,11 @@
         message = `Archive ${targetIds.length} conversation(s)?`;
         payload = { is_archived: true };
         break;
-      case "delete":
-        message = `Delete ${targetIds.length} conversation(s)?`;
-        payload = { is_visible: false };
-        break;
       case "restore":
         message = `Restore ${targetIds.length} conversation(s)?`;
         payload = { is_archived: false };
         break;
+      case "delete":
       case "deletePermanent":
         message = `PERMANENTLY delete ${targetIds.length} conversation(s)? This is irreversible.`;
         payload = { is_visible: false };
