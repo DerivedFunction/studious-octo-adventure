@@ -92,10 +92,10 @@
   // --- 2. UI, STYLES, AND INJECTION ---
 
   /**
-   * Creates and injects all UI elements (CSS, Modal) into the page.
+   * Injects the CSS styles into the page immediately.
    */
-  function injectUI() {
-    if (appState.uiInjected) return;
+  function injectStyles() {
+    if (document.getElementById("le-styles")) return; // Already injected
 
     // --- CSS Template ---
     const cssTemplate = `
@@ -136,23 +136,105 @@
       }
       .le-label-pill.in-search { cursor: pointer; }
       .le-label-pills-container { display: flex; gap: 6px; flex-wrap: wrap; }
-      .le-sidebar-pills-container { margin-top: 4px; padding-left: 36px; }
       .le-sidebar-btn {
         color: var(--text-secondary); margin-left: auto; padding: 4px;
         border-radius: 4px; transition: background-color 0.2s, color 0.2s;
       }
       .le-sidebar-btn:hover { background-color: var(--surface-hover); color: var(--text-primary); }
       .le-popover {
-        position: absolute; z-index: 10001; background: var(--main-surface-primary);
-        border: 1px solid var(--border-medium); border-radius: 8px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2); padding: 12px; width: 250px;
+        position: fixed; 
+        z-index: 10001; 
+        background: var(--main-surface-primary);
+        border: 1px solid var(--border-medium); 
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
+        padding: 16px; 
+        width: 300px;
+        max-height: 400px;
+        overflow-y: auto;
+        transform: translate(-50%, -50%);
+        top: 50%;
+        left: 50%;
       }
-      .le-popover-section { margin-bottom: 12px; }
-      .le-popover-section h4 { font-size: 0.8rem; font-weight: 500; margin-bottom: 8px; color: var(--text-secondary); }
-      .le-popover-labels-list { max-height: 150px; overflow-y: auto; }
-      .le-popover-label-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-      .le-popover-label-item label { flex-grow: 1; }
-      .le-popover-new-label-input { width: 100%; }
+      .le-popover-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(0, 0, 0, 0.4);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.2s ease-in-out;
+      }
+      .le-popover-backdrop.visible {
+        opacity: 1;
+      }
+      .le-popover-section { margin-bottom: 16px; }
+      .le-popover-section:last-child { margin-bottom: 0; }
+      .le-popover-section h4 { 
+        font-size: 0.85rem; 
+        font-weight: 600; 
+        margin-bottom: 12px; 
+        color: var(--text-secondary); 
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .le-popover-labels-list { max-height: 200px; overflow-y: auto; }
+      .le-popover-label-item { 
+        display: flex; 
+        align-items: center; 
+        gap: 12px; 
+        padding: 8px 0; 
+        border-bottom: 1px solid var(--border-light);
+      }
+      .le-popover-label-item:last-child {
+        border-bottom: none;
+      }
+      .le-popover-label-item label { 
+        flex-grow: 1; 
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
+      .le-popover-label-item input[type="checkbox"] {
+        margin-right: 8px;
+        cursor: pointer;
+      }
+      .le-popover-new-label-input { 
+        width: 100%; 
+        padding: 10px; 
+        border: 1px solid var(--border-medium);
+        border-radius: 6px;
+        background: var(--main-surface-secondary);
+        color: var(--text-primary);
+        font-size: 0.9rem;
+      }
+      .le-popover-new-label-input:focus {
+        outline: none;
+        border-color: var(--accent-primary, #10a37f);
+      }
+      .le-popover-close-btn {
+        position: absolute;
+        top: 8px;
+        right: 12px;
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: var(--text-tertiary);
+        transition: color 0.2s;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .le-popover-close-btn:hover {
+        color: var(--text-secondary);
+      }
     `;
 
     // --- HTML Template for Modal ---
@@ -175,6 +257,13 @@
     styleSheet.id = "le-styles";
     styleSheet.innerText = cssTemplate;
     document.head.appendChild(styleSheet);
+  }
+
+  /**
+   * Creates and injects the modal HTML into the page.
+   */
+  function injectModal() {
+    if (appState.uiInjected) return;
 
     const container = document.createElement("div");
     container.id = "le-modal-container";
@@ -187,7 +276,7 @@
   }
 
   /**
-   * Injects the label icon and pills container into a sidebar chat link.
+   * Injects the label icon button into a sidebar chat link.
    * @param {HTMLElement} chatElement - The <a> tag of the conversation.
    */
   async function injectSidebarUI(chatElement) {
@@ -198,22 +287,7 @@
     const titleContainer = chatElement.querySelector("div.truncate");
     if (!titleContainer) return;
 
-    // 1. Create and inject label pills container
-    let pillsContainer = chatElement.parentElement.querySelector(
-      ".le-sidebar-pills-container"
-    );
-    if (!pillsContainer) {
-      pillsContainer = document.createElement("div");
-      pillsContainer.className = "le-sidebar-pills-container";
-      // Insert after the main link container
-      chatElement.parentElement.insertBefore(
-        pillsContainer,
-        chatElement.nextSibling
-      );
-    }
-    updateVisibleLabels(pillsContainer, conversationId);
-
-    // 2. Create and inject the label icon button
+    // Create and inject the label icon button
     const labelButton = document.createElement("button");
     labelButton.className = "le-sidebar-btn";
     labelButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>`;
@@ -221,7 +295,7 @@
     labelButton.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      showLabelAssignmentPopover(labelButton, conversationId);
+      showLabelAssignmentPopover(conversationId);
     });
 
     // Append button to the same container as the title
@@ -229,49 +303,25 @@
     titleContainer.parentElement.appendChild(labelButton);
   }
 
-  /**
-   * Updates the visible label pills for a given conversation in the sidebar.
-   * @param {HTMLElement} pillsContainer - The container to render pills into.
-   * @param {string} conversationId - The ID of the conversation.
-   */
-  async function updateVisibleLabels(pillsContainer, conversationId) {
-    pillsContainer.innerHTML = "";
-    const { labels, chatLabels } = appState.data;
-    const assignedLabelIds = chatLabels[conversationId] || [];
-
-    if (assignedLabelIds.length > 0) {
-      const fragment = document.createDocumentFragment();
-      assignedLabelIds.forEach((labelId) => {
-        const label = labels[labelId];
-        if (label) {
-          const pill = document.createElement("div");
-          pill.className = "le-label-pill";
-          pill.style.backgroundColor = label.color;
-          pill.textContent = label.name;
-          fragment.appendChild(pill);
-        }
-      });
-      pillsContainer.appendChild(fragment);
-    }
-  }
-
   // --- 3. EVENT HANDLERS & DYNAMIC UI ---
 
   /**
-   * Shows the popover for assigning/creating labels.
-   * @param {HTMLElement} targetElement - The element to position the popover near.
+   * Shows the centered popover for assigning/creating labels.
    * @param {string} conversationId - The ID of the conversation.
    */
-  function showLabelAssignmentPopover(targetElement, conversationId) {
+  function showLabelAssignmentPopover(conversationId) {
     // Close any existing popover
-    document.getElementById("le-popover")?.remove();
+    closeLabelAssignmentPopover();
 
-    const rect = targetElement.getBoundingClientRect();
+    // Create backdrop
+    const backdrop = document.createElement("div");
+    backdrop.id = "le-popover-backdrop";
+    backdrop.className = "le-popover-backdrop";
+
+    // Create popover
     const popover = document.createElement("div");
     popover.id = "le-popover";
     popover.className = "le-popover";
-    popover.style.top = `${rect.bottom + 5}px`;
-    popover.style.right = `${window.innerWidth - rect.right - rect.width}px`;
 
     const { labels, chatLabels } = appState.data;
     const assignedLabelIds = new Set(chatLabels[conversationId] || []);
@@ -284,31 +334,48 @@
           assignedLabelIds.has(id) ? "checked" : ""
         }>
         <label for="le-cb-${id}">${name}</label>
-        <div class="le-label-pill" style="background-color:${color}; width: 12px; height: 12px; padding: 0;"></div>
+        <div class="le-label-pill" style="background-color:${color}; width: 16px; height: 16px; padding: 0; border-radius: 50%;"></div>
       </div>
     `
       )
       .join("");
 
     popover.innerHTML = `
+      <button class="le-popover-close-btn">&times;</button>
       <div class="le-popover-section">
-        <h4>APPLY LABELS</h4>
+        <h4>Apply Labels</h4>
         <div class="le-popover-labels-list">${
           labelsListHTML ||
-          '<p style="font-size: 0.8rem; color: var(--text-tertiary);">No labels created yet.</p>'
+          '<p style="font-size: 0.85rem; color: var(--text-tertiary); text-align: center; padding: 1rem;">No labels created yet.</p>'
         }</div>
       </div>
       <div class="le-popover-section">
-        <h4>CREATE NEW</h4>
-        <input type="text" id="le-new-label-input" placeholder="New label name..." class="le-popover-new-label-input" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border-medium); background: var(--main-surface-secondary);">
+        <h4>Create New Label</h4>
+        <input type="text" id="le-new-label-input" placeholder="Enter label name..." class="le-popover-new-label-input">
       </div>
     `;
 
-    document.body.appendChild(popover);
+    // Append to backdrop, then backdrop to body
+    backdrop.appendChild(popover);
+    document.body.appendChild(backdrop);
+
+    // Show with animation
+    setTimeout(() => backdrop.classList.add("visible"), 10);
 
     // --- Popover Event Listeners ---
-    popover.addEventListener("click", (e) => e.stopPropagation()); // Prevent closing when clicking inside
-    document.addEventListener("click", () => popover.remove(), { once: true });
+
+    // Close button
+    popover
+      .querySelector(".le-popover-close-btn")
+      .addEventListener("click", closeLabelAssignmentPopover);
+
+    // Close on backdrop click
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) closeLabelAssignmentPopover();
+    });
+
+    // Prevent popover clicks from closing
+    popover.addEventListener("click", (e) => e.stopPropagation());
 
     // Handle checkbox changes
     popover.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
@@ -329,10 +396,6 @@
           );
         }
         await saveStoredData(appState.data);
-        const pillsContainer = targetElement
-          .closest('div[class*="relative"]')
-          .querySelector(".le-sidebar-pills-container");
-        if (pillsContainer) updateVisibleLabels(pillsContainer, conversationId);
       });
     });
 
@@ -345,10 +408,24 @@
         const newColor = `hsl(${Math.random() * 360}, 70%, 50%)`;
         appState.data.labels[newId] = { name: newName, color: newColor };
         await saveStoredData(appState.data);
-        popover.remove(); // Close and reopen to refresh the list
-        showLabelAssignmentPopover(targetElement, conversationId);
+        closeLabelAssignmentPopover(); // Close and reopen to refresh the list
+        showLabelAssignmentPopover(conversationId);
       }
     });
+
+    // Focus the input for immediate typing
+    setTimeout(() => newLabelInput.focus(), 100);
+  }
+
+  /**
+   * Closes the label assignment popover
+   */
+  function closeLabelAssignmentPopover() {
+    const backdrop = document.getElementById("le-popover-backdrop");
+    if (backdrop) {
+      backdrop.classList.remove("visible");
+      setTimeout(() => backdrop.remove(), 200);
+    }
   }
 
   /**
@@ -357,7 +434,7 @@
    */
   function toggleModalVisibility(show) {
     if (!appState.uiInjected) {
-      if (show) injectUI();
+      if (show) injectModal();
       else return;
     }
     const container = document.getElementById("le-modal-container");
@@ -459,7 +536,98 @@
     contentArea.appendChild(fragment);
   }
 
-  // --- 4. INITIALIZATION & OBSERVERS ---
+  // --- 4. SIDEBAR BUTTON INJECTION ---
+
+  /**
+   * Injects a button into the sidebar using a MutationObserver to robustly handle
+   * cases where the sidebar is rendered, removed, or re-rendered dynamically.
+   */
+  function injectSidebarButton() {
+    waitForAsideAndObserve();
+
+    const injectionLogic = () => {
+      // 1. Check if the button already exists to prevent duplicates.
+      if (document.getElementById("le-sidebar-btn")) {
+        return true; // Already injected
+      }
+
+      // 2. Find the target navigation area in the sidebar.
+      const sidebarNav = document.querySelector("aside");
+      if (!sidebarNav) {
+        return false; // Target not found, do nothing yet.
+      }
+
+      console.log("🚀 [Label Explorer] Injecting sidebar button...");
+
+      // 3. Define the SVG icon for the button.
+      const labelIconSVG = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+          <line x1="7" y1="7" x2="7.01" y2="7"></line>
+        </svg>
+      `;
+
+      // 4. Create the full button element from an HTML string.
+      const buttonWrapper = document.createElement("div");
+      buttonWrapper.innerHTML = `
+        <div id="le-sidebar-btn" tabindex="0" class="group __menu-item hoverable cursor-pointer">
+            <div class="flex min-w-0 items-center gap-1.5">
+                <div class="flex items-center justify-center icon">${labelIconSVG}</div>
+                <div class="flex min-w-0 grow items-center gap-2.5">
+                    <div class="truncate">Label Manager</div>
+                </div>
+            </div>
+            <div class="trailing highlight text-token-text-tertiary">
+                <div class="touch:hidden">
+                    <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']">
+                        <kbd aria-label="Control"><span class="min-w-[1em]">Ctrl</span></kbd>
+                        <kbd><span class="min-w-[1em]">L</span></kbd>
+                    </div>
+                </div>
+            </div>
+        </div>
+      `;
+      const buttonElement = buttonWrapper.firstElementChild;
+
+      // 5. Add the click listener to open your UI.
+      buttonElement.addEventListener("click", (e) => {
+        e.preventDefault();
+        toggleModalVisibility(true);
+      });
+
+      // 6. Append the button and confirm success.
+      sidebarNav.appendChild(buttonElement);
+      console.log("✅ [Label Explorer] Sidebar button injected successfully.");
+      return true;
+    };
+
+    // --- Observer Setup ---
+
+    // Create an observer to watch for changes in the DOM.
+    const observer = new MutationObserver((mutations) => {
+      // When any change happens, try to inject the button.
+      // The logic inside handles checking if it's already there.
+      injectionLogic();
+    });
+
+    function waitForAsideAndObserve() {
+      const interval = setInterval(() => {
+        const aside = document.body.querySelector("aside");
+        if (aside) {
+          clearInterval(interval);
+          // Start observing the aside for additions/removals of child elements.
+          observer.observe(aside, {
+            childList: true,
+            subtree: true,
+          });
+          // Run injection logic right away once aside is found.
+          injectionLogic();
+        }
+      }, 2000); // check every 2s
+    }
+  }
+
+  // --- 5. INITIALIZATION & OBSERVERS ---
 
   /**
    * Sets up the MutationObserver to watch for new chats in the sidebar.
@@ -501,6 +669,9 @@
   async function main() {
     appState.data = await getStoredData();
 
+    // Inject styles immediately when script loads
+    injectStyles();
+
     // Hotkey to open the modal
     document.addEventListener("keydown", (e) => {
       if (e.ctrlKey && e.key.toLowerCase() === "l") {
@@ -512,7 +683,15 @@
       }
     });
 
+    // Close popover on escape key
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        closeLabelAssignmentPopover();
+      }
+    });
+
     initializeSidebarObserver();
+    injectSidebarButton();
   }
 
   // Run the script
