@@ -7,126 +7,72 @@
   let appState = {
     data: { labels: {}, chatLabels: {} },
     uiInjected: false,
-    accessToken: null,
   };
 
-  // --- 1. CORE LOGIC & DATA MANAGEMENT (with IndexedDB) ---
+  // --- 1. CORE LOGIC & DATA MANAGEMENT ---
 
-  // --- IndexedDB Helper ---
+  // --- IndexedDB Helper for Label Data ---
   const DB_NAME = "LabelExplorerDB";
   const DB_VERSION = 1;
   const STORE_NAME = "labelData";
-  const DATA_KEY = "appData"; // The single key we'll use in our object store
+  const DATA_KEY = "appData";
 
-  let db; // To hold the database instance
+  let db; // To hold the LabelExplorerDB instance
 
-  /**
-   * Opens and initializes the IndexedDB database.
-   * @returns {Promise<IDBDatabase>} The database instance.
-   */
   function openDB() {
     return new Promise((resolve, reject) => {
-      // If the database connection is already open, resolve with it.
-      if (db) {
-        return resolve(db);
-      }
-
+      if (db) return resolve(db);
       const request = indexedDB.open(DB_NAME, DB_VERSION);
-
       request.onerror = (event) => {
         console.error("[Label Explorer] IndexedDB error:", event.target.error);
         reject("IndexedDB error");
       };
-
       request.onsuccess = (event) => {
         db = event.target.result;
         resolve(db);
       };
-
-      // This event only runs if the database doesn't exist or a new version is requested.
       request.onupgradeneeded = (event) => {
         const dbInstance = event.target.result;
-        // Create an object store to hold our data. We use 'id' as the keyPath.
         if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
           dbInstance.createObjectStore(STORE_NAME, { keyPath: "id" });
-          console.log("[Label Explorer] IndexedDB object store created.");
         }
       };
     });
   }
 
-  /**
-   * Gets a value from the IndexedDB object store.
-   * @param {string} key - The key of the item to retrieve.
-   * @returns {Promise<any>} The retrieved value or null if not found.
-   */
   async function getFromDB(key) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, "readonly");
       const store = transaction.objectStore(STORE_NAME);
       const request = store.get(key);
-
-      request.onerror = (event) => {
-        console.error("[Label Explorer] DB Get Error:", event.target.error);
-        reject("Error getting data from DB");
-      };
-
-      request.onsuccess = () => {
-        // The stored object is {id: key, value: data}, so we return the value.
+      request.onerror = (event) => reject(event.target.error);
+      request.onsuccess = () =>
         resolve(request.result ? request.result.value : null);
-      };
     });
   }
 
-  /**
-   * Puts a value into the IndexedDB object store (creates or updates).
-   * @param {string} key - The key of the item to set.
-   * @param {any} value - The value to store.
-   * @returns {Promise<void>}
-   */
   async function setToDB(key, value) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE_NAME, "readwrite");
       const store = transaction.objectStore(STORE_NAME);
-      // We store the data in an object format that matches our keyPath.
       const request = store.put({ id: key, value: value });
-
-      request.onerror = (event) => {
-        console.error("[Label Explorer] DB Set Error:", event.target.error);
-        reject("Error setting data in DB");
-      };
-
-      request.onsuccess = () => {
-        resolve();
-      };
+      request.onerror = (event) => reject(event.target.error);
+      request.onsuccess = () => resolve();
     });
   }
-  // --- End of IndexedDB Helper ---
 
-  /**
-   * Fetches data from IndexedDB or returns a default structure.
-   * @returns {Promise<object>} The stored data.
-   */
   async function getStoredData() {
     try {
       const data = await getFromDB(DATA_KEY);
-      // Ensure the retrieved data has the expected structure.
-      if (data && data.labels && data.chatLabels) {
-        return data;
-      }
+      if (data && data.labels && data.chatLabels) return data;
     } catch (e) {
       console.error("[Label Explorer] Error reading from IndexedDB:", e);
     }
-    // Return a default structure if nothing is found or an error occurs.
     return { labels: {}, chatLabels: {} };
   }
 
-  /**
-   * Saves the provided data object to IndexedDB.
-   * @param {object} data - The data to save.
-   */
   async function saveStoredData(data) {
     try {
       await setToDB(DATA_KEY, data);
@@ -134,89 +80,77 @@
       console.error("[Label Explorer] Error saving to IndexedDB:", e);
     }
   }
+  // --- End of Label DB Helper ---
 
-  /**
-   * Fetches and caches the ChatGPT access token.
-   * @returns {Promise<string|null>} The access token.
-   */
-  async function getAccessToken() {
-    if (appState.accessToken) return appState.accessToken;
-    try {
-      const response = await fetch("https://chatgpt.com/api/auth/session");
-      if (!response.ok)
-        throw new Error(`Auth fetch failed: ${response.status}`);
-      const session = await response.json();
-      if (!session.accessToken) throw new Error("Access token not found.");
-      appState.accessToken = session.accessToken;
-      return appState.accessToken;
-    } catch (error) {
-      console.error("[Label Explorer] Could not retrieve access token:", error);
-      return null;
-    }
-  }
+  // --- History Manager Cache Access ---
+  const historyDBManager = {
+    DB_NAME: "ConversationManagerDB",
+    CONVERSATION_STORE: "conversations",
+    db: null,
 
-  /**
-   * Fetches ALL conversations, handling pagination and returning partial results on failure.
-   * @returns {Promise<Array>} A list of all successfully fetched conversation items.
-   */
-  async function fetchAllConversations() {
-    const token = await getAccessToken();
-    if (!token) return [];
+    async openDB() {
+      if (this.db) return this.db;
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(this.DB_NAME);
+        request.onerror = (e) =>
+          reject("History DB open error: " + e.target.errorCode);
+        request.onsuccess = (e) => {
+          this.db = e.target.result;
+          resolve(this.db);
+        };
+      });
+    },
 
-    let allItems = [];
-    let offset = 0;
-    let total = Number.MAX_SAFE_INTEGER;
-    const limit = 100;
-
-    console.log("🔄 [Label Explorer] Starting to fetch all conversations...");
-
-    while (allItems.length < total) {
+    async getAllConversations() {
       try {
-        const response = await fetch(
-          `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=${limit}&order=updated`,
-          {
-            headers: { authorization: `Bearer ${token}` },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`API request failed: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const currentItems = data.items || [];
-        total = data.total || 0;
-
-        if (currentItems.length === 0) {
-          break;
-        }
-
-        allItems.push(...currentItems);
-        offset += currentItems.length;
+        const db = await this.openDB();
+        return new Promise((resolve, reject) => {
+          const transaction = db.transaction(
+            this.CONVERSATION_STORE,
+            "readonly"
+          );
+          const store = transaction.objectStore(this.CONVERSATION_STORE);
+          const request = store.getAll();
+          request.onsuccess = () => resolve(request.result || []);
+          request.onerror = (e) => {
+            console.error(
+              "[Label Explorer] Failed to read from History DB:",
+              e.target.error
+            );
+            reject([]);
+          };
+        });
       } catch (error) {
         console.error(
-          `[Label Explorer] Failed on page at offset ${offset}. Returning the ${allItems.length} items fetched so far.`,
+          "[Label Explorer] Could not open History Manager DB. Ensure History Manager is active.",
           error
         );
-        break;
+        return [];
       }
-    }
+    },
+  };
+  // --- End of History Manager Cache Access ---
 
+  /**
+   * Fetches ALL conversations from the History Manager's local cache.
+   */
+  async function fetchAllConversations() {
     console.log(
-      `✅ [Label Explorer] Fetched ${allItems.length} of ${total} conversations (may be partial).`
+      "🔄 [Label Explorer] Fetching conversations from History Manager cache..."
     );
-    return allItems;
+    const conversations = await historyDBManager.getAllConversations();
+    if (conversations.length === 0) {
+      console.warn(
+        "[Label Explorer] History Manager cache is empty or inaccessible."
+      );
+    }
+    console.log(
+      `✅ [Label Explorer] Fetched ${conversations.length} conversations from cache.`
+    );
+    return conversations;
   }
 
   // --- 2. UI, STYLES, AND INJECTION ---
-
-  /**
-   * Helper function to create DOM elements with attributes and children.
-   * @param {string} tag - The HTML tag for the element.
-   * @param {object} attributes - An object of attributes to set on the element.
-   * @param {Array<HTMLElement|string>} children - An array of child elements or text strings.
-   * @returns {HTMLElement} The created element.
-   */
   function createElement(tag, attributes = {}, children = []) {
     const el = document.createElement(tag);
     for (const key in attributes) {
@@ -227,7 +161,6 @@
       } else if (key.startsWith("data-")) {
         el.dataset[key.substring(5)] = attributes[key];
       } else if (key.startsWith("checked")) {
-        // add the attribute if it is true, else don't add it
         if (attributes[key]) {
           el.setAttribute(key, "");
         }
@@ -245,12 +178,6 @@
     return el;
   }
 
-  /**
-   * Helper function to create SVG elements.
-   * @param {string} tag - The SVG tag (e.g., 'svg', 'path').
-   * @param {object} attributes - An object of SVG attributes.
-   * @returns {SVGElement} The created SVG element.
-   */
   function createSvgElement(tag, attributes = {}) {
     const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
     for (const key in attributes) {
@@ -259,188 +186,55 @@
     return el;
   }
 
-  /**
-   * Injects the CSS styles into the page immediately.
-   */
   function injectStyles() {
     if (document.getElementById("le-styles")) return;
-
     const cssTemplate = `
-      .le-modal-container {
-        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-        background-color: rgba(0, 0, 0, 0.6); z-index: 10000;
-        display: flex; align-items: center; justify-content: center; font-family: inherit;
-        opacity: 0; transition: opacity 0.2s ease-in-out;
-      }
+      .le-modal-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.6); z-index: 10000; display: flex; align-items: center; justify-content: center; font-family: inherit; opacity: 0; transition: opacity 0.2s ease-in-out; }
       .le-modal-container.visible { opacity: 1; }
-      .le-modal {
-        background-color: var(--main-surface-primary); color: var(--text-primary);
-        border: 1px solid var(--border-medium); border-radius: 16px;
-        width: 80vw; max-width: 800px; height: 80vh; display: flex; flex-direction: column;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden;
-        transform: scale(0.95); transition: transform 0.2s ease-in-out;
-        contain: layout style paint;
-      }
+      .le-modal { background-color: var(--main-surface-primary); color: var(--text-primary); border: 1px solid var(--border-medium); border-radius: 16px; width: 80vw; max-width: 800px; height: 80vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; transform: scale(0.95); transition: transform 0.2s ease-in-out; contain: layout style paint; }
       .le-modal-container.visible .le-modal { transform: scale(1); }
       .le-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); }
-      .le-search-bar {
-        display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-        background-color: var(--main-surface-secondary); border-radius: 8px; padding: 4px;
-      }
-      .le-search-bar input {
-        flex-grow: 1; background: transparent; border: none; outline: none;
-        color: var(--text-primary); font-size: 1rem; padding: 8px; min-width: 150px;
-      }
-      .le-content { 
-        flex-grow: 1; overflow-y: auto; padding: 8px 20px; 
-        overscroll-behavior: contain; scroll-behavior: smooth; contain: layout style paint;
-      }
-      .le-conversation-item {
-        display: flex; align-items: center; padding: 12px 8px; border-radius: 8px;
-        transition: background-color 0.2s; cursor: pointer;
-      }
+      .le-search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background-color: var(--main-surface-secondary); border-radius: 8px; padding: 4px; }
+      .le-search-bar input { flex-grow: 1; background: transparent; border: none; outline: none; color: var(--text-primary); font-size: 1rem; padding: 8px; min-width: 150px; }
+      .le-content { flex-grow: 1; overflow-y: auto; padding: 8px 20px; overscroll-behavior: contain; scroll-behavior: smooth; contain: layout style paint; }
+      .le-conversation-item { display: flex; align-items: center; padding: 12px 8px; border-radius: 8px; transition: background-color 0.2s; cursor: pointer; }
       .le-conversation-item:hover { background-color: var(--surface-hover); }
       .le-conversation-item .title { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); text-decoration: none; }
-      .le-label-pill {
-        display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem;
-        padding: 2px 8px; border-radius: 999px; color: white;
-      }
-      .le-label-pill-clickable {
-        cursor: pointer;
-        transition: all 0.2s ease;
-        padding: 8px 12px;
-        font-size: 0.85rem;
-        gap: 6px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      }
-      .le-label-pill-clickable:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-      }
-      .le-label-count {
-        background-color: rgba(255,255,255,0.25);
-        padding: 2px 6px;
-        border-radius: 12px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        margin-left: 4px;
-      }
-      .le-available-labels-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        justify-content: center;
-        max-width: 600px;
-        margin: 0 auto;
-      }
+      .le-label-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; color: white; }
+      .le-label-pill-clickable { cursor: pointer; transition: all 0.2s ease; padding: 8px 12px; font-size: 0.85rem; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+      .le-label-pill-clickable:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+      .le-label-count { background-color: rgba(255,255,255,0.25); padding: 2px 6px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; margin-left: 4px; }
+      .le-available-labels-grid { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 600px; margin: 0 auto; }
       .le-label-pill.in-search { cursor: pointer; }
       .le-label-pills-container { display: flex; gap: 6px; flex-wrap: wrap; }
-      .le-sidebar-btn {
-        color: var(--text-secondary); margin-left: auto; padding: 4px;
-        border-radius: 4px; transition: background-color 0.2s, color 0.2s;
-        background: none; border: none; cursor: pointer; display: flex; align-items: center;
-      }
+      .le-sidebar-btn { color: var(--text-secondary); margin-left: auto; padding: 4px; border-radius: 4px; transition: background-color 0.2s, color 0.2s; background: none; border: none; cursor: pointer; display: flex; align-items: center; }
       .le-sidebar-btn:hover { background-color: var(--surface-hover); color: var(--text-primary); }
-      .le-popover {
-        position: fixed; 
-        z-index: 10001; 
-        background: var(--main-surface-primary);
-        border: 1px solid var(--border-medium); 
-        border-radius: 8px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3); 
-        padding: 16px; 
-        width: 300px;
-        max-height: 400px;
-        overflow-y: auto;
-        transform: translate(-50%, -50%);
-        top: 50%;
-        left: 50%;
-        overscroll-behavior: contain;
-        contain: layout style paint;
-      }
-      .le-popover-backdrop {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: rgba(0, 0, 0, 0.4);
-        z-index: 10000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        opacity: 0;
-        transition: opacity 0.2s ease-in-out;
-      }
+      .le-popover { position: fixed; z-index: 10001; background: var(--main-surface-primary); border: 1px solid var(--border-medium); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 16px; width: 300px; max-height: 400px; overflow-y: auto; transform: translate(-50%, -50%); top: 50%; left: 50%; overscroll-behavior: contain; contain: layout style paint; }
+      .le-popover-backdrop { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.4); z-index: 10000; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s ease-in-out; }
       .le-popover-backdrop.visible { opacity: 1; }
       .le-popover-section { margin-bottom: 16px; }
       .le-popover-section:last-child { margin-bottom: 0; }
-      .le-popover-section h4 { 
-        font-size: 0.85rem; 
-        font-weight: 600; 
-        margin-bottom: 12px; 
-        color: var(--text-secondary); 
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-      .le-popover-labels-list { 
-        max-height: 200px; overflow-y: auto; 
-        overscroll-behavior: contain; contain: layout style;
-      }
-      .le-popover-label-item { 
-        display: flex; 
-        align-items: center; 
-        gap: 12px; 
-        padding: 8px 0; 
-        border-bottom: 1px solid var(--border-light);
-      }
+      .le-popover-section h4 { font-size: 0.85rem; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+      .le-popover-labels-list { max-height: 200px; overflow-y: auto; overscroll-behavior: contain; contain: layout style; }
+      .le-popover-label-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
       .le-popover-label-item:last-child { border-bottom: none; }
       .le-popover-label-item label { flex-grow: 1; cursor: pointer; font-size: 0.9rem; }
       .le-popover-label-item input[type="checkbox"] { margin-right: 8px; cursor: pointer; }
-      .le-popover-new-label-input { 
-        width: 100%; 
-        padding: 10px; 
-        border: 1px solid var(--border-medium);
-        border-radius: 6px;
-        background: var(--main-surface-secondary);
-        color: var(--text-primary);
-        font-size: 0.9rem;
-        box-sizing: border-box;
-      }
+      .le-popover-new-label-input { width: 100%; padding: 10px; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.9rem; box-sizing: border-box; }
       .le-popover-new-label-input:focus { outline: none; border-color: var(--accent-primary, #10a37f); }
-      .le-popover-close-btn {
-        position: absolute; top: 8px; right: 12px; background: none; border: none;
-        font-size: 1.5rem; cursor: pointer; color: var(--text-tertiary);
-        transition: color 0.2s; width: 24px; height: 24px;
-        display: flex; align-items: center; justify-content: center;
-      }
+      .le-popover-close-btn { position: absolute; top: 8px; right: 12px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-tertiary); transition: color 0.2s; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
       .le-popover-close-btn:hover { color: var(--text-secondary); }
-      .le-color-swatch-label {
-        position: relative; display: flex; width: 100%; height: 20px;
-        cursor: pointer; flex-direction: row-reverse; align-items: center;
-        margin-left: auto;
-      }
-      .le-color-picker-input {
-        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        opacity: 0; cursor: pointer;
-      }
-      .le-color-swatch {
-        display: block; width: 25px; height: 25px; border-radius: 50%;
-        border: 1px solid var(--border-light); pointer-events: none;
-      }
+      .le-color-swatch-label { position: relative; display: flex; width: 100%; height: 20px; cursor: pointer; flex-direction: row-reverse; align-items: center; margin-left: auto; }
+      .le-color-picker-input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+      .le-color-swatch { display: block; width: 25px; height: 25px; border-radius: 50%; border: 1px solid var(--border-light); pointer-events: none; }
     `;
-
     const styleSheet = createElement("style", { id: "le-styles" });
     styleSheet.textContent = cssTemplate;
     document.head.appendChild(styleSheet);
   }
 
-  /**
-   * Creates and injects the modal HTML into the page.
-   */
   function injectModal() {
     if (appState.uiInjected) return;
-
     const modal = createElement(
       "div",
       { id: "le-modal", className: "le-modal" },
@@ -473,30 +267,23 @@
         ]),
       ]
     );
-
     const container = createElement(
       "div",
       { id: "le-modal-container", className: "le-modal-container" },
       [modal]
     );
     document.body.appendChild(container);
-
     appState.uiInjected = true;
     addModalEventListeners();
   }
 
-  /**
-   * Injects the label icon button into a sidebar chat link.
-   * @param {HTMLElement} chatElement - The <a> tag of the conversation.
-   */
   async function injectSidebarUI(chatElement) {
     if (chatElement.dataset.leInjected) return;
     chatElement.dataset.leInjected = "true";
-
-    const conversationId = chatElement.href.split("/").pop();
     const titleContainer = chatElement.querySelector("div.truncate");
     if (!titleContainer) return;
 
+    const conversationId = chatElement.href.split("/").pop();
     const svgIcon = createSvgElement("svg", {
       width: "16",
       height: "16",
@@ -521,13 +308,11 @@
       { className: "le-sidebar-btn" },
       [svgIcon]
     );
-
     labelButton.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
       showLabelAssignmentPopover(conversationId);
     });
-
     titleContainer.parentElement.style.display = "flex";
     titleContainer.parentElement.appendChild(labelButton);
   }
@@ -535,15 +320,69 @@
   // --- 3. EVENT HANDLERS & DYNAMIC UI ---
 
   /**
-   * Shows the centered popover for assigning/creating labels.
-   * @param {string} conversationId - The ID of the conversation.
+   * Renders a helpful message when the local cache is empty.
    */
-  function showLabelAssignmentPopover(conversationId) {
-    closeLabelAssignmentPopover();
+  function renderCacheEmptyMessage() {
+    const contentArea = document.getElementById("le-content");
+    contentArea.innerHTML = "";
+    const message = createElement(
+      "div",
+      {
+        style: {
+          textAlign: "center",
+          color: "var(--text-tertiary)",
+          padding: "2rem",
+        },
+      },
+      [
+        createElement("p", { style: { marginBottom: "1rem" } }, [
+          "No conversations found in the local cache.",
+        ]),
+        createElement("p", { style: { fontSize: "0.9rem" } }, [
+          "Please open the History Manager (Ctrl+H) and click 'Refresh' to sync your conversations first.",
+        ]),
+      ]
+    );
+    contentArea.appendChild(message);
+  }
+
+  /**
+   * Handles search logic and displays a notice if the cache is empty.
+   */
+  async function handleSearch() {
+    const searchInput = document.getElementById("le-search-input");
+    const query = searchInput.value.toLowerCase().trim();
+
+    if (!query) {
+      showAvailableLabels();
+      return;
+    }
+
+    const allConversations = await fetchAllConversations();
+    if (allConversations.length === 0) {
+      renderCacheEmptyMessage();
+      return;
+    }
 
     const { labels, chatLabels } = appState.data;
-    const assignedLabelIds = new Set(chatLabels[conversationId] || []);
+    const matchingLabelIds = Object.entries(labels)
+      .filter(([, { name }]) => name.toLowerCase().includes(query))
+      .map(([id]) => id);
 
+    const filteredConversations = allConversations.filter((convo) => {
+      const assignedLabels = chatLabels[convo.id] || [];
+      return assignedLabels.some((labelId) =>
+        matchingLabelIds.includes(labelId)
+      );
+    });
+
+    renderSearchResults(filteredConversations);
+  }
+
+  function showLabelAssignmentPopover(conversationId) {
+    closeLabelAssignmentPopover();
+    const { labels, chatLabels } = appState.data;
+    const assignedLabelIds = new Set(chatLabels[conversationId] || []);
     const labelItems = Object.entries(labels).map(([id, { name, color }]) => {
       return createElement("div", { className: "le-popover-label-item" }, [
         createElement("input", {
@@ -571,7 +410,6 @@
         ),
       ]);
     });
-
     const popover = createElement(
       "div",
       { id: "le-popover", className: "le-popover" },
@@ -611,7 +449,6 @@
         ]),
       ]
     );
-
     const backdrop = createElement(
       "div",
       { id: "le-popover-backdrop", className: "le-popover-backdrop" },
@@ -619,8 +456,6 @@
     );
     document.body.appendChild(backdrop);
     setTimeout(() => backdrop.classList.add("visible"), 10);
-
-    // Popover Event Listeners
     popover
       .querySelector(".le-popover-close-btn")
       .addEventListener("click", closeLabelAssignmentPopover);
@@ -628,7 +463,6 @@
       if (e.target === backdrop) closeLabelAssignmentPopover();
     });
     popover.addEventListener("click", (e) => e.stopPropagation());
-
     popover.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       cb.addEventListener("change", async () => {
         const labelId = cb.dataset.labelId;
@@ -649,7 +483,6 @@
         await saveStoredData(appState.data);
       });
     });
-
     popover.querySelectorAll(".le-color-picker-input").forEach((picker) => {
       picker.addEventListener("input", async (e) => {
         const labelId = e.target.dataset.labelId;
@@ -662,7 +495,6 @@
         }
       });
     });
-
     const newLabelInput = document.getElementById("le-new-label-input");
     newLabelInput.addEventListener("keydown", async (e) => {
       function hslToHex(h, s, l) {
@@ -687,13 +519,9 @@
         closeLabelAssignmentPopover();
       }
     });
-
     setTimeout(() => newLabelInput.focus(), 100);
   }
 
-  /**
-   * Closes the label assignment popover
-   */
   function closeLabelAssignmentPopover() {
     const backdrop = document.getElementById("le-popover-backdrop");
     if (backdrop) {
@@ -702,10 +530,6 @@
     }
   }
 
-  /**
-   * Toggles the main search modal's visibility.
-   * @param {boolean} show - Whether to show or hide the modal.
-   */
   function toggleModalVisibility(show) {
     if (!appState.uiInjected) {
       if (show) injectModal();
@@ -725,58 +549,20 @@
     }
   }
 
-  /**
-   * Adds all event listeners for the main search modal.
-   */
   function addModalEventListeners() {
     const container = document.getElementById("le-modal-container");
     const searchInput = document.getElementById("le-search-input");
-
     container.addEventListener("click", (e) => {
       if (e.target.id === "le-modal-container") toggleModalVisibility(false);
     });
-
     searchInput.addEventListener("keyup", handleSearch);
   }
 
-  /**
-   * Handles the search logic and renders the filtered results.
-   */
-  async function handleSearch() {
-    const searchInput = document.getElementById("le-search-input");
-    const query = searchInput.value.toLowerCase().trim();
-
-    if (!query) {
-      showAvailableLabels();
-      return;
-    }
-
-    const allConversations = await fetchAllConversations();
-    const { labels, chatLabels } = appState.data;
-
-    const matchingLabelIds = Object.entries(labels)
-      .filter(([, { name }]) => name.toLowerCase().includes(query))
-      .map(([id]) => id);
-
-    const filteredConversations = allConversations.filter((convo) => {
-      const assignedLabels = chatLabels[convo.id] || [];
-      return assignedLabels.some((labelId) =>
-        matchingLabelIds.includes(labelId)
-      );
-    });
-
-    renderSearchResults(filteredConversations);
-  }
-
-  /**
-   * Shows all available labels as clickable pills when search is empty.
-   */
   function showAvailableLabels() {
     const contentArea = document.getElementById("le-content");
-    contentArea.innerHTML = ""; // Clear previous content
+    contentArea.innerHTML = "";
     const { labels } = appState.data;
     const labelEntries = Object.entries(labels);
-
     if (labelEntries.length === 0) {
       const noLabelsMessage = createElement(
         "div",
@@ -799,7 +585,6 @@
       contentArea.appendChild(noLabelsMessage);
       return;
     }
-
     const pills = labelEntries.map(([id, { name, color }]) => {
       const pill = createElement(
         "div",
@@ -812,7 +597,6 @@
         },
         [name]
       );
-
       pill.addEventListener("click", () => {
         const searchInput = document.getElementById("le-search-input");
         searchInput.value = name;
@@ -821,7 +605,6 @@
       pill.addEventListener("dblclick", () => handleDeleteLabel(id));
       return pill;
     });
-
     const availableLabelsView = createElement(
       "div",
       { style: { textAlign: "center", padding: "2rem 1rem" } },
@@ -852,17 +635,11 @@
         ),
       ]
     );
-
     contentArea.appendChild(availableLabelsView);
   }
 
-  /**
-   * Deletes a label and all its associations from the stored data.
-   * @param {string} labelIdToDelete - The ID of the label to delete.
-   */
   async function handleDeleteLabel(labelIdToDelete) {
     if (!labelIdToDelete) return;
-
     const labelName = appState.data.labels[labelIdToDelete]?.name;
     if (
       !confirm(
@@ -871,7 +648,6 @@
     ) {
       return;
     }
-
     delete appState.data.labels[labelIdToDelete];
     for (const chatId in appState.data.chatLabels) {
       appState.data.chatLabels[chatId] = appState.data.chatLabels[
@@ -885,15 +661,10 @@
     showAvailableLabels();
   }
 
-  /**
-   * Renders the search results in the modal content area.
-   * @param {Array} conversations - The list of conversations to render.
-   */
   function renderSearchResults(conversations) {
     const contentArea = document.getElementById("le-content");
-    contentArea.innerHTML = ""; // Clear previous results
+    contentArea.innerHTML = "";
     const { labels, chatLabels } = appState.data;
-
     if (conversations.length === 0) {
       contentArea.appendChild(
         createElement(
@@ -910,7 +681,6 @@
       );
       return;
     }
-
     const fragment = document.createDocumentFragment();
     conversations.forEach((convo) => {
       const assignedLabelIds = chatLabels[convo.id] || [];
@@ -918,7 +688,6 @@
         .map((id) => {
           const label = labels[id];
           if (!label) return null;
-
           const pill = createElement(
             "div",
             {
@@ -930,7 +699,6 @@
             },
             [label.name]
           );
-
           pill.addEventListener("dblclick", async (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -944,11 +712,9 @@
             await saveStoredData(appState.data);
             pill.remove();
           });
-
           return pill;
         })
-        .filter(Boolean); // Filter out nulls if a label was deleted but still referenced
-
+        .filter(Boolean);
       const itemEl = createElement(
         "div",
         { className: "le-conversation-item" },
@@ -967,23 +733,16 @@
       );
       fragment.appendChild(itemEl);
     });
-
     contentArea.appendChild(fragment);
   }
 
-  // --- 4. SIDEBAR BUTTON INJECTION ---
-
-  /**
-   * Injects a button into the sidebar using a MutationObserver.
-   */
+  // --- 4. & 5. INITIALIZATION & OBSERVERS ---
   function injectSidebarButton() {
     const injectionLogic = () => {
       if (document.getElementById("le-sidebar-btn")) return true;
       const sidebarNav = document.querySelector("aside");
       if (!sidebarNav) return false;
-
       console.log("🚀 [Label Explorer] Injecting sidebar button...");
-
       const svgIcon = createSvgElement("svg", {
         width: "20",
         height: "20",
@@ -1003,7 +762,6 @@
       svgIcon.appendChild(
         createSvgElement("line", { x1: "7", y1: "7", x2: "7.01", y2: "7" })
       );
-
       const buttonElement = createElement(
         "div",
         {
@@ -1061,17 +819,14 @@
           ),
         ]
       );
-
       buttonElement.addEventListener("click", (e) => {
         e.preventDefault();
         toggleModalVisibility(true);
       });
-
       sidebarNav.appendChild(buttonElement);
       console.log("✅ [Label Explorer] Sidebar button injected successfully.");
       return true;
     };
-
     const observer = new MutationObserver(injectionLogic);
     const interval = setInterval(() => {
       const aside = document.body.querySelector("aside");
@@ -1083,18 +838,12 @@
     }, 2000);
   }
 
-  // --- 5. INITIALIZATION & OBSERVERS ---
-
-  /**
-   * Sets up the MutationObserver to watch for new chats in the sidebar.
-   */
   function initializeSidebarObserver() {
     const observer = new MutationObserver((mutations) => {
       const newChatLinks = new Set();
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === 1) {
-            // ELEMENT_NODE
             if (node.matches('a[href^="/c/"]')) newChatLinks.add(node);
             node
               .querySelectorAll('a[href^="/c/"]')
@@ -1104,7 +853,6 @@
       });
       newChatLinks.forEach(injectSidebarUI);
     });
-
     const navElement = document.querySelector("nav");
     if (navElement) {
       observer.observe(navElement, { childList: true, subtree: true });
@@ -1116,13 +864,9 @@
     }
   }
 
-  /**
-   * Main entry point for the script.
-   */
   async function main() {
     appState.data = await getStoredData();
     injectStyles();
-
     document.addEventListener("keydown", (e) => {
       if (e.ctrlKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
@@ -1134,7 +878,6 @@
         toggleModalVisibility(false);
       }
     });
-
     initializeSidebarObserver();
     injectSidebarButton();
   }
