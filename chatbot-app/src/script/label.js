@@ -265,6 +265,22 @@
   function injectModal() {
     if (appState.uiInjected) return;
 
+    // --- HTML Template for Modal ---
+    const modalTemplate = `
+      <div id="le-modal" class="le-modal">
+        <div class="le-header">
+          <div id="le-search-bar" class="le-search-bar">
+            <input type="text" id="le-search-input" placeholder="Search by labels...">
+          </div>
+        </div>
+        <div id="le-content" class="le-content">
+          <p style="text-align: center; color: var(--text-tertiary); padding: 1rem;">
+            Start typing to search for conversations by label.
+          </p>
+        </div>
+      </div>
+    `;
+
     const container = document.createElement("div");
     container.id = "le-modal-container";
     container.className = "le-modal-container";
