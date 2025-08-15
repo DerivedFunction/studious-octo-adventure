@@ -300,11 +300,12 @@
       /* --- NEW STYLES FOR COLOR PICKER --- */
       .le-color-swatch-label {
         position: relative;
-        display: block;
-        width: 20px;
+        display: flex;
+        width: 100%;
         height: 20px;
         cursor: pointer;
-        border-radius: 50%;
+        flex-direction: row-reverse;
+        align-items: center;
         margin-left: auto; /* Pushes it to the right */
       }
       .le-color-picker-input {
@@ -318,8 +319,8 @@
       }
       .le-color-swatch {
         display: block;
-        width: 100%;
-        height: 100%;
+        width: 25px;
+        height: 25px;
         border-radius: 50%;
         border: 1px solid var(--border-light);
         pointer-events: none; /* Clicks go through to the input */
@@ -548,7 +549,6 @@
         appState.data.labels[newId] = { name: newName, color: newColor };
         await saveStoredData(appState.data);
         closeLabelAssignmentPopover(); // Close and reopen to refresh the list
-        showLabelAssignmentPopover(conversationId);
       }
     });
 
@@ -580,7 +580,9 @@
     if (show) {
       container.style.display = "flex";
       setTimeout(() => container.classList.add("visible"), 10);
-      document.getElementById("le-search-input").focus();
+      const input = document.getElementById("le-search-input");
+      input.value = "";
+      input.focus();
     } else {
       container.classList.remove("visible");
       setTimeout(() => (container.style.display = "none"), 200);
