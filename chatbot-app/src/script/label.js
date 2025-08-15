@@ -279,6 +279,7 @@
         width: 80vw; max-width: 800px; height: 80vh; display: flex; flex-direction: column;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden;
         transform: scale(0.95); transition: transform 0.2s ease-in-out;
+        contain: layout style paint;
       }
       .le-modal-container.visible .le-modal { transform: scale(1); }
       .le-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); }
@@ -290,7 +291,10 @@
         flex-grow: 1; background: transparent; border: none; outline: none;
         color: var(--text-primary); font-size: 1rem; padding: 8px; min-width: 150px;
       }
-      .le-content { flex-grow: 1; overflow-y: auto; padding: 8px 20px; }
+      .le-content { 
+        flex-grow: 1; overflow-y: auto; padding: 8px 20px; 
+        overscroll-behavior: contain; scroll-behavior: smooth; contain: layout style paint;
+      }
       .le-conversation-item {
         display: flex; align-items: center; padding: 12px 8px; border-radius: 8px;
         transition: background-color 0.2s; cursor: pointer;
@@ -351,6 +355,8 @@
         transform: translate(-50%, -50%);
         top: 50%;
         left: 50%;
+        overscroll-behavior: contain;
+        contain: layout style paint;
       }
       .le-popover-backdrop {
         position: fixed;
@@ -377,7 +383,10 @@
         text-transform: uppercase;
         letter-spacing: 0.5px;
       }
-      .le-popover-labels-list { max-height: 200px; overflow-y: auto; }
+      .le-popover-labels-list { 
+        max-height: 200px; overflow-y: auto; 
+        overscroll-behavior: contain; contain: layout style;
+      }
       .le-popover-label-item { 
         display: flex; 
         align-items: center; 
