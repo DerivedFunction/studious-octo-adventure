@@ -1321,7 +1321,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       }
 
       if (conversationData && Array.isArray(conversationData.messages)) {
-        const promptTokens = enc.encode(promptText).length;
+        const promptTokens = enc.encode(promptText).length + 4;
         const globalSystemPromptTokens = enc.encode(
           globalSystemPrompt || ""
         ).length;
