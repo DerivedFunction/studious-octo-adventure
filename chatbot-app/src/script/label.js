@@ -133,7 +133,13 @@
         Object.assign(el.style, attributes[key]);
       } else if (key.startsWith("data-")) {
         el.dataset[key.substring(5)] = attributes[key];
-      } else {
+      } else if (key.startsWith("checked")) {
+        // add the attribute if it is true, else don't add it
+        if (attributes[key]) {
+          el.setAttribute(key, "");
+        }
+      } else
+      {
         el.setAttribute(key, attributes[key]);
       }
     }
@@ -436,14 +442,19 @@
 
     const { labels, chatLabels } = appState.data;
     const assignedLabelIds = new Set(chatLabels[conversationId] || []);
-
+    
     const labelItems = Object.entries(labels).map(([id, { name, color }]) => {
+      console.log("Assigned labels:", assignedLabelIds);
+      console.log("Label ID:", id);
+      console.log("Label name:", name);
+      console.log("Label color:", color);
+      console.log(assignedLabelIds.has(id))
       return createElement("div", { className: "le-popover-label-item" }, [
         createElement("input", {
           type: "checkbox",
           id: `le-cb-${id}`,
           "data-labelId": id,
-          checked: assignedLabelIds.has(id) ? true : undefined,
+          checked: assignedLabelIds.has(id)
         }),
         createElement("label", { for: `le-cb-${id}` }, [name]),
         createElement(
