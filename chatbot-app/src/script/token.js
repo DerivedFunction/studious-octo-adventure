@@ -3,7 +3,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 (() => {
   // This encoder is now available for the entire script
   const enc = new Tiktoken(o200k_base);
-  console.log("[Token Manager] ✅ Tokenizer initialized.");
+  console.log("✅ [Token Manager] Tokenizer initialized.");
   let fetchController; // Controller to abort in-flight fetch requests
   let accessToken = null; // Global variable to store the access token
   let lastCheckState = {}; // Cache state to avoid redundant checks
@@ -41,7 +41,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     if (accessToken) {
       return accessToken;
     }
-    console.log("[Token Manager] 🔑 Fetching new access token...");
+    console.log("🔑 [Token Manager] Fetching new access token...");
     try {
       const session = await fetch("https://chatgpt.com/api/auth/session").then(
         (res) => {
@@ -52,7 +52,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       accessToken = session.accessToken;
       return accessToken;
     } catch (error) {
-      console.error("[Token Manager] ❌ Could not retrieve access token:", error);
+      console.error("❌ [Token Manager] Could not retrieve access token:", error);
       accessToken = null; // Reset on failure
       return null;
     }
@@ -97,11 +97,11 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       const result = await chrome.storage.local.get(storageKey);
       if (result[storageKey]) {
         const cachedData = JSON.parse(result[storageKey]);
-        console.log(`🗄️ Using cached backend data for ${conversationId}.`);
+        console.log(`🗄️ [Token Manager] Using cached backend data for ${conversationId}.`);
         return new Map(Object.entries(cachedData));
       }
     } catch (e) {
-      console.error("[Token Manager] ❌ Error reading from local storage cache:", e);
+      console.error("❌ [Token Manager] Error reading from local storage cache:", e);
     } // If no cache, proceed with fetching, including retry logic.
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -133,7 +133,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         );
 
         if (response.status === 401 || response.status === 403) {
-          console.log("[Token Manager] ❌ Access token expired or invalid. Refreshing...");
+          console.log("❌ [Token Manager] Access token expired or invalid. Refreshing...");
           accessToken = null; // Clear the global token to force a refresh
           throw new Error("❌ Authentication failed, retrying...");
         }
@@ -219,7 +219,10 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
                       }
                     }
                   } catch (e) {
-                    console.error("[Token Manager] Error processing canvas data:", e);
+                    console.error(
+                      "❌ [Token Manager] Error processing canvas data:",
+                      e
+                    );
                   }
                 }
               }
@@ -320,23 +323,23 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
           setTimeout(() => {
             chrome.storage.local.remove(storageKey, () => {
-              console.log(`🗑️ Cache for ${conversationId} has been cleared.`);
+              console.log(`🗑️ [Token Manager] Cache for ${conversationId} has been cleared.`);
             });
           }, cacheDuration);
         } catch (e) {
-          console.error("[Token Manager] ❌ Error writing to local storage cache:", e);
+          console.error("❌ [Token Manager] Error writing to local storage cache:", e);
         }
 
-        console.log("[Token Manager] ✅ Backend data processed.", additionalDataMap);
+        console.log("✅ [Token Manager] Backend data processed.", additionalDataMap);
         return additionalDataMap; // Success, return the data
       } catch (error) {
         if (error.name === "AbortError") {
-          console.log("[Token Manager] ❌ Fetch aborted for previous conversation.");
+          console.log("❌ [Token Manager] Fetch aborted for previous conversation.");
           return new Map(); // Don't retry on abort
         }
         console.error(`❌ Attempt ${attempt} failed:`, error.message);
         if (attempt === maxRetries) {
-          console.error("[Token Manager] ❌ All fetch attempts failed.");
+          console.error("❌ [Token Manager] All fetch attempts failed.");
           return new Map(); // Return empty map after all retries fail
         }
         await new Promise((res) => setTimeout(res, 500)); // Wait before retrying
@@ -655,13 +658,13 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
     const turnElements = document.querySelectorAll("[data-message-id]");
     if (!turnElements.length) {
-      console.log("[Token Manager] ⌛ Elements still loading.");
+      console.log("⌛ [Token Manager] Elements still loading.");
       debouncedRunTokenCheck();
       return;
     }
 
     let cumulativeTokens = 0;
-    console.log("[Token Manager] 💻 Updating token UI...");
+    console.log("💻 [Token Manager] Updating token UI...");
 
     const allMessagesMap = new Map(allMessages.map((m) => [m.id, m]));
 
@@ -1086,7 +1089,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
    * Removes all token count UI elements and resets message styles.
    */
   function clearTokenUI() {
-    console.log("[Token Manager] 🗑️ Clearing token UI...");
+    console.log("🗑️ [Token Manager] Clearing token UI...");
     document
       .querySelectorAll(
         ".token-count-display, .extra-token-info, .token-status-container, .prompt-token-count"
@@ -1203,7 +1206,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         );
       }
     } catch (error) {
-      console.error("[Token Manager] ❌ Error during token check:", error);
+      console.error("❌ [Token Manager] Error during token check:", error);
     }
   }
 
@@ -1223,7 +1226,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   const debouncedRunTokenCheck = debounce(runTokenCheck, 3000);
   debouncedRunTokenCheck();
   function clearOldCache() {
-    console.log("[Token Manager] 🗑️ Clearing old cache...");
+    console.log("🗑️ [Token Manager] Clearing old cache...");
     chrome.storage.local.get(null, (items) => {
       for (const key in items) {
         if (key.startsWith("backend_data_")) {
@@ -1239,7 +1242,9 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     if (url !== lastUrl) {
       lastUrl = url;
       lastCheckState = {}; // Reset state on URL change
-      console.log("[Token Manager] 🔄 URL changed, running token check immediately.");
+      console.log(
+        "🔄 [Token Manager] URL changed, running token check immediately."
+      );
       runTokenCheck();
     } else {
       let skip = false;
