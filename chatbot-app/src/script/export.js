@@ -446,9 +446,5 @@
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
-  observer.observe(
-    document.body.querySelector("#conversation-header-actions"),
-    { childList: true, subtree: true }
-  );
   console.log("✅ [Export MD] Content script loaded successfully");
 })();

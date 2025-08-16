@@ -10,7 +10,6 @@
       alert("Could not find chat content to print.");
       return;
     }
-
     // 2. Create a hidden iframe to build the print content in isolation.
     const printFrame = document.createElement("iframe");
     printFrame.style.position = "absolute";
@@ -34,7 +33,7 @@
                 /* Hide UI elements that shouldn't be printed */
                 body > div:not(.print-content),
                 main > div:first-child, /* Hides the model selector header */
-                form, button {
+                form, button, .token-count-display, .extra-token-info, .token-status-container, .prompt-token-count {
                     display: none !important;
                 }
                 /* Ensure the print content takes up the full page */
@@ -43,6 +42,10 @@
                     margin: 0;
                     padding: 1rem;
                     box-shadow: none;
+                }
+                code, code * {
+                  white-space: pre-wrap !important;
+                  word-break: break-word !important;
                 }
             }
         `;
@@ -54,6 +57,20 @@
     const contentToPrint = printArea.cloneNode(true);
     contentToPrint.classList.add("print-content");
     printDocument.body.appendChild(contentToPrint);
+    const articles = printDocument.querySelectorAll("article");
+    articles.forEach((article) => {
+      const content = article.querySelector("[tabindex]");
+      content.className = "";
+      const codeBlocks = content.querySelectorAll("code");
+      codeBlocks.forEach((code) => {
+        code.parentElement.className = "p-4";
+        const words = code.querySelectorAll("*");
+        words.forEach((word) => {
+          word.style.whiteSpace = "pre-wrap"; // preserve formatting but wrap lines
+          word.style.wordBreak = "break-all"; // break long words
+        });
+      });
+    });
 
     // 6. Trigger the print dialog and clean up the iframe afterward.
     setTimeout(() => {
@@ -146,11 +163,6 @@
     childList: true,
     subtree: true,
   });
-  observer.observe(
-    document.body.querySelector("#conversation-header-actions"),
-    { childList: true, subtree: true }
-  );
-
   console.log(
     "✅ [Print Script] Loaded successfully. Use Ctrl+P or the 'Print' button."
   );
