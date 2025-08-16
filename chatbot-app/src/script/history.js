@@ -958,120 +958,122 @@
       e.preventDefault();
       const container = document.getElementById("chm-container");
       const isVisible = container && container.style.display !== "none";
+      injectionLogic();
       toggleUiVisibility(!isVisible);
     }
   });
 
   /**
-   * Injects a button into the sidebar using a MutationObserver to handle dynamic rendering.
+   * Injects the history button onto the sidebar
+   * @returns the sidebarbutton
    */
-  function injectSidebarButton() {
-    const injectionLogic = () => {
-      if (document.getElementById("chm-sidebar-btn")) return true;
-      const sidebarNav = document.querySelector("aside");
-      if (!sidebarNav) return false;
+  const injectionLogic = () => {
+    if (document.getElementById("chm-sidebar-btn")) return true;
+    const sidebarNav = document.querySelector("aside");
+    if (!sidebarNav) return false;
 
-      console.log("🚀 [History Manager] Injecting sidebar button...");
-      const svgIcon = createSvgElement("svg", {
-        width: "20",
-        height: "20",
-        viewBox: "0 0 24 24",
-        fill: "none",
-        stroke: "currentColor",
-        "stroke-width": "2",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        class: "icon",
-      });
-      svgIcon.appendChild(
-        createSvgElement("path", {
-          d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
-        })
-      );
-      svgIcon.appendChild(
-        createSvgElement("path", {
-          d: "M3 3v5h5",
-        })
-      );
-      svgIcon.appendChild(
-        createSvgElement("path", {
-          d: "M12 7v5l4 2",
-        })
-      );
-      const buttonElement = createElement(
-        "div",
-        {
-          id: "chm-sidebar-btn",
-          tabindex: "0",
-          className: "group __menu-item hoverable cursor-pointer",
-        },
-        [
-          createElement(
-            "div",
-            { className: "flex min-w-0 items-center gap-1.5" },
-            [
+    console.log("🚀 [History Manager] Injecting sidebar button...");
+    const svgIcon = createSvgElement("svg", {
+      width: "20",
+      height: "20",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      class: "icon",
+    });
+    svgIcon.appendChild(
+      createSvgElement("path", {
+        d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
+      })
+    );
+    svgIcon.appendChild(
+      createSvgElement("path", {
+        d: "M3 3v5h5",
+      })
+    );
+    svgIcon.appendChild(
+      createSvgElement("path", {
+        d: "M12 7v5l4 2",
+      })
+    );
+    const buttonElement = createElement(
+      "div",
+      {
+        id: "chm-sidebar-btn",
+        tabindex: "0",
+        className: "group __menu-item hoverable cursor-pointer",
+      },
+      [
+        createElement(
+          "div",
+          { className: "flex min-w-0 items-center gap-1.5" },
+          [
+            createElement(
+              "div",
+              { className: "flex items-center justify-center icon" },
+              [svgIcon]
+            ),
+            createElement(
+              "div",
+              { className: "flex min-w-0 grow items-center gap-2.5" },
+              [
+                createElement("div", { className: "truncate" }, [
+                  "History Manager",
+                ]),
+              ]
+            ),
+          ]
+        ),
+        createElement(
+          "div",
+          { className: "trailing highlight text-token-text-tertiary" },
+          [
+            createElement("div", { className: "touch:hidden" }, [
               createElement(
                 "div",
-                { className: "flex items-center justify-center icon" },
-                [svgIcon]
-              ),
-              createElement(
-                "div",
-                { className: "flex min-w-0 grow items-center gap-2.5" },
+                {
+                  className:
+                    "inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']",
+                },
                 [
-                  createElement("div", { className: "truncate" }, [
-                    "History Manager",
+                  createElement("kbd", { "aria-label": "Control" }, [
+                    createElement("span", { className: "min-w-[1em]" }, [
+                      "Ctrl",
+                    ]),
+                  ]),
+                  createElement("kbd", {}, [
+                    createElement("span", { className: "min-w-[1em]" }, ["H"]),
                   ]),
                 ]
               ),
-            ]
-          ),
-          createElement(
-            "div",
-            { className: "trailing highlight text-token-text-tertiary" },
-            [
-              createElement("div", { className: "touch:hidden" }, [
-                createElement(
-                  "div",
-                  {
-                    className:
-                      "inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']",
-                  },
-                  [
-                    createElement("kbd", { "aria-label": "Control" }, [
-                      createElement("span", { className: "min-w-[1em]" }, [
-                        "Ctrl",
-                      ]),
-                    ]),
-                    createElement("kbd", {}, [
-                      createElement("span", { className: "min-w-[1em]" }, [
-                        "H",
-                      ]),
-                    ]),
-                  ]
-                ),
-              ]),
-            ]
-          ),
-        ]
-      );
+            ]),
+          ]
+        ),
+      ]
+    );
 
-      buttonElement.addEventListener("click", (e) => {
-        e.preventDefault();
-        toggleUiVisibility(true);
-      });
+    buttonElement.addEventListener("click", (e) => {
+      e.preventDefault();
+      toggleUiVisibility(true);
+    });
 
-      // Find a good place to inject the button, e.g., before the labels
-      const leMenu = sidebarNav.querySelector("#chm-sidebar-btn");
-      if (leMenu) {
-        leMenu.parentElement.before(buttonElement);
-      } else {
-        sidebarNav.appendChild(buttonElement);
-      }
-      console.log("✅ [History Manager] Sidebar button injected successfully.");
-      return true;
-    };
-
+    // Find a good place to inject the button, e.g., before the labels
+    const leMenu = sidebarNav.querySelector("#chm-sidebar-btn");
+    if (leMenu) {
+      leMenu.parentElement.before(buttonElement);
+    } else {
+      sidebarNav.appendChild(buttonElement);
+    }
+    console.log("✅ [History Manager] Sidebar button injected successfully.");
+    return true;
+  };
+  /**
+   * Injects a button into the sidebar using a MutationObserver to handle dynamic rendering.
+   */
+  function injectSidebarButton() {
     const observer = new MutationObserver(() => {
       injectionLogic();
     });

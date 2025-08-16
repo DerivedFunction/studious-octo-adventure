@@ -745,96 +745,95 @@
   }
 
   // --- 4. & 5. INITIALIZATION & OBSERVERS ---
-  function injectSidebarButton() {
-    const injectionLogic = () => {
-      if (document.getElementById("le-sidebar-btn")) return true;
-      const sidebarNav = document.querySelector("aside");
-      if (!sidebarNav) return false;
-      console.log("🚀 [Label Explorer] Injecting sidebar button...");
-      const svgIcon = createSvgElement("svg", {
-        width: "20",
-        height: "20",
-        viewBox: "0 0 24 24",
-        fill: "none",
-        stroke: "currentColor",
-        "stroke-width": "2",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        class: "icon",
-      });
-      svgIcon.appendChild(
-        createSvgElement("path", {
-          d: "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z",
-        })
-      );
-      svgIcon.appendChild(
-        createSvgElement("line", { x1: "7", y1: "7", x2: "7.01", y2: "7" })
-      );
-      const buttonElement = createElement(
-        "div",
-        {
-          id: "le-sidebar-btn",
-          tabindex: "0",
-          className: "group __menu-item hoverable cursor-pointer",
-        },
-        [
-          createElement(
-            "div",
-            { className: "flex min-w-0 items-center gap-1.5" },
-            [
+  const injectionLogic = () => {
+    if (document.getElementById("le-sidebar-btn")) return true;
+    const sidebarNav = document.querySelector("aside");
+    if (!sidebarNav) return false;
+    console.log("🚀 [Label Explorer] Injecting sidebar button...");
+    const svgIcon = createSvgElement("svg", {
+      width: "20",
+      height: "20",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      class: "icon",
+    });
+    svgIcon.appendChild(
+      createSvgElement("path", {
+        d: "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z",
+      })
+    );
+    svgIcon.appendChild(
+      createSvgElement("line", { x1: "7", y1: "7", x2: "7.01", y2: "7" })
+    );
+    const buttonElement = createElement(
+      "div",
+      {
+        id: "le-sidebar-btn",
+        tabindex: "0",
+        className: "group __menu-item hoverable cursor-pointer",
+      },
+      [
+        createElement(
+          "div",
+          { className: "flex min-w-0 items-center gap-1.5" },
+          [
+            createElement(
+              "div",
+              { className: "flex items-center justify-center icon" },
+              [svgIcon]
+            ),
+            createElement(
+              "div",
+              { className: "flex min-w-0 grow items-center gap-2.5" },
+              [
+                createElement("div", { className: "truncate" }, [
+                  "Label Manager",
+                ]),
+              ]
+            ),
+          ]
+        ),
+        createElement(
+          "div",
+          { className: "trailing highlight text-token-text-tertiary" },
+          [
+            createElement("div", { className: "touch:hidden" }, [
               createElement(
                 "div",
-                { className: "flex items-center justify-center icon" },
-                [svgIcon]
-              ),
-              createElement(
-                "div",
-                { className: "flex min-w-0 grow items-center gap-2.5" },
+                {
+                  className:
+                    "inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']",
+                },
                 [
-                  createElement("div", { className: "truncate" }, [
-                    "Label Manager",
+                  createElement("kbd", { "aria-label": "Control" }, [
+                    createElement("span", { className: "min-w-[1em]" }, [
+                      "Ctrl",
+                    ]),
+                  ]),
+                  createElement("kbd", {}, [
+                    createElement("span", { className: "min-w-[1em]" }, ["L"]),
                   ]),
                 ]
               ),
-            ]
-          ),
-          createElement(
-            "div",
-            { className: "trailing highlight text-token-text-tertiary" },
-            [
-              createElement("div", { className: "touch:hidden" }, [
-                createElement(
-                  "div",
-                  {
-                    className:
-                      "inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']",
-                  },
-                  [
-                    createElement("kbd", { "aria-label": "Control" }, [
-                      createElement("span", { className: "min-w-[1em]" }, [
-                        "Ctrl",
-                      ]),
-                    ]),
-                    createElement("kbd", {}, [
-                      createElement("span", { className: "min-w-[1em]" }, [
-                        "L",
-                      ]),
-                    ]),
-                  ]
-                ),
-              ]),
-            ]
-          ),
-        ]
-      );
-      buttonElement.addEventListener("click", (e) => {
-        e.preventDefault();
-        toggleModalVisibility(true);
-      });
-      sidebarNav.appendChild(buttonElement);
-      console.log("✅ [Label Explorer] Sidebar button injected successfully.");
-      return true;
-    };
+            ]),
+          ]
+        ),
+      ]
+    );
+    buttonElement.addEventListener("click", (e) => {
+      e.preventDefault();
+      toggleModalVisibility(true);
+    });
+    sidebarNav.appendChild(buttonElement);
+    console.log("✅ [Label Explorer] Sidebar button injected successfully.");
+    return true;
+  };
+
+  function injectSidebarButton() {
     const observer = new MutationObserver(injectionLogic);
     const interval = setInterval(() => {
       const aside = document.body.querySelector("aside");
@@ -880,6 +879,12 @@
         e.preventDefault();
         const container = document.getElementById("le-modal-container");
         const isVisible = container && container.style.display !== "none";
+        const newChatLinks = new Set();
+        document.body
+          .querySelectorAll('a[href^="/c/"]')
+          .forEach((link) => newChatLinks.add(link));
+        newChatLinks.forEach(injectSidebarUI);
+        injectionLogic();
         toggleModalVisibility(!isVisible);
       } else if (e.key === "Escape") {
         closeLabelAssignmentPopover();
