@@ -720,7 +720,7 @@
       position: absolute;
       top: 100%;
       right: 0;
-      margin-top: 8px;
+      margin-top: 6px;
       background-color: var(--main-surface-secondary);
       border: 1px solid var(--border-light);
       border-radius: 0.75rem;
