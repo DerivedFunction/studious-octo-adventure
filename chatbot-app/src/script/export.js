@@ -713,48 +713,57 @@
     const style = document.createElement("style");
     style.id = "export-menu-styles";
     style.textContent = `
-      #export-menu-container {
-        position: relative;
-      }
-      #export-menu-dropdown {
-        position: absolute;
-        top: 100%;
-        right: 0;
-        margin-top: 8px;
-        background-color: var(--surface-primary);
-        border: 1px solid var(--border-light);
-        border-radius: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        z-index: 1000;
-        width: 200px;
-        overflow: hidden;
-        display: none; /* Initially hidden */
-      }
-      #export-menu-dropdown.show {
-        display: block;
-      }
-      .export-menu-item {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0.75rem 1rem;
-        font-size: 0.875rem;
-        color: var(--text-primary);
-        cursor: pointer;
-        background-color: var(--main-surface-secondary);
-        border: none;
-        width: 100%;
-        text-align: left;
-      }
-      .export-menu-item:hover {
-        background-color: var(--main-surface-secondary);
-      }
-      .export-menu-item svg {
-        width: 16px;
-        height: 16px;
-        color: var(--text-secondary);
-      }
-    `;
+    #export-menu-container {
+      position: relative;
+    }
+    #export-menu-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 8px;
+      background-color: var(--main-surface-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      z-index: 1000;
+      width: 200px;
+      overflow: hidden;
+      display: none; /* Initially hidden */
+    }
+    #export-menu-dropdown.show {
+      display: block;
+    }
+    .export-menu-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem; /* Adds space between items */
+      padding: 0.5rem; /* Adds margin-like space around items */
+    }
+    .export-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      font-size: 0.875rem;
+      color: var(--text-primary);
+      cursor: pointer;
+      background-color: var(--main-surface-tertiary);
+      border: none;
+      width: 100%;
+      text-align: left;
+      border-radius: 0.375rem; /* Rounds the corners of the item */
+      transition: background-color 0.2s; /* Smooth hover transition */
+    }
+    .export-menu-item:hover {
+      /* A slightly different color for hover feedback */
+      background-color: var(--main-surface-secondary);
+    }
+    .export-menu-item svg {
+      width: 16px;
+      height: 16px;
+      color: var(--text-secondary);
+    }
+  `;
     document.head.appendChild(style);
   }
 
@@ -802,15 +811,17 @@
     const dropdown = document.createElement("div");
     dropdown.id = "export-menu-dropdown";
     dropdown.innerHTML = `
-      <button class="export-menu-item" id="print-chat-item">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
-        <span>Print Chat</span>
-      </button>
-      <button class="export-menu-item" id="export-md-item">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>
-        <span>Export to Markdown</span>
-      </button>
-    `;
+  <div class="export-menu-content">
+    <button class="export-menu-item" id="print-chat-item">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+      <span>Print Chat</span>
+    </button>
+    <button class="export-menu-item" id="export-md-item">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>
+      <span>Export Markdown</span>
+    </button>
+  </div>
+`;
 
     menuContainer.appendChild(button);
     menuContainer.appendChild(dropdown);
