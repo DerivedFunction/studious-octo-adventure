@@ -5,7 +5,7 @@
    */
   function triggerPrint() {
     // 1. Find the main content area you want to print.
-    const printArea = document.querySelector("main");
+    const printArea = document.querySelector("article").parentElement;
     if (!printArea) {
       alert("Could not find chat content to print.");
       return;
@@ -138,15 +138,18 @@
   const observer = new MutationObserver(() => {
     if (window.location.href !== currentUrl) {
       currentUrl = window.location.href;
-      // Delay to ensure the new page's header is rendered
-      setTimeout(addPrintButton, 500);
     }
+    setTimeout(addPrintButton, 500);
   });
 
   observer.observe(document.body, {
     childList: true,
     subtree: true,
   });
+  observer.observe(
+    document.body.querySelector("#conversation-header-actions"),
+    { childList: true, subtree: true }
+  );
 
   console.log(
     "✅ [Print Script] Loaded successfully. Use Ctrl+P or the 'Print' button."
