@@ -377,7 +377,7 @@
         .chm-conversation-item .title { flex-grow: 1; margin: 0 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .chm-conversation-item .time { font-size: 0.8rem; color: var(--text-tertiary); }
         #historyList, #archivedList { padding-top: 8px; overscroll-behavior: contain; contain: layout style; }
-        .chm-date-group-header { font-weight: 500; color: var(--text-secondary); padding: 12px 4px 4px 4px; font-size: 0.8rem; text-transform: uppercase; }
+        .chm-date-group-header { font-weight: 500; color: var(--text-secondary); padding: 12px 4px 4px 4px; font-size: 0.8rem; }
         #historyList > .chm-conversation-item + .chm-conversation-item, #archivedList > .chm-conversation-item + .chm-conversation-item { margin-top: 4px; }
         #chm-footer { display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border-light); }
         #chm-footer > div { display: flex; gap: 12px; }
@@ -683,19 +683,49 @@
         items.forEach((item) => {
           const itemEl = document.createElement("div");
           itemEl.className = "chm-conversation-item";
-          itemEl.innerHTML = `
-            <label class="chm-checkbox-label">
-              <input type="checkbox" data-id="${item.id}">
-              <span class="chm-custom-checkbox"></span>
-            </label>
-            <span class="title"><a href='$./c/${item.id}' target='_blank'>${
-            item.title || "Untitled"
-          }</a></span>
-            <span class="time">${new Date(item.update_time).toLocaleTimeString(
-              [],
-              { hour: "numeric", minute: "2-digit" }
-            )}</span>
-          `;
+
+          // Label and checkbox
+          const label = document.createElement("label");
+          label.className = "chm-checkbox-label";
+
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.setAttribute("data-id", item.id);
+
+          const customCheckbox = document.createElement("span");
+          customCheckbox.className = "chm-custom-checkbox";
+
+          label.appendChild(checkbox);
+          label.appendChild(customCheckbox);
+
+          // Title
+          const titleSpan = document.createElement("span");
+          titleSpan.className = "title";
+
+          const titleLink = document.createElement("a");
+          titleLink.href = `./c/${item.id}`;
+          titleLink.target = "_blank";
+          titleLink.textContent = item.title || "Untitled";
+
+          titleSpan.appendChild(titleLink);
+
+          // Time
+          const timeSpan = document.createElement("span");
+          timeSpan.className = "time";
+          timeSpan.textContent = new Date(item.update_time).toLocaleTimeString(
+            [],
+            {
+              hour: "numeric",
+              minute: "2-digit",
+            }
+          );
+
+          // Assemble item
+          itemEl.appendChild(label);
+          itemEl.appendChild(titleSpan);
+          itemEl.appendChild(timeSpan);
+
+          // Add to fragment
           fragment.appendChild(itemEl);
         });
       }
@@ -704,7 +734,15 @@
     container.appendChild(fragment);
 
     if (!hasContent) {
-      container.innerHTML = `<p style="text-align: center; padding: 1rem; color: var(--text-tertiary);">No conversations found.</p>`;
+      const fragment = document.createDocumentFragment();
+      const message = document.createElement("p");
+      message.textContent = "No conversations found.";
+      message.style.textAlign = "center";
+      message.style.padding = "1rem";
+      message.style.color = "var(--text-tertiary)";
+      fragment.appendChild(message);
+      container.innerHTML = ""; // Clear previous content if needed
+      container.appendChild(fragment);
     }
   }
 

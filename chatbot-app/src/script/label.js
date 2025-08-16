@@ -195,7 +195,7 @@
       .le-modal-container.visible .le-modal { transform: scale(1); }
       .le-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); }
       .le-search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background-color: var(--main-surface-secondary); border-radius: 8px; padding: 4px; }
-      .le-search-bar input { flex-grow: 1; background: transparent; border: none; outline: none; color: var(--text-primary); font-size: 1rem; padding: 8px; min-width: 150px; }
+      .le-search-bar input { flex-grow: 1; background: transparent; border: none; outline: none; box-shadow: none; color: var(--text-primary); font-size: 1rem; padding: 8px; min-width: 150px; }
       .le-content { flex-grow: 1; overflow-y: auto; padding: 8px 20px; overscroll-behavior: contain; scroll-behavior: smooth; contain: layout style paint; }
       .le-conversation-item { display: flex; align-items: center; padding: 12px 8px; border-radius: 8px; transition: background-color 0.2s; cursor: pointer; }
       .le-conversation-item:hover { background-color: var(--surface-hover); }
@@ -214,14 +214,13 @@
       .le-popover-backdrop.visible { opacity: 1; }
       .le-popover-section { margin-bottom: 16px; }
       .le-popover-section:last-child { margin-bottom: 0; }
-      .le-popover-section h4 { font-size: 0.85rem; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+      .le-popover-section h4 { font-size: 0.85rem; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary); letter-spacing: 0.5px; }
       .le-popover-labels-list { max-height: 200px; overflow-y: auto; overscroll-behavior: contain; contain: layout style; }
       .le-popover-label-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
       .le-popover-label-item:last-child { border-bottom: none; }
       .le-popover-label-item label { flex-grow: 1; cursor: pointer; font-size: 0.9rem; }
       .le-popover-label-item input[type="checkbox"] { margin-right: 8px; cursor: pointer; }
-      .le-popover-new-label-input { width: 100%; padding: 10px; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.9rem; box-sizing: border-box; }
-      .le-popover-new-label-input:focus { outline: none; border-color: var(--accent-primary, #10a37f); }
+      .le-popover-new-label-input { width: 100%; padding: 10px; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.9rem; box-sizing: border-box; outline: none; box-shadow: none; }
       .le-popover-close-btn { position: absolute; top: 8px; right: 12px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-tertiary); transition: color 0.2s; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
       .le-popover-close-btn:hover { color: var(--text-secondary); }
       .le-color-swatch-label { position: relative; display: flex; width: 100%; height: 20px; cursor: pointer; flex-direction: row-reverse; align-items: center; margin-left: auto; }
