@@ -723,7 +723,7 @@
       margin-top: 8px;
       background-color: var(--main-surface-secondary);
       border: 1px solid var(--border-light);
-      border-radius: 0.5rem;
+      border-radius: 0.75rem;
       box-shadow: 0 4px 6px rgba(0,0,0,0.1);
       z-index: 1000;
       width: 200px;
@@ -747,16 +747,16 @@
       font-size: 0.875rem;
       color: var(--text-primary);
       cursor: pointer;
-      background-color: var(--main-surface-tertiary);
+      background-color: var(--main-surface-secondary);
       border: none;
       width: 100%;
       text-align: left;
-      border-radius: 0.375rem; /* Rounds the corners of the item */
+      border-radius: 0.75rem; /* Rounds the corners of the item */
       transition: background-color 0.2s; /* Smooth hover transition */
     }
     .export-menu-item:hover {
       /* A slightly different color for hover feedback */
-      background-color: var(--main-surface-secondary);
+      background-color: var(--main-surface-tertiary);
     }
     .export-menu-item svg {
       width: 16px;
