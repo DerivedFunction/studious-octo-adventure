@@ -1,88 +1,10 @@
-/**
- * @name Export as Markdown
- * @description Exports the current ChatGPT conversation, including canvas text, to a markdown file.
- * @version 1.0.0
- *
- * This script is inspired by token.js and utilizes existing functions for interacting
- * with the ChatGPT backend API and its IndexedDB to fetch all necessary conversation data.
- *
- * The export process is triggered by the keyboard shortcut: Ctrl + Shift + S.
- *
- * For now, the generated markdown content is logged to the developer console for validation.
- * The file download functionality is commented out until the output is confirmed to be correct.
- */
 (() => {
-  let fetchController; // Controller to abort in-flight fetch requests
-  let accessToken = null; // Global variable to store the access token
-
-  // --- IndexedDB CACHE HELPER ---
-  const DB_NAME = "MarkdownExportCacheDB";
-  const DB_VERSION = 1;
-  const STORE_NAME = "conversationCache";
-  let db; // To hold the database instance
-
-  /**
-   * Opens and initializes the IndexedDB for caching backend API responses.
-   * @returns {Promise<IDBDatabase>} The database instance.
-   */
-  function openDB() {
-    return new Promise((resolve, reject) => {
-      if (db) return resolve(db);
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onerror = (e) => reject("IndexedDB error: " + e.target.errorCode);
-      request.onsuccess = (e) => {
-        db = e.target.result;
-        resolve(db);
-      };
-      request.onupgradeneeded = (e) => {
-        const dbInstance = e.target.result;
-        if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
-          dbInstance.createObjectStore(STORE_NAME, {
-            keyPath: "id",
-          });
-        }
-      };
-    });
-  }
-
-  /**
-   * Retrieves an item from our IndexedDB cache.
-   * @param {string} id The conversation ID (key).
-   * @returns {Promise<object|null>} The cached data object or null.
-   */
-  async function getCacheFromDB(id) {
-    const db = await openDB();
-    return new Promise((resolve) => {
-      const transaction = db.transaction(STORE_NAME, "readonly");
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.get(id);
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => resolve(null); // Resolve with null on error
-    });
-  }
-
-  /**
-   * Stores an item in our IndexedDB cache with a timestamp.
-   * @param {string} id The conversation ID (key).
-   * @param {object} data The data to cache.
-   */
-  async function setCacheInDB(id, data) {
-    const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    store.put({
-      id,
-      data,
-      timestamp: Date.now(),
-    });
-  }
-
-  // --- API & DATA FETCHING ---
-
+  let accessToken = null;
   /**
    * Fetches and stores the access token globally. Only fetches if the token is not already present.
    * @returns {Promise<string|null>} The access token or null if it fails.
    */
+
   async function getAccessToken() {
     if (accessToken) {
       return accessToken;
@@ -98,67 +20,72 @@
       return accessToken;
     } catch (error) {
       console.error("❌ [Export MD] Could not retrieve access token:", error);
-      accessToken = null; // Reset on failure
+      accessToken = null;
       return null;
     }
   }
-
   /**
-   * Retrieves a full conversation object from ChatGPT's internal IndexedDB.
-   * This provides the main structure and text of the messages.
-   * @param {string} conversationId The ID of the conversation to fetch.
-   * @returns {Promise<object|null>} A promise that resolves with the conversation data.
+   * Extracts conversation ID from the current URL
+   * @returns {string|null} The conversation ID or null if not found
    */
-  async function getConversationFromDB(conversationId) {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open("ConversationsDatabase");
-      request.onerror = () => reject("Error opening ChatGPT DB");
-      request.onsuccess = (event) => {
-        try {
-          const db = event.target.result;
-          const transaction = db.transaction(["conversations"], "readonly");
-          const objectStore = transaction.objectStore("conversations");
-          const getRequest = objectStore.get(conversationId);
-          getRequest.onsuccess = () => resolve(getRequest.result);
-          getRequest.onerror = () =>
-            reject("Error fetching conversation from ChatGPT DB");
-        } catch (error) {
-          reject(error);
-        }
-      };
-    });
+
+  function getConversationId() {
+    return window.location.pathname.split("/")[2];
   }
-
   /**
-   * Fetches detailed conversation data from the backend API, focusing on canvas content.
-   * Uses our own IndexedDB cache to avoid redundant fetches.
-   * @param {string} conversationId The ID of the conversation to fetch.
-   * @returns {Promise<Map<string, object>>} A map where keys are message IDs and values contain canvas info.
+   * Formats timestamp to readable string
+   * @param {number} timestamp Unix timestamp
+   * @returns {string} Formatted date string
    */
-  async function processBackendData(conversationId) {
-    // 1. Check our cache first to avoid unnecessary API calls.
-    const cacheDuration = 5 * 60 * 1000; // 5 minutes
-    try {
-      const cached = await getCacheFromDB(conversationId);
-      if (cached && Date.now() - cached.timestamp < cacheDuration) {
-        console.log(
-          `🗄️ [Export MD] Using fresh canvas data from cache for ${conversationId}.`
-        );
-        return new Map(Object.entries(cached.data));
-      }
-    } catch (e) {
-      console.error("❌ [Export MD] Error reading from cache:", e);
-    }
 
-    // 2. If no fresh cache, fetch from the backend API.
-    if (fetchController) {
-      fetchController.abort();
-    }
-    fetchController = new AbortController();
-    const signal = fetchController.signal;
+  function formatTimestamp(timestamp) {
+    if (!timestamp) return "";
+    return new Date(timestamp * 1000).toLocaleString();
+  }
+  /**
+   * Converts text content to markdown format
+   * @param {string} text The text to convert
+   * @returns {string} Markdown formatted text
+   */
+
+  function textToMarkdown(text) {
+    if (!text) return ""; // Basic markdown conversion
+
+    return text
+      .replace(/\*\*(.*?)\*\*/g, "**$1**") // Bold
+      .replace(/\*(.*?)\*/g, "*$1*") // Italic
+      .replace(/```([\s\S]*?)```/g, "```\n$1\n```") // Code blocks
+      .replace(/`([^`]+)`/g, "`$1`") // Inline code
+      .trim();
+  }
+  /**
+   * Processes canvas content and formats it for markdown
+   * @param {Array} canvases Array of canvas objects
+   * @returns {string} Formatted canvas content
+   */
+
+  function formatCanvasContent(canvases) {
+    if (!canvases || canvases.length === 0) return "";
+
+    let canvasMarkdown = "\n\n---\n\n### Canvas Files\n\n";
+
+    canvases.forEach((canvas, index) => {
+      canvasMarkdown += `#### ${canvas.title}\n\n`;
+      canvasMarkdown += `\`\`\`\n${canvas.content}\n\`\`\`\n\n`;
+    });
+
+    return canvasMarkdown;
+  }
+  /**
+   * Extracts and processes conversation data from ChatGPT API
+   * @param {string} conversationId The conversation ID
+   * @returns {Promise<string>} Markdown formatted conversation
+   */
+
+  async function exportConversationToMarkdown(conversationId) {
+    const signal = AbortController ? new AbortController().signal : undefined;
 
     try {
-      console.log(`🌐 [Export MD] Fetching backend data for canvas content...`);
       const token = await getAccessToken();
       if (!token) throw new Error("Access token not available.");
 
@@ -182,14 +109,13 @@
 
       const conversationApiData = await response.json();
       const additionalDataMap = new Map();
-      const latestCanvasData = new Map();
+      const latestCanvasData = new Map(); // Pass 1: Collect all canvas versions to find the latest for each.
 
-      // Pass 1: Collect all canvas versions to find the latest for each.
       if (conversationApiData && conversationApiData.mapping) {
         for (const messageId in conversationApiData.mapping) {
           const node = conversationApiData.mapping[messageId];
-          const recipient = node.message?.recipient;
-          // Look for tool messages that create or update canvases ('textdoc').
+          const recipient = node.message?.recipient; // Look for assistant messages that create or update canvases ('textdoc').
+
           if (
             recipient === "canmore.create_textdoc" ||
             recipient === "canmore.update_textdoc"
@@ -201,11 +127,16 @@
                 toolNode.message.metadata.canvas
               ) {
                 try {
-                  const { textdoc_id, version } =
-                    toolNode.message.metadata.canvas;
-                  const contentNode = JSON.parse(node.message.content.parts[0]);
+                  const {
+                    textdoc_id,
+                    version,
+                    title: canvasTitle,
+                  } = toolNode.message.metadata.canvas;
+                  const contentNode = JSON.parse(node.message.content.parts[0]); // Find the final assistant message this canvas belongs to.
 
-                  // Find the final assistant message this canvas belongs to.
+                  // ✅ Extract the file type here
+                  let type = contentNode.type.split("/")[1] || null;
+
                   let attachToMessageId = null;
                   let currentNodeId = toolNode.id;
                   let currentNode = toolNode;
@@ -223,15 +154,17 @@
                       break; // Found the final response to the user.
                     }
                   }
-                  attachToMessageId = currentNodeId;
+                  attachToMessageId = currentNodeId; // Extract title and content from the JSON structure
 
-                  let title = "Canvas";
+                  let title =
+                    canvasTitle && type
+                      ? `${canvasTitle}: ${type}`
+                      : canvasTitle || contentNode.name || "Canvas";
                   let content = "";
 
                   if (contentNode.content) {
                     // Create operation
                     content = contentNode.content || "";
-                    title = contentNode.name || "Canvas";
                   } else if (contentNode.updates && contentNode.updates[0]) {
                     // Update operation
                     content = contentNode.updates[0].replacement || "";
@@ -260,9 +193,8 @@
             }
           }
         }
-      }
+      } // Pass 2: Populate the final map with the latest canvas content.
 
-      // Pass 2: Populate the final map with the latest canvas content.
       latestCanvasData.forEach((data, textdoc_id) => {
         const attachToMessageId = data.attachToMessageId;
         const existing = additionalDataMap.get(attachToMessageId) || {};
@@ -274,129 +206,249 @@
             ...existingCanvases,
             {
               title: data.title,
-              content: data.content, // Pass the content through
+              content: data.content,
               textdoc_id,
               version: data.version,
             },
           ],
         });
-      });
+      }); // Build the conversation tree and generate markdown
 
-      // 3. Cache the processed data in our IndexedDB.
-      try {
-        const dataToCache = Object.fromEntries(additionalDataMap);
-        await setCacheInDB(conversationId, dataToCache);
-        console.log(`💾 [Export MD] Cached canvas data for ${conversationId}.`);
-      } catch (e) {
-        console.error("❌ [Export MD] Error writing to cache:", e);
+      let markdown = ""; // Add conversation metadata
+
+      if (conversationApiData.title) {
+        markdown += `# ${conversationApiData.title}\n\n`;
       }
 
-      console.log("✅ [Export MD] Backend data processed successfully.");
-      return additionalDataMap;
+      if (conversationApiData.create_time) {
+        markdown += `**Created:** ${formatTimestamp(
+          conversationApiData.create_time
+        )}\n`;
+      }
+
+      if (conversationApiData.update_time) {
+        markdown += `**Updated:** ${formatTimestamp(
+          conversationApiData.update_time
+        )}\n\n`;
+      }
+
+      markdown += "---\n\n"; // Process messages in order
+
+      const processedMessages = new Set();
+
+      function processMessage(messageId) {
+        if (!messageId || processedMessages.has(messageId)) return;
+
+        const node = conversationApiData.mapping[messageId];
+        if (!node?.message) return;
+
+        const message = node.message;
+        const author = message.author?.role; // Skip system messages, tool messages, and hidden messages
+
+        if (
+          author === "system" ||
+          author === "tool" ||
+          message.metadata?.is_visually_hidden_from_conversation ||
+          message.content?.content_type === "model_editable_context" ||
+          (message.content?.content_type === "code" &&
+            message.recipient === "web")
+        ) {
+          processedMessages.add(messageId);
+          return;
+        }
+
+        processedMessages.add(messageId); // Add user messages
+
+        if (author === "user") {
+          if (message.content?.parts && message.content.parts.length > 0) {
+            const content = message.content.parts.join("\n");
+            if (content.trim()) {
+              markdown += `---\n---\n\n## You Said\n\n${textToMarkdown(
+                content
+              )}\n\n`;
+            }
+          }
+        } // Add assistant messages
+
+        if (author === "assistant" && message.recipient === "all") {
+          if (message.content?.parts && message.content.parts.length > 0) {
+            let content = message.content.parts.join("\n");
+            const references = message.metadata?.content_references;
+
+            // Correctly replace citations using API metadata
+            if (references && Array.isArray(references)) {
+              references.forEach((ref) => {
+                // Use the 'alt' property which contains the pre-formatted Markdown
+                if (ref.matched_text && ref.alt) {
+                  content = content.replace(ref.matched_text, ref.alt);
+                }
+              });
+            }
+
+            // Fallback to remove any unprocessed citation characters for clean output
+            content = content.replace(/\uE200.*?\uE201/g, "").trim();
+
+            if (content) {
+              // Check trim() result to avoid empty blocks
+              markdown += `---\n---\n\n## ChatGPT said\n\n${content}\n`; // Add canvas content if available
+
+              const additionalData = additionalDataMap.get(messageId);
+              if (additionalData?.canvases) {
+                markdown += formatCanvasContent(additionalData.canvases);
+              }
+
+              markdown += "\n";
+            }
+          }
+        }
+      } // Start from root and traverse the conversation tree
+
+      function traverseConversation(nodeId) {
+        const node = conversationApiData.mapping[nodeId];
+        if (!node) return;
+
+        processMessage(nodeId); // Process children (follow the main conversation path)
+
+        if (node.children && node.children.length > 0) {
+          // For simplicity, follow the first child (main conversation path)
+          traverseConversation(node.children[0]);
+        }
+      }
+
+      if (conversationApiData.mapping["client-created-root"]) {
+        traverseConversation("client-created-root");
+      }
+
+      return markdown;
     } catch (error) {
-      if (error.name === "AbortError") {
-        console.log("-> [Export MD] Fetch aborted for previous request.");
-      } else {
-        console.error("❌ [Export MD] All fetch attempts failed:", error);
-      }
-      return new Map();
+      console.error("❌ [Export MD] Export failed:", error);
+      throw error;
     }
   }
-
-  // --- MAIN EXPORT LOGIC ---
-
   /**
-   * Fetches conversation data, constructs a markdown string, and logs it.
+   * Downloads the markdown content as a file
+   * @param {string} content The markdown content
+   * @param {string} filename The filename for the download
    */
-  async function exportToMarkdown() {
-    const pathParts = window.location.pathname.split("/");
-    if (pathParts[1] !== "c" || !pathParts[2]) {
-      console.log("📋 [Export MD] Not a conversation page. Aborting.");
-      return;
-    }
-    const conversationId = pathParts[2];
-    console.log(
-      `🚀 [Export MD] Starting export for conversation: ${conversationId}`
-    );
 
+  function downloadMarkdown(content, filename) {
+    const blob = new Blob([content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  /**
+   * Main export function
+   */
+
+  async function exportCurrentConversation() {
     try {
-      // Fetch base conversation and detailed canvas data concurrently.
-      const [conversationData, additionalDataMap] = await Promise.all([
-        getConversationFromDB(conversationId),
-        processBackendData(conversationId),
-      ]);
-
-      if (!conversationData || !conversationData.messages) {
-        console.error(
-          "❌ [Export MD] Could not retrieve conversation messages."
+      const conversationId = getConversationId();
+      if (!conversationId) {
+        alert(
+          "No conversation found. Please navigate to a ChatGPT conversation."
         );
         return;
       }
 
-      // Start building the markdown string.
-      let markdown = `# ${conversationData.title}\n\n`;
-
-      for (const msg of conversationData.messages) {
-        if (!msg.author || !msg.text) continue;
-
-        const role = msg.author.role === "user" ? "User" : "Assistant";
-        markdown += `### ${role}\n\n${msg.text}\n\n`;
-
-        // Check if this message has associated canvas data.
-        const extraData = additionalDataMap.get(msg.id);
-        if (extraData && extraData.canvases) {
-          for (const canvas of extraData.canvases) {
-            markdown += `#### Canvas: ${canvas.title}\n\n\`\`\`\n${canvas.content}\n\`\`\`\n\n`;
-          }
-        }
-      }
-
-      // --- TEST: Log the final markdown to the console ---
-      console.log("👇 --- BEGIN MARKDOWN EXPORT --- 👇");
-      console.log(markdown);
-      console.log("👆 --- END MARKDOWN EXPORT --- 👆");
-
-      /*
-      // --- FINAL IMPLEMENTATION: Create and download the file ---
-      // This part is commented out for now to allow for testing via the console.
-      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const safeTitle = conversationData.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      a.href = url;
-      a.download = `${safeTitle || 'conversation'}.md`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      console.log(`✅ [Export MD] Conversation downloaded as "${a.download}"`);
-      */
-    } catch (error) {
-      console.error(
-        "❌ [Export MD] An error occurred during the export process:",
-        error
+      console.log(
+        "🚀 [Export MD] Starting export for conversation:",
+        conversationId
       );
+
+      const markdown = await exportConversationToMarkdown(conversationId);
+      const timestamp = new Date().toISOString().split("T")[0];
+      const filename = `chatgpt-conversation-${conversationId.substring(
+        0,
+        8
+      )}-${timestamp}.md`;
+
+      downloadMarkdown(markdown, filename);
+      console.log("✅ [Export MD] Export completed successfully");
+    } catch (error) {
+      console.error("❌ [Export MD] Export failed:", error);
+      alert("Export failed. Please check the console for details.");
+    }
+  } // Create export button and add to page
+
+  // Create export button and add to page
+  function addExportButton() {
+    // Check if button already exists
+    if (document.getElementById("markdown-export-btn")) return;
+
+    // Find the target container for the new buttons in the conversation header
+    const targetContainer = document.querySelector(
+      "#conversation-header-actions"
+    );
+    if (!targetContainer) {
+      // If the target isn't found, the page might not be ready.
+      return;
+    }
+
+    const button = document.createElement("button");
+    button.id = "markdown-export-btn";
+    // Apply classes similar to the native 'Share' button for a consistent look
+    button.className = "btn relative btn-ghost text-token-text-primary";
+
+    // Create the inner content structure (icon + text) to match the UI
+    const innerDiv = document.createElement("div");
+    innerDiv.className = "flex w-full items-center justify-center gap-1.5";
+
+    // SVG icon for 'Export'
+    const svgIcon = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg"
+    );
+    svgIcon.setAttribute("width", "16");
+    svgIcon.setAttribute("height", "16");
+    svgIcon.setAttribute("viewBox", "0 0 24 24");
+    svgIcon.setAttribute("fill", "none");
+    svgIcon.setAttribute("stroke", "currentColor");
+    svgIcon.setAttribute("stroke-width", "2");
+    svgIcon.setAttribute("stroke-linecap", "round");
+    svgIcon.setAttribute("stroke-linejoin", "round");
+    svgIcon.innerHTML = `<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" />`;
+    svgIcon.classList.add("-ms-0.5", "icon");
+
+    const buttonText = document.createTextNode("Export .md");
+
+    innerDiv.appendChild(svgIcon);
+    innerDiv.appendChild(buttonText);
+    button.appendChild(innerDiv);
+
+    button.addEventListener("click", exportCurrentConversation);
+
+    // Insert the new button before the last element in the container (the '...' menu)
+    if (targetContainer.lastChild) {
+      targetContainer.insertBefore(button, targetContainer.lastChild);
+    } else {
+      targetContainer.appendChild(button);
     }
   }
 
-  // --- EVENT LISTENER ---
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", addExportButton);
+  } else {
+    addExportButton();
+  } // Also add button when navigating between conversations
 
-  /**
-   * Listens for the Ctrl + Shift + S keyboard shortcut to trigger the export.
-   */
-  document.addEventListener("keydown", (event) => {
-    // Check for Ctrl + Shift + S (or Cmd + Shift + S on macOS)
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      event.shiftKey &&
-      event.key.toLowerCase() === "s"
-    ) {
-      event.preventDefault(); // Prevent the browser's default "Save As" dialog
-      exportToMarkdown();
+  let currentUrl = window.location.href;
+  const observer = new MutationObserver(() => {
+    if (window.location.href !== currentUrl) {
+      currentUrl = window.location.href;
     }
+    setTimeout(addExportButton, 1000);
   });
 
-  console.log(
-    "✅ [Export MD] Script loaded. Press Ctrl+Shift+S to export conversation."
+  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(
+    document.body.querySelector("#conversation-header-actions"),
+    { childList: true, subtree: true }
   );
+  console.log("✅ [Export MD] Content script loaded successfully");
 })();
