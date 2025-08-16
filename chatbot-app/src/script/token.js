@@ -1388,10 +1388,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   });
 
   const debouncedRunTokenCheck = debounce(runTokenCheck, 3000);
-  debouncedRunTokenCheck(); // REMOVED: clearOldCache() is no longer needed as cache is managed by timestamps.
-
   let lastUrl = location.href;
-  new MutationObserver((mutationList) => {
+  const observer = new MutationObserver((mutationList) => {
     const url = location.href;
     if (url !== lastUrl) {
       lastUrl = url;
@@ -1445,9 +1443,22 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
       if (!skip) debouncedRunTokenCheck();
     }
-  }).observe(document.body.querySelector("main"), {
-    subtree: true,
-    childList: true,
-    characterData: true,
   });
+  // Run the script when the page is ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", debouncedRunTokenCheck());
+  } else {
+    debouncedRunTokenCheck();
+  }
+  const interval = setInterval(() => {
+    const main = document.body.querySelector("main");
+    if (main) {
+      clearInterval(interval);
+      observer.observe(main, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }
+  }, 1000);
 })();
