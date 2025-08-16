@@ -379,7 +379,16 @@
   // Create export button and add to page
   function addExportButton() {
     // Check if button already exists
-    if (document.getElementById("markdown-export-btn")) return;
+    const btn = document.getElementById("markdown-export-btn");
+    // Check if the button already exists
+    if (btn) {
+      if (!window.location.pathname.startsWith("/c/"))
+        btn.style.display = "hidden";
+      else btn.style.display = "";
+      return;
+    } else {
+      if (!window.location.pathname.startsWith("/c/")) return;
+    }
 
     // Find the target container for the new buttons in the conversation header
     const targetContainer = document.querySelector(

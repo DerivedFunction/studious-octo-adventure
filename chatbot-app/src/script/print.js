@@ -292,8 +292,16 @@
    * Creates and injects a "Print" button into the conversation header.
    */
   function addPrintButton() {
+    const btn = document.getElementById("print-chat-btn");
     // Check if the button already exists
-    if (document.getElementById("print-chat-btn")) return;
+    if (btn) {
+      if (!window.location.pathname.startsWith("/c/"))
+        btn.style.display = "hidden";
+      else btn.style.display = "";
+      return;
+    } else {
+      if (!window.location.pathname.startsWith("/c/")) return;
+    }
 
     // Find the target container for header buttons
     const targetContainer = document.querySelector(
