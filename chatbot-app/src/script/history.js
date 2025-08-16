@@ -954,7 +954,7 @@
 
   // --- Keyboard Shortcut (Ctrl+H) ---
   document.addEventListener("keydown", (e) => {
-    if (e.ctrlKey && e.key.toLowerCase() === "h") {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "h") {
       e.preventDefault();
       const container = document.getElementById("chm-container");
       const isVisible = container && container.style.display !== "none";
@@ -1041,7 +1041,7 @@
                 [
                   createElement("kbd", { "aria-label": "Control" }, [
                     createElement("span", { className: "min-w-[1em]" }, [
-                      "Ctrl",
+                      getModifierKeyText(),
                     ]),
                   ]),
                   createElement("kbd", {}, [
@@ -1054,7 +1054,10 @@
         ),
       ]
     );
-
+    function getModifierKeyText() {
+      const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+      return isMac ? "⌘" : "Ctrl";
+    }
     buttonElement.addEventListener("click", (e) => {
       e.preventDefault();
       toggleUiVisibility(true);

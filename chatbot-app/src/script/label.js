@@ -811,7 +811,7 @@
                 [
                   createElement("kbd", { "aria-label": "Control" }, [
                     createElement("span", { className: "min-w-[1em]" }, [
-                      "Ctrl",
+                      getModifierKeyText(),
                     ]),
                   ]),
                   createElement("kbd", {}, [
@@ -832,7 +832,10 @@
     console.log("✅ [Label Explorer] Sidebar button injected successfully.");
     return true;
   };
-
+  function getModifierKeyText() {
+    const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+    return isMac ? "⌘" : "Ctrl";
+  }
   function injectSidebarButton() {
     const observer = new MutationObserver(injectionLogic);
     const interval = setInterval(() => {
@@ -875,7 +878,7 @@
     appState.data = await getStoredData();
     injectStyles();
     document.addEventListener("keydown", (e) => {
-      if (e.ctrlKey && e.key.toLowerCase() === "l") {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
         e.preventDefault();
         const container = document.getElementById("le-modal-container");
         const isVisible = container && container.style.display !== "none";
