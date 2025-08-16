@@ -333,6 +333,7 @@ const ThemeableChatbot = () => {
                   "./script/token.js",
                   "./script/history.js",
                   "./script/label.js",
+                  "./script/export.js",
                 ],
                 runAt: "document_end",
                 allFrames: true,
