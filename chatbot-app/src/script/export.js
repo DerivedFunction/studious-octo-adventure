@@ -526,7 +526,10 @@
    * @returns {Promise<string>} Markdown formatted conversation
    */
   let title = null;
-  async function exportConversationToMarkdown(conversationId) {
+  async function exportConversationToFileType(
+    conversationId,
+    filetype = "markdown"
+  ) {
     const signal = AbortController ? new AbortController().signal : undefined;
     title = null;
     try {
@@ -668,7 +671,8 @@
               // Find the final assistant message this reasoning belongs to.
               let attachToMessageId = null;
               for (const reasoningParentId in conversationApiData.mapping) {
-                const currentNode = conversationApiData.mapping[reasoningParentId];
+                const currentNode =
+                  conversationApiData.mapping[reasoningParentId];
                 if (
                   currentNode?.message?.author?.role === "assistant" &&
                   currentNode?.message?.metadata.request_id === request_id &&
@@ -687,12 +691,14 @@
                   thoughts.length > 0
                 ) {
                   let reasoningMarkdown =
+                    filetype === "json"
+                      ? "<think>":
                     "\n\n<details>\n<summary>View Reasoning</summary>\n\n";
                   thoughts.forEach((thought) => {
-                    reasoningMarkdown += `**${thought.summary || "Step"}**\n\n${thought.content
-                      }\n\n`;
+                    reasoningMarkdown += `**${thought.summary || "Step"}**\n\n${
+                      thought.content
+                    }${filetype === "json" ? "</think>" : "</details>\n\n"}`;
                   });
-                  reasoningMarkdown += "</details>\n\n";
                   reasoningData.set(attachToMessageId, reasoningMarkdown);
                 }
               }
@@ -705,30 +711,57 @@
           }
         }
       }
-      let markdown = ""; // Add conversation metadata
-
+      let fileContent = ""; // Add conversation metadata
+      let jsonMetaData = {};
       if (conversationApiData.title) {
-        markdown += `# ${conversationApiData.title}\n\n`;
+        switch (filetype) {
+          case "json":
+            jsonMetaData.title = conversationApiData.title;
+            break;
+          case "markdown":
+          default:
+            fileContent += `# ${conversationApiData.title}\n\n`;
+        }
         title = conversationApiData.title;
       }
 
       if (conversationApiData.create_time) {
-        markdown += `**Created:** ${formatTimestamp(
-          conversationApiData.create_time
-        )}\n`;
+        switch (filetype) {
+          case "json":
+            jsonMetaData.create_time = conversationApiData.create_time;
+            break;
+          case "markdown":
+          default:
+            fileContent += `**Created:** ${formatTimestamp(
+              conversationApiData.create_time
+            )}\n`;
+        }
       }
 
       if (conversationApiData.update_time) {
-        markdown += `**Updated:** ${formatTimestamp(
-          conversationApiData.update_time
-        )}\n\n`;
+        switch (filetype) {
+          case "json":
+            jsonMetaData.update_time = conversationApiData.update_time;
+            break;
+          case "markdown":
+          default:
+            fileContent += `**Updated:** ${formatTimestamp(
+              conversationApiData.update_time
+            )}\n\n`;
+        }
       }
-      markdown += `**Link:** https://chatgpt.com/c/${conversationId}\n\n`;
-
-      markdown += "---\n\n"; // Process messages in order
+      switch (filetype) {
+        case "json":
+          jsonMetaData.link = `https://chatgpt.com/c/${conversationId}`;
+          break;
+        case "markdown":
+        default:
+          fileContent += `**Link:** https://chatgpt.com/c/${conversationId}\n\n`;
+          fileContent += "---\n\n"; // Process messages in order
+      }
 
       const processedMessages = new Set();
-
+      let messageData = [];
       function processMessage(messageId) {
         if (!messageId || processedMessages.has(messageId)) return;
 
@@ -756,7 +789,17 @@
           if (message.content?.parts && message.content.parts.length > 0) {
             const content = message.content.parts.join("\n");
             if (content.trim()) {
-              markdown += `# You Said\n\n${textToMarkdown(content)}\n\n`;
+              switch (filetype) {
+                case "json":
+                  messageData.push({
+                    role: "user",
+                    content: content,
+                  });
+                  break;
+                case "markdown":
+                default:
+                  fileContent += `# You Said\n\n${content}\n\n`;
+              }
             }
           }
         } // Add assistant messages
@@ -764,9 +807,8 @@
         if (author === "assistant" && message.recipient === "all") {
           if (message.content?.parts && message.content.parts.length > 0) {
             let content = message.content.parts.join("\n");
-            const references = message.metadata?.content_references;
+            const references = message.metadata?.content_references; // Correctly replace citations using API metadata
 
-            // Correctly replace citations using API metadata
             if (references && Array.isArray(references)) {
               references.forEach((ref) => {
                 // Use the 'alt' property which contains the pre-formatted Markdown
@@ -774,31 +816,47 @@
                   content = content.replace(ref.matched_text, ref.alt);
                 }
               });
-            }
+            } // Fallback to remove any unprocessed citation characters for clean output
 
-            // Fallback to remove any unprocessed citation characters for clean output
             content = content.replace(/\uE200.*?\uE201/g, "").trim();
 
             if (content) {
-              // Check trim() result to avoid empty blocks
-              markdown += `# ChatGPT said\n\n`; // Add canvas content if available
+              let fullAssistantContent = ""; // Add canvas content if available
               const additionalData = additionalDataMap.get(messageId);
               if (additionalData?.canvases) {
-                markdown += formatCanvasContent(additionalData.canvases);
-              }
-              // Append reasoning information if it exists
+                fullAssistantContent += formatCanvasContent(
+                  additionalData.canvases
+                );
+              } // Append reasoning information if it exists
               const reasoningContent = reasoningData.get(messageId);
               if (reasoningContent) {
-                markdown += reasoningContent;
+                fullAssistantContent += reasoningContent;
               }
-              markdown += content;
-              // If response has an opening ``` but doesn't end with it, close the block
-              const openings = (content.match(/```/g) || []).length;
-              if (openings % 2 !== 0 && !content.trim().endsWith("```")) {
-                markdown += "\n```";
-              }
+              fullAssistantContent += content;
 
-              markdown += "\n\n";
+              switch (filetype) {
+                case "json":
+                  messageData.push({
+                    role: "assistant",
+                    content: fullAssistantContent,
+                  });
+                  break;
+                case "markdown":
+                default: {
+                  // Check trim() result to avoid empty blocks
+                  fileContent += `# ChatGPT said\n\n${fullAssistantContent}`; // If response has an opening ``` but doesn't end with it, close the block
+                  const openings = (fullAssistantContent.match(/```/g) || [])
+                    .length;
+                  if (
+                    openings % 2 !== 0 &&
+                    !fullAssistantContent.trim().endsWith("```")
+                  ) {
+                    fileContent += "\n```";
+                  }
+                  fileContent += "\n\n";
+                  break;
+                }
+              }
             }
           }
         }
@@ -819,27 +877,19 @@
       if (conversationApiData.mapping["client-created-root"]) {
         traverseConversation("client-created-root");
       }
-
-      return markdown;
+      switch (filetype) {
+        case "json":
+          messageData.messages = messageData;
+          fileContent = JSON.stringify({messageData, ...jsonMetaData}, null, 2);
+          break;
+        default:
+          break;
+      }
+      return fileContent;
     } catch (error) {
       console.error("❌ [Export MD] Export failed:", error);
       throw error;
     }
-  }
-  /**
-   * Converts text content to markdown format
-   * @param {string} text The text to convert
-   * @returns {string} Markdown formatted text
-   */
-  function textToMarkdown(text) {
-    if (!text) return ""; // Basic markdown conversion
-
-    return text
-      .replace(/\*\*(.*?)\*\*/g, "**$1**") // Bold
-      .replace(/\*(.*?)\*/g, "*$1*") // Italic
-      .replace(/```([\s\S]*?)```/g, "```\n$1\n```") // Code blocks
-      .replace(/`([^`]+)`/g, "`$1`") // Inline code
-      .trim();
   }
   function formatCanvasContent(canvases) {
     if (!canvases || canvases.length === 0) return "";
@@ -857,9 +907,9 @@
   /**
    * Downloads the markdown content as a file.
    */
-  function downloadMarkdown(content, filename) {
+  function downloadFile(content, filename, filetype = "markdown") {
     const blob = new Blob([content], {
-      type: "text/markdown",
+      type: `text/${filetype}`,
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -874,16 +924,22 @@
   /**
    * Main function to trigger the markdown export process.
    */
-  async function exportCurrentConversation() {
+  async function exportCurrentConversation(
+    filetype = "markdown",
+    extension = "md"
+  ) {
     try {
       const conversationId = getConversationId();
       if (!conversationId) {
         alert("No conversation found.");
         return;
       }
-      const markdown = await exportConversationToMarkdown(conversationId);
-      const filename = `ChatGPT-${title || conversationId}.md`;
-      downloadMarkdown(markdown, filename);
+      const content = await exportConversationToFileType(
+        conversationId,
+        filetype
+      );
+      const filename = `ChatGPT-${title || conversationId}.${extension}`;
+      downloadFile(content, filename, filetype);
     } catch (error) {
       console.error("❌ [Export MD] Export failed:", error);
       alert("Export failed. Check the console for details.");
@@ -1007,6 +1063,10 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>
       <span>Export Markdown</span>
     </button>
+    <button class="export-menu-item" id="export-json-item">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-braces-icon lucide-braces"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+      <span>Export JSON</span>
+    </button>
   </div>
 `;
 
@@ -1028,6 +1088,12 @@
       exportCurrentConversation();
       dropdown.classList.remove("show");
     });
+    dropdown
+      .querySelector("#export-json-item")
+      .addEventListener("click", () => {
+        exportCurrentConversation("json", "json");
+        dropdown.classList.remove("show");
+      });
 
     // Hide dropdown when clicking elsewhere
     document.addEventListener("click", () => {
