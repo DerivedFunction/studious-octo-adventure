@@ -29,6 +29,45 @@
       return null;
     }
   }
+  /**
+   * Fetches the public download URL for a given file ID.
+   * @param {string} fileId The ID of the file (without 'sediment://').
+   * @param {string} conversationId The current conversation ID.
+   * @returns {Promise<string|null>} The download URL or null on failure.
+   */
+  async function getImageDownloadUrl(fileId, conversationId) {
+    try {
+      const token = await getAccessToken();
+      if (!token)
+        throw new Error("Access token not available for image download.");
+
+      const response = await fetch(
+        `https://chatgpt.com/backend-api/files/download/${fileId}?conversation_id=${conversationId}`,
+        {
+          headers: {
+            accept: "*/*",
+            authorization: `Bearer ${token}`,
+          },
+          method: "GET",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch image download URL: ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+      return data.download_url;
+    } catch (error) {
+      console.error(
+        "❌ [Export Script] Failed to get image download URL:",
+        error
+      );
+      return null;
+    }
+  }
 
   /**
    * Extracts conversation ID from the current URL.
@@ -692,8 +731,8 @@
                 ) {
                   let reasoningMarkdown =
                     filetype === "json"
-                      ? "<think>":
-                    "\n\n<details>\n<summary>View Reasoning</summary>\n\n";
+                      ? "<think>"
+                      : "\n\n<details>\n<summary>View Reasoning</summary>\n\n";
                   thoughts.forEach((thought) => {
                     reasoningMarkdown += `**${thought.summary || "Step"}**\n\n${
                       thought.content
@@ -762,22 +801,24 @@
 
       const processedMessages = new Set();
       let messageData = [];
-      function processMessage(messageId) {
+      async function processMessage(messageId) {
         if (!messageId || processedMessages.has(messageId)) return;
 
         const node = conversationApiData.mapping[messageId];
         if (!node?.message) return;
 
         const message = node.message;
-        const author = message.author?.role; // Skip system messages, tool messages, and hidden messages
+        const author = message.author?.role;
+        const contentType = message.content?.content_type;
 
+        // Skip system messages, hidden messages, and intermediate steps.
+        // Allow tool messages that contain images ('multimodal_text').
         if (
           author === "system" ||
-          author === "tool" ||
           message.metadata?.is_visually_hidden_from_conversation ||
-          message.content?.content_type === "model_editable_context" ||
-          (message.content?.content_type === "code" &&
-            message.recipient === "web")
+          contentType === "model_editable_context" ||
+          (author === "assistant" && message.recipient !== "all") ||
+          (author === "tool" && contentType !== "multimodal_text")
         ) {
           processedMessages.add(messageId);
           return;
@@ -793,12 +834,15 @@
                 case "json":
                   messageData.push({
                     role: "user",
-                    content: content,
+                    content: {
+                      content_type: "text",
+                      text: content,
+                    },
                   });
                   break;
                 case "markdown":
                 default:
-                  fileContent += `# You Said\n\n${content}\n\n`;
+                  fileContent += `# You Said\n\n${content}\n\n---\n\n`;
               }
             }
           }
@@ -838,13 +882,15 @@
                 case "json":
                   messageData.push({
                     role: "assistant",
-                    content: fullAssistantContent,
+                    content: {
+                      content_type: "input_text",
+                      text: fullAssistantContent
+                    },
                   });
                   break;
                 case "markdown":
                 default: {
-                  // Check trim() result to avoid empty blocks
-                  fileContent += `# ChatGPT said\n\n${fullAssistantContent}`; // If response has an opening ``` but doesn't end with it, close the block
+                  fileContent += `# ChatGPT said\n\n${fullAssistantContent}`;
                   const openings = (fullAssistantContent.match(/```/g) || [])
                     .length;
                   if (
@@ -853,34 +899,101 @@
                   ) {
                     fileContent += "\n```";
                   }
-                  fileContent += "\n\n";
+                  fileContent += "\n\n---\n\n";
                   break;
                 }
               }
             }
           }
         }
-      } // Start from root and traverse the conversation tree
+        // Handle multimodal messages (e.g., images) from the tool role
+        if (author === "tool" && contentType === "multimodal_text") {
+          let markdownContent = "";
+          let jsonParts = [];
 
-      function traverseConversation(nodeId) {
+          for (const part of message.content.parts) {
+            if (
+              part.content_type === "image_asset_pointer" &&
+              part.asset_pointer
+            ) {
+              const fileId = part.asset_pointer.replace("sediment://", "");
+              const conversationId = getConversationId();
+
+              // Find the image prompt by traversing up the conversation tree
+              let prompt = "Image"; // Default prompt
+              try {
+                const parentNode = conversationApiData.mapping[node.parent];
+                const grandparentNode = parentNode
+                  ? conversationApiData.mapping[parentNode.parent]
+                  : null;
+                if (
+                  grandparentNode &&
+                  grandparentNode.message?.content?.content_type === "code"
+                ) {
+                  const promptData = JSON.parse(
+                    grandparentNode.message.content.text
+                  );
+                  prompt = promptData.prompt || "Image";
+                }
+              } catch (e) {
+                console.warn("Could not parse image prompt, using default.", e);
+              }
+
+              const downloadUrl = await getImageDownloadUrl(
+                fileId,
+                conversationId
+              );
+
+              if (downloadUrl) {
+                switch (filetype) {
+                  case "json":
+                    jsonParts.push([
+                      {
+                        type: "input_image",
+                        url: downloadUrl,
+                      },
+                      { type: "input_text", text: prompt },
+                    ]);
+                    break;
+                  case "markdown":
+                  default:
+                    markdownContent += `![${prompt}](${downloadUrl})\n\n**Prompt:** *${prompt}*\n\n`;
+                    break;
+                }
+              }
+            }
+          }
+
+          // Add the processed content to the final output
+          if (filetype === "json" && jsonParts.length > 0) {
+            messageData.push({
+              role: "assistant", // Attribute the image to the assistant
+              content: jsonParts.length === 1 ? jsonParts[0] : jsonParts,
+            });
+          } else if (filetype === "markdown" && markdownContent.trim()) {
+            fileContent += `# ChatGPT said\n\n${markdownContent}\n\n---\n\n`;
+          }
+        }
+      }
+
+      async function traverseConversation(nodeId) {
         const node = conversationApiData.mapping[nodeId];
         if (!node) return;
 
-        processMessage(nodeId); // Process children (follow the main conversation path)
+        await processMessage(nodeId);
 
         if (node.children && node.children.length > 0) {
-          // For simplicity, follow the first child (main conversation path)
-          traverseConversation(node.children[0]);
+          await traverseConversation(node.children[0]);
         }
       }
 
       if (conversationApiData.mapping["client-created-root"]) {
-        traverseConversation("client-created-root");
+        await traverseConversation("client-created-root");
       }
       switch (filetype) {
         case "json":
-          messageData.messages = messageData;
-          fileContent = JSON.stringify({messageData, ...jsonMetaData}, null, 2);
+          jsonMetaData.messages = messageData;
+          fileContent = JSON.stringify({ ...jsonMetaData }, null, 2);
           break;
         default:
           break;
@@ -909,7 +1022,7 @@
    */
   function downloadFile(content, filename, filetype = "markdown") {
     const blob = new Blob([content], {
-      type: `text/${filetype}`,
+      type: filetype === "json" ? "application/json" : "text/markdown",
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1044,9 +1157,9 @@
     button.className = "btn relative btn-ghost text-token-text-primary";
     button.innerHTML = `
       <div class="flex w-full items-center justify-center gap-1.5">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+        <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
         Export
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </div>
     `;
 
@@ -1056,15 +1169,15 @@
     dropdown.innerHTML = `
   <div class="export-menu-content">
     <button class="export-menu-item" id="print-chat-item">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+      <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
       <span>Print Chat</span>
     </button>
     <button class="export-menu-item" id="export-md-item">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>
+      <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>
       <span>Export Markdown</span>
     </button>
     <button class="export-menu-item" id="export-json-item">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-braces-icon lucide-braces"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+      <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-braces-icon lucide-braces"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
       <span>Export JSON</span>
     </button>
   </div>
