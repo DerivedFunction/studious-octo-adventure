@@ -139,7 +139,17 @@
     // Get conversation ID and fetch canvas content
     const conversationId = getConversationId();
     let canvasMap = new Map();
-
+    let buttonsClicked = [];
+    printArea
+      .querySelectorAll("div.origin-top-left button:not(pre button) span span")
+      .forEach((el) => {
+        // find the nearest ancestor div.grow (or whatever parent you need)
+        const parent = el.closest("div.origin-top-left");
+        if (parent && parent.children.length !== 2) {
+          el.closest("button").click();
+          buttonsClicked.push(el.closest("button"));
+        }
+      });
     if (conversationId) {
       console.log("🚀 [Print Script] Fetching canvas content...");
       canvasMap = await fetchCanvasContentForPrint(conversationId);
@@ -350,7 +360,6 @@
         el.classList.remove(className);
       });
     });
-
     // Remove any inline dark styles
     contentToPrint.querySelectorAll("[style]").forEach((el) => {
       const style = el.getAttribute("style");
@@ -493,6 +502,10 @@
       setTimeout(() => {
         if (document.body.contains(printFrame)) {
           document.body.removeChild(printFrame);
+          // Unclick the clicked buttons
+          buttonsClicked.forEach((button) => {
+            button.click();
+          });
         }
       }, 1000);
     }, 200);
@@ -508,17 +521,14 @@
   }
 
   /**
-   * Extracts and processes conversation data from ChatGPT API for Markdown export.
-   */
-  /**
    * Extracts and processes conversation data from ChatGPT API
    * @param {string} conversationId The conversation ID
    * @returns {Promise<string>} Markdown formatted conversation
    */
-
+  let title = null;
   async function exportConversationToMarkdown(conversationId) {
     const signal = AbortController ? new AbortController().signal : undefined;
-
+    title = null;
     try {
       const token = await getAccessToken();
       if (!token) throw new Error("Access token not available.");
@@ -648,10 +658,58 @@
         });
       }); // Build the conversation tree and generate markdown
 
+      const reasoningData = new Map(); // Pass 1.5: Collect all reasoning data
+      if (conversationApiData.mapping) {
+        for (const messageId in conversationApiData.mapping) {
+          const node = conversationApiData.mapping[messageId];
+          if (node.message?.content?.content_type === "thoughts") {
+            const request_id = node.message.metadata.request_id;
+            try {
+              // Find the final assistant message this reasoning belongs to.
+              let attachToMessageId = null;
+              for (const reasoningParentId in conversationApiData.mapping) {
+                const currentNode = conversationApiData.mapping[reasoningParentId];
+                if (
+                  currentNode?.message?.author?.role === "assistant" &&
+                  currentNode?.message?.metadata.request_id === request_id &&
+                  currentNode?.message?.channel === "final"
+                ) {
+                  attachToMessageId = reasoningParentId;
+                  break; // Found the final response to the user.
+                }
+              }
+
+              if (attachToMessageId) {
+                const thoughts = node.message.content.thoughts;
+                if (
+                  thoughts &&
+                  Array.isArray(thoughts) &&
+                  thoughts.length > 0
+                ) {
+                  let reasoningMarkdown =
+                    "\n\n<details>\n<summary>View Reasoning</summary>\n\n";
+                  thoughts.forEach((thought) => {
+                    reasoningMarkdown += `**${thought.summary || "Step"}**\n\n${thought.content
+                      }\n\n`;
+                  });
+                  reasoningMarkdown += "</details>\n\n";
+                  reasoningData.set(attachToMessageId, reasoningMarkdown);
+                }
+              }
+            } catch (e) {
+              console.error(
+                "❌ [Export MD] Error processing reasoning data:",
+                e
+              );
+            }
+          }
+        }
+      }
       let markdown = ""; // Add conversation metadata
 
       if (conversationApiData.title) {
         markdown += `# ${conversationApiData.title}\n\n`;
+        title = conversationApiData.title;
       }
 
       if (conversationApiData.create_time) {
@@ -665,6 +723,7 @@
           conversationApiData.update_time
         )}\n\n`;
       }
+      markdown += `**Link:** https://chatgpt.com/c/${conversationId}\n\n`;
 
       markdown += "---\n\n"; // Process messages in order
 
@@ -697,9 +756,7 @@
           if (message.content?.parts && message.content.parts.length > 0) {
             const content = message.content.parts.join("\n");
             if (content.trim()) {
-              markdown += `---\n---\n\n## You Said\n\n${textToMarkdown(
-                content
-              )}\n\n`;
+              markdown += `# You Said\n\n${textToMarkdown(content)}\n\n`;
             }
           }
         } // Add assistant messages
@@ -724,14 +781,24 @@
 
             if (content) {
               // Check trim() result to avoid empty blocks
-              markdown += `---\n---\n\n## ChatGPT said\n\n${content}\n`; // Add canvas content if available
-
+              markdown += `# ChatGPT said\n\n`; // Add canvas content if available
               const additionalData = additionalDataMap.get(messageId);
               if (additionalData?.canvases) {
                 markdown += formatCanvasContent(additionalData.canvases);
               }
+              // Append reasoning information if it exists
+              const reasoningContent = reasoningData.get(messageId);
+              if (reasoningContent) {
+                markdown += reasoningContent;
+              }
+              markdown += content;
+              // If response has an opening ``` but doesn't end with it, close the block
+              const openings = (content.match(/```/g) || []).length;
+              if (openings % 2 !== 0 && !content.trim().endsWith("```")) {
+                markdown += "\n```";
+              }
 
-              markdown += "\n";
+              markdown += "\n\n";
             }
           }
         }
@@ -777,7 +844,7 @@
   function formatCanvasContent(canvases) {
     if (!canvases || canvases.length === 0) return "";
 
-    let canvasMarkdown = "\n\n---\n\n### Canvas Files\n\n";
+    let canvasMarkdown = "";
 
     canvases.forEach((canvas, index) => {
       canvasMarkdown += `#### ${canvas.title}\n\n`;
@@ -815,8 +882,7 @@
         return;
       }
       const markdown = await exportConversationToMarkdown(conversationId);
-      const timestamp = new Date().toISOString().split("T")[0];
-      const filename = `chatgpt-export-${timestamp}.md`;
+      const filename = `ChatGPT-${title || conversationId}.md`;
       downloadMarkdown(markdown, filename);
     } catch (error) {
       console.error("❌ [Export MD] Export failed:", error);
