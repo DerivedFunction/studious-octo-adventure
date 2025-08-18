@@ -138,7 +138,6 @@
                     const samedoc = allCanvasOps.filter(
                       (e) => e.textdoc_id === textdoc_id
                     );
-                    console.log(samedoc);
                     title = samedoc[0].title;
                   }
                   allCanvasOps.push({
@@ -651,18 +650,16 @@
 
       // Pass 2: Process sorted canvas operations to build the data map
       const canvasTitles = new Map();
+      const canvasTypes = new Map();
       for (const { node, toolNode } of allCanvasOps) {
         try {
           const {
             textdoc_id,
             version,
             title: canvasTitle,
+            textdoc_type,
           } = toolNode.message.metadata.canvas;
           const contentNode = JSON.parse(node.message.content.parts[0]);
-          const type = contentNode.type
-            ? contentNode.type.split("/")[1] || null
-            : null;
-
           // Find the final assistant message this canvas belongs to.
           let attachToMessageId = null;
           let currentNodeId = toolNode.id;
@@ -700,7 +697,7 @@
               title,
               content,
               textdoc_id,
-              type,
+              type: textdoc_type,
             };
 
             if (!additionalDataMap.has(attachToMessageId)) {
@@ -1057,8 +1054,14 @@
     let canvasMarkdown = "";
 
     canvases.forEach((canvas, index) => {
+      const parts = canvas.type.split("/");
+      let type = null;
+      if (parts.length > 1) type = parts[1];
+      if (type.includes("react")) type = "typescript";
       canvasMarkdown += `#### ${canvas.title}\n\n`;
-      canvasMarkdown += `\`\`\`\n${canvas.content}\n\`\`\`\n\n`;
+      canvasMarkdown += `\`\`\`${type ? type : ""}\n${
+        canvas.content
+      }\n\`\`\`\n\n`;
     });
 
     return canvasMarkdown;
