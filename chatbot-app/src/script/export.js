@@ -567,7 +567,8 @@
   let title = null;
   async function exportConversationToFileType(
     conversationId,
-    filetype = "markdown", version = 1
+    filetype = "markdown",
+    version = 1
   ) {
     const signal = AbortController ? new AbortController().signal : undefined;
     title = null;
@@ -767,22 +768,24 @@
       if (conversationApiData.create_time) {
         switch (filetype) {
           case "json":
-            jsonMetaData.create_time =
-              formatTimestamp(conversationApiData.create_time);
+            jsonMetaData.create_time = formatTimestamp(
+              conversationApiData.create_time
+            );
             break;
           case "markdown":
           default:
             fileContent += `**Created:** ${formatTimestamp(
               conversationApiData.create_time
-            )}\n`;
+            )}\n\n`;
         }
       }
 
       if (conversationApiData.update_time) {
         switch (filetype) {
           case "json":
-            jsonMetaData.update_time =
-              formatTimestamp(conversationApiData.update_time);
+            jsonMetaData.update_time = formatTimestamp(
+              conversationApiData.update_time
+            );
             break;
           case "markdown":
           default:
@@ -836,10 +839,12 @@
                 case "json":
                   messageData.push({
                     role: "user",
-                    content: [{
-                      content_type: "input_text",
-                      text: content
-                    }],
+                    content: [
+                      {
+                        content_type: "input_text",
+                        text: content,
+                      },
+                    ],
                   });
                   break;
                 case "markdown":
@@ -879,7 +884,14 @@
                 fullAssistantContent += reasoningContent;
               }
               fullAssistantContent += content;
-
+              const openings = (fullAssistantContent.match(/```/g) || [])
+                .length;
+              if (
+                openings % 2 !== 0 &&
+                !fullAssistantContent.trim().endsWith("```")
+              ) {
+                fullAssistantContent += "\n```";
+              }
               switch (filetype) {
                 case "json":
                   messageData.push({
@@ -887,24 +899,14 @@
                     content: [
                       {
                         content_type: "output_text",
-                        text: fullAssistantContent
-                      }
-                    
-                    ]
+                        text: fullAssistantContent,
+                      },
+                    ],
                   });
                   break;
                 case "markdown":
                 default: {
-                  fileContent += `# ChatGPT said\n\n${fullAssistantContent}`;
-                  const openings = (fullAssistantContent.match(/```/g) || [])
-                    .length;
-                  if (
-                    openings % 2 !== 0 &&
-                    !fullAssistantContent.trim().endsWith("```")
-                  ) {
-                    fileContent += "\n```";
-                  }
-                  fileContent += "\n\n---\n\n";
+                  fileContent += `# ChatGPT said\n\n${fullAssistantContent}\n\n---\n\n`;
                   break;
                 }
               }
@@ -996,7 +998,7 @@
         await traverseConversation("client-created-root");
       }
       switch (filetype) {
-        case "json":       
+        case "json":
           switch (version) {
             case 2:
               // We want chat completions, so  { "role": "role", "content": "text"}
@@ -1004,11 +1006,17 @@
                 // for each message.content, only if content_type = "text" , set content to "text"
                 let content = "";
                 message.content.forEach((part) => {
-                  if (part.content_type.endsWith("_text")) {
-                    content = `${content ? `${content}\n` : ""}${part.text}`;
-                  } else if (part.content_type === "input_image") {
-                    content = `${content ? `${content}\n` : ""
+                  const type = part.content_type.split("_")[1] || "";
+                  switch (type) {
+                    case "image":
+                      content = `${
+                        content ? `${content}\n` : ""
                       }${`![Image](${part.url})`}`;
+                      break;
+                    case "text":
+                    default:
+                      content = `${content ? `${content}\n` : ""}${part.text}`;
+                      break;
                   }
                 });
                 message.content = content;
@@ -1067,7 +1075,7 @@
   async function exportCurrentConversation(
     filetype = "markdown",
     extension = "md",
-    version = 1,
+    version = 1
   ) {
     try {
       const conversationId = getConversationId();
@@ -1077,7 +1085,8 @@
       }
       const content = await exportConversationToFileType(
         conversationId,
-        filetype, version
+        filetype,
+        version
       );
       const filename = `ChatGPT-${title || conversationId}.${extension}`;
       downloadFile(content, filename, filetype);
@@ -1234,10 +1243,11 @@
       dropdown.classList.remove("show");
     });
     dropdown
-      .querySelector("#export-json-chat-item").addEventListener("click", () => {
+      .querySelector("#export-json-chat-item")
+      .addEventListener("click", () => {
         exportCurrentConversation("json", "json");
         dropdown.classList.remove("show");
-      })
+      });
     dropdown
       .querySelector("#export-json-item")
       .addEventListener("click", () => {
