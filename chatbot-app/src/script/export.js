@@ -132,12 +132,20 @@
                     contentNode.content ||
                     contentNode.updates?.[0]?.replacement ||
                     "";
-
+                  // We already have the name of the textdoc somewhere
+                  let title = canvasTitle || contentNode.name;
+                  if (!canvasTitle) {
+                    const samedoc = allCanvasOps.filter(
+                      (e) => e.textdoc_id === textdoc_id
+                    );
+                    console.log(samedoc);
+                    title = samedoc[0].title;
+                  }
                   allCanvasOps.push({
                     create_time: toolNode.message.create_time,
                     textdoc_id,
                     version,
-                    title: canvasTitle || contentNode.name || "Canvas",
+                    title,
                     content,
                     type: textdoc_type,
                   });
