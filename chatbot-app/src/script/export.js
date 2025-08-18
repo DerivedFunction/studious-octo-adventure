@@ -213,22 +213,12 @@
       .forEach((styleElement) => {
         printDocument.head.appendChild(styleElement.cloneNode(true));
       });
-
     // 4. Add comprehensive print-only stylesheet to override dark mode and adjust layout.
     const printStyles = `
     @media print {
       /* Force light mode for all elements */
       *, *::before, *::after {
-        background-color: white !important;
-        color: black !important;
-        border-color: #ccc !important;
         box-shadow: none !important;
-      }
-
-      /* Ensure body and html have white background */
-      html, body {
-        background: white !important;
-        color: black !important;
       }
 
       /* Hide UI elements that shouldn't be printed */
@@ -246,8 +236,6 @@
         width: 100% !important;
         padding: 0 !important;
         box-shadow: none !important;
-        background: white !important;
-        color: black !important;
       }
 
       /* Add page margins for proper printing */
@@ -258,45 +246,30 @@
 
       /* Format code blocks with light background and proper contrast */
       pre, code {
-        background-color: #f8f8f8 !important;
-        color: #333 !important;
-        border: 1px solid #ddd !important;
         white-space: pre-wrap !important;
         word-break: break-word !important;
         page-break-inside: avoid;
       }
 
-      /* Style code syntax highlighting for print */
-      .hljs-keyword, .hljs-built_in { color: #0000ff !important; }
-      .hljs-string { color: #008000 !important; }
-      .hljs-comment { color: #808080 !important; }
-      .hljs-number { color: #ff0000 !important; }
-      .hljs-title { color: #800080 !important; }
 
       /* Ensure links are visible */
       a {
-        color: #0066cc !important;
         text-decoration: underline !important;
       }
 
       /* Style headings */
       h1, h2, h3, h4, h5, h6 {
-        color: black !important;
-        background: white !important;
         page-break-after: avoid;
       }
 
       /* Ensure tables are readable */
       table, th, td {
         border: 1px solid #333 !important;
-        background: white !important;
-        color: black !important;
         border-collapse: collapse !important;
         page-break-inside: avoid !important;
       }
 
       th {
-        background-color: #f0f0f0 !important;
         font-weight: bold !important;
         padding: 8px !important;
         text-align: left !important;
@@ -308,7 +281,7 @@
         vertical-align: top !important;
         word-wrap: break-word !important;
         overflow-wrap: break-word !important;
-        max-width: 200px !important;
+        max-width: 150px !important;
       }
 
       /* Fix table layout */
@@ -326,21 +299,14 @@
 
       /* Style user message bubbles */
       article[data-turn="user"] .user-message-bubble-color {
-        background-color: #f5f5f5 !important;
         border: 0px !important;
         border-radius: 18px !important;
         padding: 12px 16px !important;
         margin: 4px 0 !important;
       }
 
-      /* Force grey background for all user message text */
-      article[data-turn="user"] .user-message-bubble-color * {
-        background-color: #f5f5f5 !important;
-      }
-
       /* Canvas content styling */
       .canvas-content {
-        background-color: #f8f8f8 !important;
         border: 1px solid #ddd !important;
         border-radius: 4px !important;
         padding: 12px !important;
@@ -354,8 +320,6 @@
       }
 
       .canvas-title {
-        background-color: #e8e8e8 !important;
-        color: #333 !important;
         font-weight: bold !important;
         padding: 8px 12px !important;
         margin: 0 0 8px 0 !important;
@@ -373,45 +337,20 @@
         line-height: 1.4 !important;
         margin-bottom: 0.5em !important;
       }
-
-      /* Remove any dark backgrounds that might slip through */
-      [class*="dark"], [class*="bg-"], [style*="background"] {
-        background: white !important;
-        background-color: white !important;
-      }
     }
   `;
 
     const styleSheet = printDocument.createElement("style");
     styleSheet.textContent = printStyles;
     printDocument.head.appendChild(styleSheet);
-
     // 5. Clone the content into the iframe's body.
     const contentToPrint = printArea.cloneNode(true);
     contentToPrint.classList.add("print-content");
-
-    // Remove dark mode classes more thoroughly
-    const removeClasses = ["dark", "dark-mode", "theme-dark"];
-    removeClasses.forEach((className) => {
-      contentToPrint.classList.remove(className);
-      // Also remove from all child elements
-      contentToPrint.querySelectorAll(`.${className}`).forEach((el) => {
-        el.classList.remove(className);
-      });
-    });
-    // Remove any inline dark styles
-    contentToPrint.querySelectorAll("[style]").forEach((el) => {
-      const style = el.getAttribute("style");
-      if (style && (style.includes("background") || style.includes("color"))) {
-        // Remove background and color styles that might interfere
-        el.style.background = "";
-        el.style.backgroundColor = "";
-        el.style.color = "";
-      }
-    });
-
     printDocument.body.appendChild(contentToPrint);
-
+    printDocument.querySelectorAll("*").forEach((el) => {
+      el.classList.remove("dark");
+      el.classList.add("light");
+    });
     // Handle canvas textdoc content
     printDocument.querySelectorAll(".popover").forEach((codeEl) => {
       // Clear inline height
@@ -433,7 +372,7 @@
           if (canvasData.title) {
             const titleEl = printDocument.createElement("div");
             titleEl.className = "canvas-title";
-            titleEl.textContent = `📄 ${canvasData.title}`;
+            titleEl.textContent = `${canvasData.title}`;
             codeEl.appendChild(titleEl);
           }
 
@@ -460,27 +399,6 @@
     // 6. Fix code blocks inside articles and add user message borders.
     const articles = printDocument.querySelectorAll("article");
     articles.forEach((article) => {
-      // Check if this is a user message by looking at data-turn attribute
-      const isUser = article.getAttribute("data-turn") === "user";
-
-      // Add styling for user messages
-      if (isUser) {
-        // Style the user message bubble if it exists
-        const messageBubble = article.querySelector(
-          ".user-message-bubble-color"
-        );
-        if (messageBubble) {
-          messageBubble.style.backgroundColor = "#f5f5f5";
-          messageBubble.style.border = "0px";
-
-          // Force grey background for all child elements to avoid white text backgrounds
-          const allChildren = messageBubble.querySelectorAll("*");
-          allChildren.forEach((child) => {
-            child.style.backgroundColor = "#f5f5f5";
-          });
-        }
-      }
-
       const content = article.querySelector("[tabindex]");
       if (!content) return;
 
