@@ -690,8 +690,7 @@
           } else {
             currentTitle = contentNode.name || "Canvas";
           }
-
-          const title = type ? `${currentTitle}: ${type}` : currentTitle;
+          const title = currentTitle;
           const content =
             contentNode.content || contentNode.updates?.[0]?.replacement || "";
 
