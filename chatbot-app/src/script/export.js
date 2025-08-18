@@ -884,10 +884,13 @@
                 case "json":
                   messageData.push({
                     role: "assistant",
-                    content: {
-                      content_type: "input_text",
-                      text: fullAssistantContent
-                    },
+                    content: [
+                      {
+                        content_type: "input_text",
+                        text: fullAssistantContent
+                      }
+                    
+                    ]
                   });
                   break;
                 case "markdown":
