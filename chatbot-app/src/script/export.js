@@ -838,7 +838,7 @@
                     role: "user",
                     content: [{
                       content_type: "input_text",
-                      text: content,
+                      text: content
                     }],
                   });
                   break;
@@ -886,7 +886,7 @@
                     role: "assistant",
                     content: [
                       {
-                        content_type: "input_text",
+                        content_type: "output_text",
                         text: fullAssistantContent
                       }
                     
@@ -954,10 +954,10 @@
                   case "json":
                     jsonParts.push([
                       {
-                        content_type: "input_image",
+                        content_type: "output_image",
                         url: downloadUrl,
                       },
-                      { content_type: "input_text", text: prompt },
+                      { content_type: "output_text", text: prompt },
                     ]);
                     break;
                   case "markdown":
@@ -1002,22 +1002,22 @@
               // We want chat completions, so  { "role": "role", "content": "text"}
               messageData.forEach((message) => {
                 // for each message.content, only if content_type = "text" , set content to "text"
-                let content = ""
+                let content = "";
                 message.content.forEach((part) => {
-                  if (part.content_type === "input_text") {
-                    content += `${part.text}\n`
+                  if (part.content_type.endsWith("_text")) {
+                    content = `${content ? `${content}\n` : ""}${part.text}`;
                   } else if (part.content_type === "input_image") {
-                    content += `![Image](${part.url})\n`
+                    content = `${content ? `${content}\n` : ""
+                      }${`![Image](${part.url})`}`;
                   }
                 });
-                message.content = content
+                message.content = content;
               });
               jsonMetaData.messages = messageData;
               break;
             case 1:
             default:
               jsonMetaData.messages = messageData;
-  
               break;
           }
           fileContent = JSON.stringify({ ...jsonMetaData }, null, 2);
