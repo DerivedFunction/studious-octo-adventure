@@ -567,7 +567,7 @@
   let title = null;
   async function exportConversationToFileType(
     conversationId,
-    filetype = "markdown"
+    filetype = "markdown", version = 1
   ) {
     const signal = AbortController ? new AbortController().signal : undefined;
     title = null;
@@ -767,7 +767,8 @@
       if (conversationApiData.create_time) {
         switch (filetype) {
           case "json":
-            jsonMetaData.create_time = conversationApiData.create_time;
+            jsonMetaData.create_time =
+              formatTimestamp(conversationApiData.create_time);
             break;
           case "markdown":
           default:
@@ -780,7 +781,8 @@
       if (conversationApiData.update_time) {
         switch (filetype) {
           case "json":
-            jsonMetaData.update_time = conversationApiData.update_time;
+            jsonMetaData.update_time =
+              formatTimestamp(conversationApiData.update_time);
             break;
           case "markdown":
           default:
@@ -834,10 +836,10 @@
                 case "json":
                   messageData.push({
                     role: "user",
-                    content: {
-                      content_type: "text",
+                    content: [{
+                      content_type: "input_text",
                       text: content,
-                    },
+                    }],
                   });
                   break;
                 case "markdown":
@@ -949,10 +951,10 @@
                   case "json":
                     jsonParts.push([
                       {
-                        type: "input_image",
+                        content_type: "input_image",
                         url: downloadUrl,
                       },
-                      { type: "input_text", text: prompt },
+                      { content_type: "input_text", text: prompt },
                     ]);
                     break;
                   case "markdown":
@@ -991,8 +993,30 @@
         await traverseConversation("client-created-root");
       }
       switch (filetype) {
-        case "json":
-          jsonMetaData.messages = messageData;
+        case "json":       
+          switch (version) {
+            case 2:
+              // We want chat completions, so  { "role": "role", "content": "text"}
+              messageData.forEach((message) => {
+                // for each message.content, only if content_type = "text" , set content to "text"
+                let content = ""
+                message.content.forEach((part) => {
+                  if (part.content_type === "input_text") {
+                    content += `${part.text}\n`
+                  } else if (part.content_type === "input_image") {
+                    content += `![Image](${part.url})\n`
+                  }
+                });
+                message.content = content
+              });
+              jsonMetaData.messages = messageData;
+              break;
+            case 1:
+            default:
+              jsonMetaData.messages = messageData;
+  
+              break;
+          }
           fileContent = JSON.stringify({ ...jsonMetaData }, null, 2);
           break;
         default:
@@ -1039,7 +1063,8 @@
    */
   async function exportCurrentConversation(
     filetype = "markdown",
-    extension = "md"
+    extension = "md",
+    version = 1,
   ) {
     try {
       const conversationId = getConversationId();
@@ -1049,7 +1074,7 @@
       }
       const content = await exportConversationToFileType(
         conversationId,
-        filetype
+        filetype, version
       );
       const filename = `ChatGPT-${title || conversationId}.${extension}`;
       downloadFile(content, filename, filetype);
@@ -1174,11 +1199,15 @@
     </button>
     <button class="export-menu-item" id="export-md-item">
       <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>
-      <span>Export Markdown</span>
+      <span>Markdown</span>
     </button>
     <button class="export-menu-item" id="export-json-item">
       <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-braces-icon lucide-braces"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
-      <span>Export JSON</span>
+      <span>Input JSON</span>
+    </button>
+    <button class="export-menu-item" id="export-json-chat-item">
+      <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-braces-icon lucide-braces"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
+      <span>Output JSON</span>
     </button>
   </div>
 `;
@@ -1202,9 +1231,14 @@
       dropdown.classList.remove("show");
     });
     dropdown
+      .querySelector("#export-json-chat-item").addEventListener("click", () => {
+        exportCurrentConversation("json", "json");
+        dropdown.classList.remove("show");
+      })
+    dropdown
       .querySelector("#export-json-item")
       .addEventListener("click", () => {
-        exportCurrentConversation("json", "json");
+        exportCurrentConversation("json", "json", 2);
         dropdown.classList.remove("show");
       });
 
