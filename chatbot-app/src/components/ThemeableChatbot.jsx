@@ -329,6 +329,7 @@ const ThemeableChatbot = () => {
                   "https://*.chatgpt.com/*",
                 ],
                 js: [
+                  "./script/highlight.min.js",
                   "./script/theme.js",
                   "./script/token.js",
                   "./script/history.js",

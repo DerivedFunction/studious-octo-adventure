@@ -339,6 +339,89 @@
         line-height: 1.4 !important;
         margin-bottom: 0.5em !important;
       }
+      /*
+
+      Atom One Light by Daniel Gamage
+      Original One Light Syntax theme from https://github.com/atom/one-light-syntax
+
+      base:    #fafafa
+      mono-1:  #383a42
+      mono-2:  #686b77
+      mono-3:  #a0a1a7
+      hue-1:   #0184bb
+      hue-2:   #4078f2
+      hue-3:   #a626a4
+      hue-4:   #50a14f
+      hue-5:   #e45649
+      hue-5-2: #c91243
+      hue-6:   #986801
+      hue-6-2: #c18401
+
+      */
+      .canvas-content .hljs {
+        color: #383a42;
+        background: #fafafa;
+      }
+      .canvas-content .hljs-comment,
+      .canvas-content .hljs-quote {
+        color: #a0a1a7;
+        font-style: italic;
+      }
+      .canvas-content .hljs-doctag,
+      .canvas-content .hljs-keyword,
+      .canvas-content .hljs-formula {
+        color: #a626a4;
+      }
+      .canvas-content .hljs-section,
+      .canvas-content .hljs-name,
+      .canvas-content .hljs-selector-tag,
+      .canvas-content .hljs-deletion,
+      .canvas-content .hljs-subst {
+        color: #e45649;
+      }
+      .canvas-content .hljs-literal {
+        color: #0184bb;
+      }
+      .canvas-content .hljs-string,
+      .canvas-content .hljs-regexp,
+      .canvas-content .hljs-addition,
+      .canvas-content .hljs-attribute,
+      .canvas-content .hljs-meta .canvas-content .hljs-string {
+        color: #50a14f;
+      }
+      .canvas-content .hljs-attr,
+      .canvas-content .hljs-variable,
+      .canvas-content .hljs-template-variable,
+      .canvas-content .hljs-type,
+      .canvas-content .hljs-selector-class,
+      .canvas-content .hljs-selector-attr,
+      .canvas-content .hljs-selector-pseudo,
+      .canvas-content .hljs-number {
+        color: #986801;
+      }
+      .canvas-content .hljs-symbol,
+      .canvas-content .hljs-bullet,
+      .canvas-content .hljs-link,
+      .canvas-content .hljs-meta,
+      .canvas-content .hljs-selector-id,
+      .canvas-content .hljs-title {
+        color: #4078f2;
+      }
+      .canvas-content .hljs-built_in,
+      .canvas-content .hljs-title.class_,
+      .canvas-content .hljs-class .canvas-content .hljs-title {
+        color: #c18401;
+      }
+      .canvas-content .hljs-emphasis {
+        font-style: italic;
+      }
+      .canvas-content .hljs-strong {
+        font-weight: bold;
+      }
+      .canvas-content .hljs-link {
+        text-decoration: underline;
+      }
+
     }
   `;
 
@@ -381,9 +464,19 @@
             const contentEl = printDocument.createElement("div");
             const pre = printDocument.createElement("pre");
             const code = printDocument.createElement("code");
-            code.className = `language-${canvasData.type.split("/")[1]}`;
+            let parts = canvasData.type.split("/");
+            let type = null;
+            if (parts.length === 2) type = parts[1];
+            if (type === "react") type = "typescript";
+
             code.textContent = canvasData.content;
             pre.appendChild(code);
+            if (type) {
+              code.className = `languange-${type}`;
+              hljs.highlightBlock(pre);
+            } else {
+              hljs.highlightAuto(pre);
+            }
             contentEl.appendChild(pre);
             codeEl.appendChild(contentEl);
 

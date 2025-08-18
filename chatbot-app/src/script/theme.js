@@ -50,7 +50,11 @@
 
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== "local") return;
-    if (changes.isScriptingEnabled || changes.themeObject || changes.isThemeActive) {
+    if (
+      changes.isScriptingEnabled ||
+      changes.themeObject ||
+      changes.isThemeActive
+    ) {
       applyTheme();
       return;
     }
