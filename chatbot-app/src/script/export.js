@@ -254,10 +254,8 @@
       pre, code {
         white-space: pre-wrap !important;
         word-break: break-word !important;
-        page-break-inside: avoid;
       }
-
-
+        
       /* Ensure links are visible */
       a {
         text-decoration: underline !important;
@@ -272,7 +270,6 @@
       table, th, td {
         border: 1px solid #333 !important;
         border-collapse: collapse !important;
-        page-break-inside: avoid !important;
       }
 
       th {
@@ -322,7 +319,6 @@
         line-height: 1.4 !important;
         white-space: pre-wrap !important;
         word-break: break-word !important;
-        page-break-inside: avoid;
       }
 
       .canvas-title {
@@ -353,8 +349,8 @@
     contentToPrint.classList.add("print-content");
     printDocument.body.appendChild(contentToPrint);
     printDocument.querySelectorAll("*").forEach((el) => {
-      el.classList.remove("dark");
       el.classList.add("light");
+      el.classList.remove("dark");
     }); // Handle canvas textdoc content
     const canvasUsageCounters = new Map();
     printDocument.querySelectorAll(".popover").forEach((codeEl) => {
@@ -521,11 +517,13 @@
 
       const conversationApiData = await response.json();
       const additionalDataMap = new Map();
+      const allCanvasOps = [];
 
+      // Pass 1: Collect all canvas operations
       if (conversationApiData && conversationApiData.mapping) {
         for (const messageId in conversationApiData.mapping) {
           const node = conversationApiData.mapping[messageId];
-          const recipient = node.message?.recipient; // Look for assistant messages that create or update canvases ('textdoc').
+          const recipient = node.message?.recipient;
 
           if (
             recipient === "canmore.create_textdoc" ||
@@ -537,76 +535,81 @@
                 toolNode?.message?.author?.role === "tool" &&
                 toolNode.message.metadata.canvas
               ) {
-                try {
-                  const {
-                    textdoc_id,
-                    version,
-                    title: canvasTitle,
-                  } = toolNode.message.metadata.canvas;
-                  const contentNode = JSON.parse(node.message.content.parts[0]); // Find the final assistant message this canvas belongs to. // ✅ Extract the file type here
-
-                  let type = contentNode.type.split("/")[1] || null;
-
-                  let attachToMessageId = null;
-                  let currentNodeId = toolNode.id;
-                  let currentNode = toolNode;
-                  while (
-                    currentNode &&
-                    currentNode.children &&
-                    currentNode.children.length > 0
-                  ) {
-                    currentNodeId = currentNode.children[0];
-                    currentNode = conversationApiData.mapping[currentNodeId];
-                    if (
-                      currentNode?.message?.author?.role === "assistant" &&
-                      currentNode?.message?.recipient === "all"
-                    ) {
-                      break; // Found the final response to the user.
-                    }
-                  }
-                  attachToMessageId = currentNodeId; // Extract title and content from the JSON structure
-
-                  let title =
-                    canvasTitle && type
-                      ? `${canvasTitle}: ${type}`
-                      : canvasTitle || contentNode.name || "Canvas";
-                  let content = "";
-
-                  if (contentNode.content) {
-                    // Create operation
-                    content = contentNode.content || "";
-                  } else if (contentNode.updates && contentNode.updates[0]) {
-                    // Update operation
-                    content = contentNode.updates[0].replacement || "";
-                  }
-
-                  if (attachToMessageId) {
-                    const canvasData = {
-                      version,
-                      title,
-                      content,
-                      textdoc_id,
-                      type,
-                    };
-
-                    if (!additionalDataMap.has(attachToMessageId)) {
-                      additionalDataMap.set(attachToMessageId, {
-                        canvases: [],
-                      });
-                    }
-                    additionalDataMap
-                      .get(attachToMessageId)
-                      .canvases.push(canvasData);
-                  }
-                } catch (e) {
-                  console.error(
-                    "❌ [Export MD] Error processing canvas data:",
-                    e
-                  );
-                }
+                allCanvasOps.push({ node, toolNode });
               }
             }
           }
+        }
+      }
+
+      // Sort operations by their creation time to ensure logical order
+      allCanvasOps.sort(
+        (a, b) =>
+          a.toolNode.message.create_time - b.toolNode.message.create_time
+      );
+
+      // Pass 2: Process sorted canvas operations to build the data map
+      const canvasTitles = new Map();
+      for (const { node, toolNode } of allCanvasOps) {
+        try {
+          const {
+            textdoc_id,
+            version,
+            title: canvasTitle,
+          } = toolNode.message.metadata.canvas;
+          const contentNode = JSON.parse(node.message.content.parts[0]);
+          const type = contentNode.type
+            ? contentNode.type.split("/")[1] || null
+            : null;
+
+          // Find the final assistant message this canvas belongs to.
+          let attachToMessageId = null;
+          let currentNodeId = toolNode.id;
+          let currentNode = toolNode;
+          while (
+            currentNode &&
+            currentNode.children &&
+            currentNode.children.length > 0
+          ) {
+            currentNodeId = currentNode.children[0];
+            currentNode = conversationApiData.mapping[currentNodeId];
+            if (
+              currentNode?.message?.author?.role === "assistant" &&
+              currentNode?.message?.recipient === "all"
+            ) {
+              break; // Found the final response to the user.
+            }
+          }
+          attachToMessageId = currentNodeId;
+
+          // Correctly track and carry over titles for updated canvases
+          let currentTitle = canvasTitle || canvasTitles.get(textdoc_id);
+          if (currentTitle) {
+            canvasTitles.set(textdoc_id, currentTitle);
+          } else {
+            currentTitle = contentNode.name || "Canvas";
+          }
+
+          const title = type ? `${currentTitle}: ${type}` : currentTitle;
+          const content =
+            contentNode.content || contentNode.updates?.[0]?.replacement || "";
+
+          if (attachToMessageId) {
+            const canvasData = {
+              version,
+              title,
+              content,
+              textdoc_id,
+              type,
+            };
+
+            if (!additionalDataMap.has(attachToMessageId)) {
+              additionalDataMap.set(attachToMessageId, { canvases: [] });
+            }
+            additionalDataMap.get(attachToMessageId).canvases.push(canvasData);
+          }
+        } catch (e) {
+          console.error("❌ [Export MD] Error processing canvas data:", e);
         }
       }
 
@@ -723,8 +726,10 @@
 
         const message = node.message;
         const author = message.author?.role;
-        const contentType = message.content?.content_type; // Skip system messages, hidden messages, and intermediate steps. // Allow tool messages that contain images ('multimodal_text').
+        const contentType = message.content?.content_type;
 
+        // Skip system messages, hidden messages, and intermediate steps.
+        // Allow tool messages that contain images ('multimodal_text').
         if (
           author === "system" ||
           message.metadata?.is_visually_hidden_from_conversation ||
@@ -819,7 +824,8 @@
               }
             }
           }
-        } // Handle multimodal messages (e.g., images) from the tool role
+        }
+        // Handle multimodal messages (e.g., images) from the tool role
         if (author === "tool" && contentType === "multimodal_text") {
           let markdownContent = "";
           let jsonParts = [];
@@ -830,8 +836,9 @@
               part.asset_pointer
             ) {
               const fileId = part.asset_pointer.replace("sediment://", "");
-              const conversationId = getConversationId(); // Find the image prompt by traversing up the conversation tree
+              const conversationId = getConversationId();
 
+              // Find the image prompt by traversing up the conversation tree
               let prompt = "Image"; // Default prompt
               try {
                 const parentNode = conversationApiData.mapping[node.parent];
@@ -874,8 +881,9 @@
                 }
               }
             }
-          } // Add the processed content to the final output
+          }
 
+          // Add the processed content to the final output
           if (filetype === "json" && jsonParts.length > 0) {
             messageData.push({
               role: "assistant", // Attribute the image to the assistant
@@ -904,7 +912,8 @@
       switch (filetype) {
         case "json":
           switch (version) {
-            case 2: // We want chat completions, so { "role": "role", "content": "text"}
+            case 2:
+              // We want chat completions, so  { "role": "role", "content": "text"}
               messageData.forEach((message) => {
                 // for each message.content, only if content_type = "text" , set content to "text"
                 let content = "";
