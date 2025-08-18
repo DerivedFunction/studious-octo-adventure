@@ -125,6 +125,7 @@
                     textdoc_id,
                     version,
                     title: canvasTitle,
+                    textdoc_type,
                   } = toolNode.message.metadata.canvas;
                   const contentNode = JSON.parse(node.message.content.parts[0]);
                   let content =
@@ -138,6 +139,7 @@
                       version,
                       title: canvasTitle || contentNode.name || "Canvas",
                       content,
+                      type: textdoc_type,
                     });
                   }
                 } catch (e) {
@@ -378,8 +380,12 @@
 
           // Add content
           const contentEl = printDocument.createElement("div");
-          contentEl.textContent =
-            canvasData.content || "[Canvas content not available]";
+          const pre = printDocument.createElement("pre");
+          const code = printDocument.createElement("code");
+          code.className = `language-${canvasData.type.split("/")[1]}`;
+          code.textContent = canvasData.content;
+          pre.appendChild(code);
+          contentEl.appendChild(pre);
           codeEl.appendChild(contentEl);
 
           console.log(
@@ -395,7 +401,6 @@
         }
       }
     });
-
     // 6. Fix code blocks inside articles and add user message borders.
     const articles = printDocument.querySelectorAll("article");
     articles.forEach((article) => {
@@ -585,6 +590,7 @@
                         title,
                         content, // Store the full content
                         attachToMessageId,
+                        type,
                       });
                     }
                   }
@@ -614,6 +620,7 @@
               content: data.content,
               textdoc_id,
               version: data.version,
+              type: data.type,
             },
           ],
         });
