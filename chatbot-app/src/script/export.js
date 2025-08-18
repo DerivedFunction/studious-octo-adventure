@@ -82,7 +82,7 @@
   /**
    * Fetches canvas content specifically for the print function.
    * @param {string} conversationId The conversation ID
-   * @returns {Promise<Map>} Map of textdoc_id to canvas content
+   * @returns {Promise<Map>} Map of textdoc_id to an array of chronological canvas content versions
    */
   async function fetchCanvasContentForPrint(conversationId) {
     const canvasMap = new Map();
@@ -103,7 +103,7 @@
       if (!response.ok) return canvasMap;
 
       const conversationApiData = await response.json();
-      const latestCanvasData = new Map();
+      const allCanvasOps = [];
 
       if (conversationApiData && conversationApiData.mapping) {
         for (const messageId in conversationApiData.mapping) {
@@ -133,15 +133,14 @@
                     contentNode.updates?.[0]?.replacement ||
                     "";
 
-                  const existing = latestCanvasData.get(textdoc_id);
-                  if (!existing || existing.version < version) {
-                    latestCanvasData.set(textdoc_id, {
-                      version,
-                      title: canvasTitle || contentNode.name || "Canvas",
-                      content,
-                      type: textdoc_type,
-                    });
-                  }
+                  allCanvasOps.push({
+                    create_time: toolNode.message.create_time,
+                    textdoc_id,
+                    version,
+                    title: canvasTitle || contentNode.name || "Canvas",
+                    content,
+                    type: textdoc_type,
+                  });
                 } catch (e) {
                   console.error(
                     "❌ [Print Script] Error processing canvas data:",
@@ -153,8 +152,20 @@
           }
         }
       }
-      latestCanvasData.forEach((data, textdoc_id) => {
-        canvasMap.set(textdoc_id, data);
+
+      // Sort all operations chronologically
+      allCanvasOps.sort((a, b) => a.create_time - b.create_time);
+
+      // Group the sorted operations by textdoc_id
+      allCanvasOps.forEach((op) => {
+        if (!canvasMap.has(op.textdoc_id)) {
+          canvasMap.set(op.textdoc_id, []);
+        }
+        canvasMap.get(op.textdoc_id).push({
+          title: op.title,
+          content: op.content,
+          type: op.type,
+        });
       });
     } catch (error) {
       console.error("❌ [Print Script] Failed to fetch canvas content:", error);
@@ -162,9 +173,6 @@
     return canvasMap;
   }
 
-  /**
-   * Finds the main chat content, clones it, and triggers the browser's print dialog.
-   */
   /**
    * Finds the main chat content, clones it into a hidden iframe with styles,
    * fetches canvas content, and triggers the browser's print dialog.
@@ -176,7 +184,6 @@
       alert("Could not find chat content to print.");
       return;
     }
-
     // Get conversation ID and fetch canvas content
     const conversationId = getConversationId();
     let canvasMap = new Map();
@@ -197,9 +204,8 @@
       console.log(
         `✅ [Print Script] Fetched ${canvasMap.size} canvas documents`
       );
-    }
+    } // 2. Create a hidden iframe to build the print content in isolation.
 
-    // 2. Create a hidden iframe to build the print content in isolation.
     const printFrame = document.createElement("iframe");
     printFrame.style.position = "absolute";
     printFrame.style.width = "0";
@@ -207,15 +213,13 @@
     printFrame.style.border = "0";
     document.body.appendChild(printFrame);
 
-    const printDocument = printFrame.contentWindow.document;
+    const printDocument = printFrame.contentWindow.document; // 3. Clone all stylesheet links from the original page into the iframe.
 
-    // 3. Clone all stylesheet links from the original page into the iframe.
     document
       .querySelectorAll('link[rel="stylesheet"], style')
       .forEach((styleElement) => {
         printDocument.head.appendChild(styleElement.cloneNode(true));
-      });
-    // 4. Add comprehensive print-only stylesheet to override dark mode and adjust layout.
+      }); // 4. Add comprehensive print-only stylesheet to override dark mode and adjust layout.
     const printStyles = `
     @media print {
       /* Force light mode for all elements */
@@ -344,53 +348,61 @@
 
     const styleSheet = printDocument.createElement("style");
     styleSheet.textContent = printStyles;
-    printDocument.head.appendChild(styleSheet);
-    // 5. Clone the content into the iframe's body.
+    printDocument.head.appendChild(styleSheet); // 5. Clone the content into the iframe's body.
     const contentToPrint = printArea.cloneNode(true);
     contentToPrint.classList.add("print-content");
     printDocument.body.appendChild(contentToPrint);
     printDocument.querySelectorAll("*").forEach((el) => {
       el.classList.remove("dark");
       el.classList.add("light");
-    });
-    // Handle canvas textdoc content
+    }); // Handle canvas textdoc content
+    const canvasUsageCounters = new Map();
     printDocument.querySelectorAll(".popover").forEach((codeEl) => {
       // Clear inline height
-      codeEl.style.height = "";
+      codeEl.style.height = ""; // Extract textdoc ID from the element's ID attribute
 
-      // Extract textdoc ID from the element's ID attribute
       const elementId = codeEl.id;
       if (elementId && elementId.startsWith("textdoc-message-")) {
         const textdocId = elementId.replace("textdoc-message-", "");
 
         if (canvasMap.has(textdocId)) {
-          const canvasData = canvasMap.get(textdocId);
+          const versions = canvasMap.get(textdocId);
+          const usageIndex = canvasUsageCounters.get(textdocId) || 0;
 
-          // Clear existing content and add canvas data
-          codeEl.innerHTML = "";
-          codeEl.className = "canvas-content";
+          if (versions && versions[usageIndex]) {
+            const canvasData = versions[usageIndex]; // Clear existing content and add canvas data
 
-          // Add title if available
-          if (canvasData.title) {
-            const titleEl = printDocument.createElement("div");
-            titleEl.className = "canvas-title";
-            titleEl.textContent = `${canvasData.title}`;
-            codeEl.appendChild(titleEl);
+            codeEl.innerHTML = "";
+            codeEl.className = "canvas-content"; // Add title if available
+
+            if (canvasData.title) {
+              const titleEl = printDocument.createElement("div");
+              titleEl.className = "canvas-title";
+              titleEl.textContent = `${canvasData.title}`;
+              codeEl.appendChild(titleEl);
+            } // Add content
+
+            const contentEl = printDocument.createElement("div");
+            const pre = printDocument.createElement("pre");
+            const code = printDocument.createElement("code");
+            code.className = `language-${canvasData.type.split("/")[1]}`;
+            code.textContent = canvasData.content;
+            pre.appendChild(code);
+            contentEl.appendChild(pre);
+            codeEl.appendChild(contentEl);
+
+            console.log(
+              `✅ [Print Script] Populated canvas content for ${textdocId}`
+            );
+          } else {
+            // Fallback for canvas elements without content
+            codeEl.textContent =
+              "[Canvas content - please use Export MD for full content]";
+            console.warn(
+              `⚠️ [Print Script] Canvas content not found for ${textdocId} at index ${usageIndex}`
+            );
           }
-
-          // Add content
-          const contentEl = printDocument.createElement("div");
-          const pre = printDocument.createElement("pre");
-          const code = printDocument.createElement("code");
-          code.className = `language-${canvasData.type.split("/")[1]}`;
-          code.textContent = canvasData.content;
-          pre.appendChild(code);
-          contentEl.appendChild(pre);
-          codeEl.appendChild(contentEl);
-
-          console.log(
-            `✅ [Print Script] Populated canvas content for ${textdocId}`
-          );
+          canvasUsageCounters.set(textdocId, usageIndex + 1);
         } else {
           // Fallback for canvas elements without content
           codeEl.textContent =
@@ -400,49 +412,42 @@
           );
         }
       }
-    });
-    // 6. Fix code blocks inside articles and add user message borders.
+    }); // 6. Fix code blocks inside articles and add user message borders.
     const articles = printDocument.querySelectorAll("article");
     articles.forEach((article) => {
       const content = article.querySelector("[tabindex]");
-      if (!content) return;
+      if (!content) return; // Clean up classes that might interfere with printing
 
-      // Clean up classes that might interfere with printing
       content.className = "print-article-content";
 
       const codeBlocks = content.querySelectorAll("code, pre");
       codeBlocks.forEach((codeEl) => {
         // Skip canvas elements (they're handled separately)
-        if (codeEl.classList.contains("canvas-content")) return;
+        if (codeEl.classList.contains("canvas-content")) return; // Ensure proper styling for code blocks
 
-        // Ensure proper styling for code blocks
         if (codeEl.parentElement) {
           codeEl.parentElement.className = "code-container";
-        }
+        } // Apply print-friendly code styling
 
-        // Apply print-friendly code styling
         codeEl.style.whiteSpace = "pre-wrap";
         codeEl.style.wordBreak = "break-word";
         codeEl.style.fontSize = "12px";
-        codeEl.style.lineHeight = "1.4";
+        codeEl.style.lineHeight = "1.4"; // Handle nested elements in code blocks
 
-        // Handle nested elements in code blocks
         const codeChildren = codeEl.querySelectorAll("*");
         codeChildren.forEach((child) => {
           child.style.whiteSpace = "pre-wrap";
           child.style.wordBreak = "break-word";
         });
-      });
+      }); // Fix table formatting
 
-      // Fix table formatting
       const tables = content.querySelectorAll("table");
       tables.forEach((table) => {
         table.style.width = "100%";
         table.style.tableLayout = "fixed";
         table.style.borderCollapse = "collapse";
-        table.style.margin = "8px 0";
+        table.style.margin = "8px 0"; // Fix table cells
 
-        // Fix table cells
         const cells = table.querySelectorAll("th, td");
         cells.forEach((cell) => {
           cell.style.padding = "8px";
@@ -453,18 +458,15 @@
           cell.style.lineHeight = "1.3";
         });
       });
-    });
+    }); // 7. Wait for styles to load, then trigger print and cleanup
 
-    // 7. Wait for styles to load, then trigger print and cleanup
     setTimeout(() => {
       printFrame.contentWindow.focus();
-      printFrame.contentWindow.print();
+      printFrame.contentWindow.print(); // Clean up after a delay to ensure print dialog has appeared
 
-      // Clean up after a delay to ensure print dialog has appeared
       setTimeout(() => {
         if (document.body.contains(printFrame)) {
-          document.body.removeChild(printFrame);
-          // Unclick the clicked buttons
+          document.body.removeChild(printFrame); // Unclick the clicked buttons
           buttonsClicked.forEach((button) => {
             button.click();
           });
@@ -519,7 +521,6 @@
 
       const conversationApiData = await response.json();
       const additionalDataMap = new Map();
-      const latestCanvasData = new Map(); // Pass 1: Collect all canvas versions to find the latest for each.
 
       if (conversationApiData && conversationApiData.mapping) {
         for (const messageId in conversationApiData.mapping) {
@@ -542,9 +543,8 @@
                     version,
                     title: canvasTitle,
                   } = toolNode.message.metadata.canvas;
-                  const contentNode = JSON.parse(node.message.content.parts[0]); // Find the final assistant message this canvas belongs to.
+                  const contentNode = JSON.parse(node.message.content.parts[0]); // Find the final assistant message this canvas belongs to. // ✅ Extract the file type here
 
-                  // ✅ Extract the file type here
                   let type = contentNode.type.split("/")[1] || null;
 
                   let attachToMessageId = null;
@@ -578,21 +578,25 @@
                   } else if (contentNode.updates && contentNode.updates[0]) {
                     // Update operation
                     content = contentNode.updates[0].replacement || "";
-                    const existing = latestCanvasData.get(textdoc_id);
-                    if (existing) title = existing.title; // Carry over title
                   }
 
                   if (attachToMessageId) {
-                    const existing = latestCanvasData.get(textdoc_id);
-                    if (!existing || existing.version < version) {
-                      latestCanvasData.set(textdoc_id, {
-                        version,
-                        title,
-                        content, // Store the full content
-                        attachToMessageId,
-                        type,
+                    const canvasData = {
+                      version,
+                      title,
+                      content,
+                      textdoc_id,
+                      type,
+                    };
+
+                    if (!additionalDataMap.has(attachToMessageId)) {
+                      additionalDataMap.set(attachToMessageId, {
+                        canvases: [],
                       });
                     }
+                    additionalDataMap
+                      .get(attachToMessageId)
+                      .canvases.push(canvasData);
                   }
                 } catch (e) {
                   console.error(
@@ -604,27 +608,7 @@
             }
           }
         }
-      } // Pass 2: Populate the final map with the latest canvas content.
-
-      latestCanvasData.forEach((data, textdoc_id) => {
-        const attachToMessageId = data.attachToMessageId;
-        const existing = additionalDataMap.get(attachToMessageId) || {};
-        const existingCanvases = existing.canvases || [];
-
-        additionalDataMap.set(attachToMessageId, {
-          ...existing,
-          canvases: [
-            ...existingCanvases,
-            {
-              title: data.title,
-              content: data.content,
-              textdoc_id,
-              version: data.version,
-              type: data.type,
-            },
-          ],
-        });
-      }); // Build the conversation tree and generate markdown
+      }
 
       const reasoningData = new Map(); // Pass 1.5: Collect all reasoning data
       if (conversationApiData.mapping) {
@@ -739,10 +723,8 @@
 
         const message = node.message;
         const author = message.author?.role;
-        const contentType = message.content?.content_type;
+        const contentType = message.content?.content_type; // Skip system messages, hidden messages, and intermediate steps. // Allow tool messages that contain images ('multimodal_text').
 
-        // Skip system messages, hidden messages, and intermediate steps.
-        // Allow tool messages that contain images ('multimodal_text').
         if (
           author === "system" ||
           message.metadata?.is_visually_hidden_from_conversation ||
@@ -837,8 +819,7 @@
               }
             }
           }
-        }
-        // Handle multimodal messages (e.g., images) from the tool role
+        } // Handle multimodal messages (e.g., images) from the tool role
         if (author === "tool" && contentType === "multimodal_text") {
           let markdownContent = "";
           let jsonParts = [];
@@ -849,9 +830,8 @@
               part.asset_pointer
             ) {
               const fileId = part.asset_pointer.replace("sediment://", "");
-              const conversationId = getConversationId();
+              const conversationId = getConversationId(); // Find the image prompt by traversing up the conversation tree
 
-              // Find the image prompt by traversing up the conversation tree
               let prompt = "Image"; // Default prompt
               try {
                 const parentNode = conversationApiData.mapping[node.parent];
@@ -894,9 +874,8 @@
                 }
               }
             }
-          }
+          } // Add the processed content to the final output
 
-          // Add the processed content to the final output
           if (filetype === "json" && jsonParts.length > 0) {
             messageData.push({
               role: "assistant", // Attribute the image to the assistant
@@ -925,8 +904,7 @@
       switch (filetype) {
         case "json":
           switch (version) {
-            case 2:
-              // We want chat completions, so  { "role": "role", "content": "text"}
+            case 2: // We want chat completions, so { "role": "role", "content": "text"}
               messageData.forEach((message) => {
                 // for each message.content, only if content_type = "text" , set content to "text"
                 let content = "";
