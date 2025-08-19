@@ -107,7 +107,7 @@
 
       // Wait briefly for the reasoning sections to expand.
       if (buttonsClicked.length > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
       // 1. Clone the main chat area. This serves as the base for both print and download.
