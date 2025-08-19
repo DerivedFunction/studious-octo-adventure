@@ -252,7 +252,6 @@
               });
             });
         });
-      
     `;
 
       // 7. Create the theme toggle button element
@@ -406,86 +405,10 @@
         display: none !important;
       }
 
-      /* Ensure the print content takes up the full page with proper margins */
-      .print-content {
-        width: 100% !important;
-        padding: 0 !important;
-        box-shadow: none !important;
-      }
-
-      /* Add page margins for proper printing */
-      @page {
-        margin: 0.25in;
-        size: letter;
-      }
-
       /* Format code blocks with light background and proper contrast */
       code {
         white-space: pre-wrap !important;
         word-break: break-all !important;
-      }
-        
-      /* Ensure links are visible */
-      a {
-        text-decoration: underline !important;
-      }
-
-      /* Style headings */
-      h1, h2, h3, h4, h5, h6 {
-        page-break-after: avoid;
-      }
-
-      /* Ensure tables are readable */
-      table, th, td {
-        border: 1px solid #333 !important;
-        border-collapse: collapse !important;
-      }
-
-      th {
-        font-weight: bold !important;
-        padding: 8px !important;
-        text-align: left !important;
-        vertical-align: top !important;
-      }
-
-      td {
-        padding: 8px !important;
-        vertical-align: top !important;
-        word-wrap: break-word !important;
-        overflow-wrap: break-word !important;
-        max-width: 150px !important;
-      }
-
-      /* Fix table layout */
-      table {
-        width: 100% !important;
-        table-layout: fixed !important;
-        margin: 8px 0 !important;
-      }
-
-      /* Ensure table text doesn't get cut off */
-      table * {
-        font-size: 12px !important;
-        line-height: 1.3 !important;
-      }
-
-      /* Style user message bubbles */
-      article[data-turn="user"] .user-message-bubble-color {
-        border: 0px !important;
-        border-radius: 18px !important;
-        padding: 12px 16px !important;
-        margin: 4px 0 !important;
-      }
-
-      /* Page break controls */
-      .page-break-before { page-break-before: always; }
-      .page-break-after { page-break-after: always; }
-      .no-page-break { page-break-inside: avoid; }
-
-      /* Improve readability */
-      p, li {
-        line-height: 1.4 !important;
-        margin-bottom: 0.5em !important;
       }
     }
   `;
@@ -566,24 +489,6 @@
         codeChildren.forEach((child) => {
           child.style.whiteSpace = "pre-wrap";
           child.style.wordBreak = "break-word";
-        });
-      }); // Fix table formatting
-
-      const tables = content.querySelectorAll("table");
-      tables.forEach((table) => {
-        table.style.width = "100%";
-        table.style.tableLayout = "fixed";
-        table.style.borderCollapse = "collapse";
-        table.style.margin = "8px 0"; // Fix table cells
-
-        const cells = table.querySelectorAll("th, td");
-        cells.forEach((cell) => {
-          cell.style.padding = "8px";
-          cell.style.verticalAlign = "top";
-          cell.style.wordWrap = "break-word";
-          cell.style.overflowWrap = "break-word";
-          cell.style.fontSize = "12px";
-          cell.style.lineHeight = "1.3";
         });
       });
     });
