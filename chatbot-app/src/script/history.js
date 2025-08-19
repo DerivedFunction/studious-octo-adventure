@@ -395,6 +395,7 @@
     `;
 
     const styleSheet = document.createElement("style");
+    styleSheet.id = "chm-styles";
     styleSheet.textContent = cssTemplate;
     document.head.appendChild(styleSheet);
 
