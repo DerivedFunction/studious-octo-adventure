@@ -83,7 +83,6 @@
    * and downloads the entire conversation as a single HTML file.
    */
   async function downloadHTML() {
-    
     try {
       // 0. Open all reasoning.
       let buttonsClicked = [];
@@ -110,12 +109,20 @@
         button.click();
       });
 
-
-      const { canvasDataMap: canvasMap, fileContent } = await exportConversationToFileType(
-        getConversationId(),
-        "json",
-        1
-      );
+      //2a. set attribute 'show' to not hide the button
+      area
+        .querySelectorAll(
+          "div.origin-top-left button:not(pre button) span span"
+        )
+        .forEach((el) => {
+          const btn = el.closest("button");
+          btn.setAttribute("show", "true");
+          const parent = btn.closest("div.origin-top-left");
+          parent.classList.add("thoughts")
+          btn.classList.add("reason");
+        });
+      const { canvasDataMap: canvasMap, fileContent } =
+        await exportConversationToFileType(getConversationId(), "json", 0);
       const data = JSON.parse(fileContent);
       const conversationTitle = data.title;
       // 2b. Set copy attributes for entire messages
@@ -203,8 +210,10 @@
                     light = !light;
                     const theme = light ? "light" : "dark";
                     const removeTheme = light ? "dark" : "light";
-                    document.documentElement.classList.remove(removeTheme);
-                    document.documentElement.classList.add(theme);
+                    document.querySelectorAll("*").forEach((el) => {
+                      el.classList.remove(removeTheme);
+                      el.classList.add(theme);
+                    });
                 });
             }
 
@@ -235,6 +244,13 @@
                     console.error('Failed to copy to clipboard:', err);
                     alert('Failed to copy!');
                 });
+            });
+            document.querySelectorAll(".reason").forEach(btn => {
+              btn.addEventListener("click", () => {
+                const parent = btn.closest(".origin-top-left");
+                const thoughts = parent.querySelector("div.relative.z-0");
+                thoughts.classList.toggle("show-reason");
+              });
             });
         });
       
@@ -274,12 +290,25 @@
             color: var(--text-primary) !important;
             border-color: var(--border-medium) !important;
         }
-      form, button:not([aria-label="Copy"]), .token-count-display,
+      form, button:not([aria-label="Copy"], [show="true"]),
+      .token-count-display,
       .extra-token-info, .token-status-container,
       .prompt-token-count, nav, header, footer,
       [role="banner"], [role="navigation"], [role="complementary"] {
         display: none !important;
       }
+        .thoughts div.relative.z-0 {
+          overflow: hidden;
+          max-height: 0;
+          opacity: 0;
+          filter: blur(5px);
+          transition: max-height 0.4s ease, opacity 0.4s ease;
+        }
+        .thoughts div.relative.z-0.show-reason {
+          max-height: 1000px; /* large enough to fit content */
+          filter: blur(0);
+          opacity: 1;
+        }
         
     `;
       stylesHTML += `<style>${customStyles}</style>`;
@@ -574,7 +603,7 @@
   }
 
   function escapeHTML(str) {
-    if (!str) return ""
+    if (!str) return "";
     return str
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -899,16 +928,18 @@
             content = content.replace(/\uE200.*?\uE201/g, "").trim();
 
             if (content) {
-              let fullAssistantContent = ""; // Add canvas content if available
+              let fullAssistantContent = "";
+              // Append reasoning information if it exists
+              const reasoningContent = reasoningData.get(messageId);
+              if (reasoningContent && version > 0) {
+                fullAssistantContent += reasoningContent;
+              }
+              // Add canvas content if available
               const additionalData = canvasDataMap.get(messageId);
               if (additionalData?.canvases && version > 0) {
                 fullAssistantContent += formatCanvasContent(
                   additionalData.canvases
                 );
-              } // Append reasoning information if it exists
-              const reasoningContent = reasoningData.get(messageId);
-              if (reasoningContent) {
-                fullAssistantContent += reasoningContent;
               }
               fullAssistantContent += content;
               const openings = (fullAssistantContent.match(/```/g) || [])
