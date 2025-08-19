@@ -239,10 +239,8 @@
 
     // canvasMap is: Map<messageId, { canvases: [...] }>
     for (const [messageId, { canvases }] of canvasMap) {
-      console.log("messageId:", messageId);
-
       canvases.forEach((canvas) => {
-        const parts = canvas.type.split("/");
+        const parts = canvas.type?.split("/") || ["auto"];
         const title = escapeHTML(canvas.title); // escape for safety
         let type = parts.length > 1 ? parts[1] : parts[0];
 
@@ -265,9 +263,6 @@
           codeContent = hljs.highlightAuto(canvas.content).value;
           type = "auto";
         }
-
-        console.log(codeContent);
-
         const codeEl = printDocument.createElement("div");
         codeEl.className =
           "markdown prose dark:prose-invert w-full break-words dark markdown-new-styling";
@@ -841,12 +836,6 @@
         default:
           break;
       }
-      console.log(
-        conversationApiData,
-        canvasDataMap,
-        reasoningData,
-        imageDataMap
-      );
       return {
         fileContent,
         conversationApiData,
