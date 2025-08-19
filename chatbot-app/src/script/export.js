@@ -279,7 +279,7 @@
     `;
 
       // 9. Trigger the download using the existing utility function
-      downloadFile(fullHTML, `${conversationTitle}.html`, "html");
+      downloadFile(fullHTML, `ChatGPT-${conversationTitle}.html`, "html");
     } catch (error) {
       console.error("❌ [Export HTML] Failed to create HTML file:", error);
       alert("Failed to export HTML. Check the console for more details.");
