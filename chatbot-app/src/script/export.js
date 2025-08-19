@@ -308,6 +308,12 @@
           filter: blur(0);
           opacity: 1;
         }
+          @media print {
+            /* Hide the toggle button */
+            #toggleTheme, button  {
+              display: none !important;
+            }
+          }
         
     `;
       stylesHTML += `<style>${customStyles}</style>`;
