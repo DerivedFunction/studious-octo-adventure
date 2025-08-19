@@ -179,7 +179,7 @@
           const articleContent = area.querySelector(
             `article [data-message-id='${messageId}'] div.w-full`
           );
-          articleContent.appendChild(codeEl);
+          if (articleContent) articleContent.appendChild(codeEl);
         });
       }
       // 2a. Set copy attributes for standard code blocks
@@ -461,7 +461,7 @@
         const articleContent = printDocument.querySelector(
           `article [data-message-id='${messageId}'] div.w-full`
         );
-        articleContent.appendChild(codeEl);
+        if (articleContent) articleContent.appendChild(codeEl);
       });
     }
 
@@ -572,8 +572,12 @@
 
       // Correctly find all message ids that are visually visible on the webpage
       const visibleMessageIds = [];
+      const visibleCanvasIds = [];
       document.querySelectorAll("article [data-message-id]").forEach((e) => {
         visibleMessageIds.push(e.getAttribute("data-message-id"));
+      });
+      document.querySelectorAll(".popover").forEach((e) => {
+        visibleCanvasIds.push(e.id.replace("textdoc-message-", ""));
       });
 
       // Pass 1: Collect all canvas operations
@@ -618,8 +622,18 @@
             version,
             title: canvasTitle,
             textdoc_type,
+            is_failure,
           } = toolNode.message.metadata.canvas;
-          const contentNode = JSON.parse(node.message.content.parts[0]);
+          if (is_failure) continue;
+          const jsonString =
+            node.message.content.parts?.[0] || node.message.content?.text;
+          if (!jsonString) {
+            console.warn(
+              `[Export MD] No canvas content found for message ID: ${node.id}`
+            );
+            continue;
+          }
+          const contentNode = JSON.parse(jsonString);
           // Find the final assistant message this canvas belongs to.
           let attachToMessageId = null;
           let currentNodeId = toolNode.id;
@@ -640,16 +654,16 @@
           }
           attachToMessageId = currentNodeId;
 
+          let currentType = textdoc_type || canvasTypes.get(textdoc_id);
+          if (currentType) {
+            canvasTypes.set(textdoc_id, currentType);
+          }
           // Correctly track and carry over titles for updated canvases
           let currentTitle = canvasTitle || canvasTitles.get(textdoc_id);
           if (currentTitle) {
             canvasTitles.set(textdoc_id, currentTitle);
           } else {
-            currentTitle = contentNode.name || "Canvas";
-          }
-          let currentType = textdoc_type || canvasTypes.get(textdoc_id);
-          if (currentType) {
-            canvasTypes.set(textdoc_id, currentType);
+            currentTitle = contentNode.name || currentType;
           }
           const title = currentTitle;
           const content =

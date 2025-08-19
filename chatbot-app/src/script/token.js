@@ -273,11 +273,14 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
                   toolNode.message.metadata.canvas
                 ) {
                   try {
-                    const { textdoc_id, version } =
+                    const { textdoc_id, version, is_failure } =
                       toolNode.message.metadata.canvas;
+                    if (is_failure) continue;
                     const contentNode = JSON.parse(
-                      node.message.content.parts[0]
-                    ); // --- START: Logic to find the correct final message to attach the canvas to ---
+                      node.message.content.parts?.[0] ||
+                        node.message.content?.text
+                    );
+                    // --- START: Logic to find the correct final message to attach the canvas to ---
 
                     let attachToMessageId = null;
                     let currentNodeId = toolNode.id;
@@ -869,7 +872,9 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         if (extraData.canvases && extraData.canvases.length > 0) {
           extraData.canvases.forEach((canvas) => {
             const div = document.createElement("div");
-            div.textContent = `${canvas.title.replace(/_/g, " ")} (${canvas.tokens} tokens)`;
+            div.textContent = `${canvas.title.replace(/_/g, " ")} (${
+              canvas.tokens
+            } tokens)`;
             fragment.appendChild(div);
           });
         }
