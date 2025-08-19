@@ -291,11 +291,25 @@
 
         // 4c. Assemble all necessary styles.
         let stylesHTML = "";
-        document
-          .querySelectorAll('link[rel="stylesheet"], style')
-          .forEach((el) => {
-            stylesHTML += el.outerHTML;
-          });
+
+        // inline <style> blocks
+        document.querySelectorAll("style").forEach((el) => {
+          stylesHTML += el.outerHTML;
+        });
+
+        // fetch and inline external CSS <link>
+        const linkEls = document.querySelectorAll('link[rel="stylesheet"]');
+        for (let link of linkEls) {
+          const href = link.href;
+          try {
+            const resp = await fetch(href);
+            const cssText = await resp.text();
+            stylesHTML += `<style>\n${cssText}\n</style>`;
+          } catch (err) {
+            console.warn("Failed to fetch stylesheet:", href, err);
+            stylesHTML += link.outerHTML;
+          }
+        }
 
         const customStyles = `
         #toggleTheme {
@@ -999,7 +1013,7 @@
    */
   function downloadFile(content, filename, filetype = "markdown") {
     const blob = new Blob([content], {
-      type: filetype === "json" ? "application/json" : "text/markdown",
+      type: filetype === "json" ? "application/json" : `text/${filetype}`,
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1153,7 +1167,7 @@
     </button>
     <button class="export-menu-item" id="html-chat-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code-icon lucide-code"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
-      <span>HTML</span>
+      <span>Offline HTML</span>
     </button>
     <button class="export-menu-item" id="export-md-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>
