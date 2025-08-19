@@ -298,13 +298,13 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
                       }
                     }
                     attachToMessageId = currentNodeId; // --- END: New logic ---
-                    let title = "Canvas";
+                    let title = null;
                     let content = "";
 
                     if (contentNode.content) {
                       // Create operation
                       content = contentNode.content || "";
-                      title = contentNode.name || "Canvas";
+                      title = contentNode.name;
                     } else if (contentNode.updates && contentNode.updates[0]) {
                       // Update operation
                       content = contentNode.updates[0].replacement || "";
@@ -318,7 +318,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
                     if (attachToMessageId) {
                       const existing = latestCanvasData.get(textdoc_id);
-                      if (!existing || existing.version < version) {
+                      if (title && (!existing || existing.version < version)) {
                         latestCanvasData.set(textdoc_id, {
                           version,
                           title,
@@ -862,14 +862,14 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         if (extraData.files) {
           extraData.files.forEach((file) => {
             const div = document.createElement("div");
-            div.textContent = `📎 ${file.name} (${file.tokens} tokens)`;
+            div.textContent = `${file.name} (${file.tokens} tokens)`;
             fragment.appendChild(div);
           });
         }
         if (extraData.canvases && extraData.canvases.length > 0) {
           extraData.canvases.forEach((canvas) => {
             const div = document.createElement("div");
-            div.textContent = `🎨 ${canvas.title} (${canvas.tokens} tokens)`;
+            div.textContent = `${canvas.title.replace(/_/g, " ")} (${canvas.tokens} tokens)`;
             fragment.appendChild(div);
           });
         }
@@ -945,7 +945,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         if (tokenData.globalSystemPromptTruncatedFrom) {
           promptValue = `${tokenData.globalSystemPromptCost} / ${originalTokens}`;
         }
-        const promptLabel = `🌍 Global System Prompt `;
+        const promptLabel = `Global System Prompt `;
         globalPromptSection.appendChild(
           createTokenItem(promptLabel, promptValue)
         );
@@ -961,7 +961,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       memoryCheckbox.id = "toggle-memory";
       memoryCheckbox.checked = isMemoryEnabled;
       memoryLabel.appendChild(memoryCheckbox);
-      memoryLabel.append(" 🧠 Memory");
+      memoryLabel.append("Memory");
 
       const memoryValueSpan = document.createElement("span");
       const originalTokens =
@@ -996,7 +996,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         }
 
         instructionsSection.appendChild(
-          createTokenItem("👤 Instructions", instructionValue)
+          createTokenItem("Instructions", instructionValue)
         );
         popupFragment.appendChild(instructionsSection);
       }
@@ -1019,7 +1019,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
           toolValue = `${tokenData.toolInstructionCost} / ${originalToolTokens}`;
         }
         toolSection.appendChild(
-          createTokenItem("🛠️ Hidden Tool Output", toolValue)
+          createTokenItem("Hidden Tool Output", toolValue)
         );
         popupFragment.appendChild(toolSection);
       }
@@ -1038,7 +1038,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       if (tokenData.promptTruncatedFrom !== null) {
         promptValue = `${effectivePromptTokens} / ${originalPromptTokens}`;
       }
-      const promptLabel = `📝 Current Prompt`;
+      const promptLabel = `Current Prompt`;
       promptSection.appendChild(createTokenItem(promptLabel, promptValue));
       popupFragment.appendChild(promptSection);
 
@@ -1047,7 +1047,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       const chatOverflow = maxChatTokens > totalChatTokens;
       chatSection.appendChild(
         createTokenItem(
-          `💬 Chat History`,
+          `Chat History`,
           `${
             chatOverflow
               ? `${totalChatTokens} / ${maxChatTokens}`
@@ -1076,7 +1076,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
             checkbox.dataset.type = "file";
             checkbox.dataset.tokens = f.tokens;
             label.appendChild(checkbox);
-            label.append(` 📎 ${f.name} `);
+            label.append(`${f.name}`);
             const valueSpan = document.createElement("span"); // New logic for effective/total display
             if (truncatedItems.has(id)) {
               const effectiveTokens = truncatedItems.get(id);
@@ -1104,7 +1104,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
             checkbox.dataset.type = "canvas";
             checkbox.dataset.tokens = canvas.tokens;
             label.appendChild(checkbox);
-            label.append(` 🎨 ${canvas.title} `);
+            label.append(`${canvas.title.replace(/_/g, " ")} `);
             const valueSpan = document.createElement("span"); // New logic for effective/total display
             if (truncatedItems.has(id)) {
               const effectiveTokens = truncatedItems.get(id);
