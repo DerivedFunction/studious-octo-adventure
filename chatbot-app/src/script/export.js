@@ -118,6 +118,12 @@
       }
       const area = mainArea.cloneNode(true);
       area.classList.add("print-content");
+      // remove content script popups
+      area
+        .querySelectorAll(
+          ".token-count-display,.extra-token-info, .token-status-container, .prompt-token-count"
+        )
+        .forEach((el) => el.remove());
 
       // 2. Fetch necessary conversation data for populating the cloned content.
       const { canvasDataMap, fileContent } = await exportConversationToFileType(
@@ -267,35 +273,80 @@
                     thoughts.classList.toggle("show-reason");
                 });
             });
+            document.querySelector("#printChat").addEventListener("click", async () => {
+              // 1. Clone the main chat area. This serves as the base for both print and download.
+              const mainArea = document.querySelector("article")?.parentElement;
+              if (!mainArea) {
+                alert("Could not find chat content to export.");
+                return;
+              }
+              const area = mainArea.cloneNode(true);
+              const articles = area.querySelectorAll("article");
+              articles.forEach((article) => {
+                const content = article.querySelector("[tabindex]");
+                if (!content) return; // Clean up classes that might interfere with printing
+
+                const codeBlocks = content.querySelectorAll("code");
+                codeBlocks.forEach((codeEl) => {
+                  if (codeEl.closest("div")) {
+                    codeEl.closest("div").style.padding = "12px";
+                  } // Apply print-friendly code styling
+
+                  codeEl.style.whiteSpace = "pre-wrap";
+                  codeEl.style.wordBreak = "break-word";
+                  codeEl.style.fontSize = "12px";
+                  codeEl.style.lineHeight = "1.4";
+
+                  // Handle nested elements in code blocks
+                  const codeChildren = codeEl.querySelectorAll("*");
+                  codeChildren.forEach((child) => {
+                    child.style.whiteSpace = "pre-wrap";
+                    child.style.wordBreak = "break-word";
+                  });
+                });
+              });
+              // 5a. Create a hidden iframe to build the print content in isolation.
+              const printFrame = document.createElement("iframe");
+              printFrame.style.position = "absolute";
+              printFrame.style.width = "0";
+              printFrame.style.height = "0";
+              printFrame.style.border = "0";
+              document.body.appendChild(printFrame);
+              const printDocument = printFrame.contentWindow.document;
+
+              // 5b. Clone all stylesheets into the iframe.
+              document
+                .querySelectorAll('link[rel="stylesheet"], style')
+                .forEach((styleElement) => {
+                  printDocument.head.appendChild(styleElement.cloneNode(true));
+                });
+              printDocument.body.appendChild(area);
+              // 5e. Trigger the print dialog and clean up the iframe afterward.
+              setTimeout(() => {
+                printFrame.contentWindow.focus();
+                printFrame.contentWindow.print();
+                setTimeout(() => {
+                  if (document.body.contains(printFrame)) {
+                    document.body.removeChild(printFrame);
+                  }
+                }, 1000);
+              }, 200);
+            });
+
         });
       `;
-
-        // 4b. Create the theme toggle button element.
-        const toggleButton = document.createElement("div");
-        toggleButton.textContent = "Toggle Theme";
-        toggleButton.id = "toggleTheme";
-        Object.assign(toggleButton.style, {
-          position: "fixed",
-          top: "10px",
-          right: "10px",
-          padding: "2px 10px",
-          backgroundColor: "var(--main-surface-primary)",
-          color: "var(--text-primary)",
-          border: "1px solid var(--border-medium)",
-          borderRadius: "16px",
-          cursor: "pointer",
-          zIndex: "10000",
-          userSelect: "none",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-        });
 
         // 4c. Assemble all necessary styles.
         let stylesHTML = "";
 
         // inline <style> blocks
-        document.querySelectorAll("style").forEach((el) => {
-          stylesHTML += el.outerHTML;
-        });
+        document
+          .querySelectorAll(
+            "style:not(#le-styles,#export-menu-styles,#token-popup-styles,#chm-styles"
+          )
+          .forEach((el) => {
+            stylesHTML += el.outerHTML;
+          });
 
         // fetch and inline external CSS <link>
         const linkEls = document.querySelectorAll('link[rel="stylesheet"]');
@@ -312,13 +363,7 @@
         }
 
         const customStyles = `
-        #toggleTheme {
-            background-color: var(--main-surface-primary) !important;
-            color: var(--text-primary) !important;
-            border-color: var(--border-medium) !important;
-        }
-        form, button:not([aria-label="Copy"], [show="true"]), .token-count-display,
-        .extra-token-info, .token-status-container, .prompt-token-count,
+        form, button:not([aria-label="Copy"], [show="true"]),
         nav, header, footer, [role="banner"], [role="navigation"], [role="complementary"] {
             display: none !important;
         }
@@ -335,11 +380,11 @@
             opacity: 1;
         }
         @media print {
-            #toggleTheme, button { display: none !important; }
+            #toggleTheme, button, #header { display: none !important; }
         }
       `;
         stylesHTML += `<style>${customStyles}</style>`;
-
+        const conversationId = getConversationId();
         // 4d. Construct the full HTML document string.
         const fullHTML = `
         <!DOCTYPE html>
@@ -350,9 +395,25 @@
             <title>${conversationTitle}</title>
             ${stylesHTML}
         </head>
-        <body style="overflow-y: scroll;">
-            ${toggleButton.outerHTML}
-            <div style="padding: 2rem;">${area.outerHTML}</div>
+        <body style="overflow-y: clip;">
+            <div id="header" class="p-2 flex w-full items-center justify-center flex-row" style="background: var(--main-surface-primary);">
+              <div class="flex items-center mx-2">
+                <div class="group flex cursor-pointer justify-center items-center gap-1 rounded-lg min-h-9 touch:min-h-10 px-2.5 text-lg hover:bg-token-surface-hover focus-visible:bg-token-surface-hover font-normal whitespace-nowrap focus-visible:outline-none"><a href="https://chatgpt.com/c/${conversationId}">${conversationTitle}</a></div>
+              </div>
+              <div class="flex-1"></div>
+              <div class="flex items-center mx-2 gap-1.5">
+                <div id="toggleTheme" class="group flex cursor-pointer justify-center items-center gap-1 rounded-full min-h-9 touch:min-h-10 px-2.5 text-sm hover:bg-token-surface-hover focus-visible:bg-token-surface-hover font-normal whitespace-nowrap focus-visible:outline-none">
+                  <div class="flex w-full items-center justify-center gap-1.5">Toggle Theme</div>
+                </div>
+                <div id="printChat" class="group flex cursor-pointer justify-center items-center gap-1 rounded-full min-h-9 touch:min-h-10 px-2.5 text-sm hover:bg-token-surface-hover focus-visible:bg-token-surface-hover font-normal whitespace-nowrap focus-visible:outline-none">
+                  <div class="flex w-full items-center justify-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+                    <span>Print</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <main class="overflow-y-scroll h-full">${area.outerHTML}</main>
             ${script.outerHTML}
         </body>
         </html>
