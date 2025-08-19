@@ -118,7 +118,7 @@
           const btn = el.closest("button");
           btn.setAttribute("show", "true");
           const parent = btn.closest("div.origin-top-left");
-          parent.classList.add("thoughts")
+          parent.classList.add("thoughts");
           btn.classList.add("reason");
         });
       const { canvasDataMap: canvasMap, fileContent } =
@@ -570,6 +570,12 @@
       const canvasDataMap = new Map();
       const allCanvasOps = [];
 
+      // Correctly find all message ids that are visually visible on the webpage
+      const visibleMessageIds = [];
+      document.querySelectorAll("article [data-message-id]").forEach((e) => {
+        visibleMessageIds.push(e.getAttribute("data-message-id"));
+      });
+
       // Pass 1: Collect all canvas operations
       if (conversationApiData && conversationApiData.mapping) {
         for (const messageId in conversationApiData.mapping) {
@@ -586,7 +592,10 @@
                 toolNode?.message?.author?.role === "tool" &&
                 toolNode.message.metadata.canvas
               ) {
-                allCanvasOps.push({ node, toolNode });
+                allCanvasOps.push({
+                  node,
+                  toolNode,
+                });
               }
             }
           }
@@ -656,7 +665,9 @@
             };
 
             if (!canvasDataMap.has(attachToMessageId)) {
-              canvasDataMap.set(attachToMessageId, { canvases: [] });
+              canvasDataMap.set(attachToMessageId, {
+                canvases: [],
+              });
             }
             canvasDataMap.get(attachToMessageId).canvases.push(canvasData);
           }
@@ -819,8 +830,8 @@
               }
             }
           }
-        } // Add assistant messages
-
+        }
+        // Add assistant messages
         if (author === "assistant" && message.recipient === "all") {
           if (message.content?.parts && message.content.parts.length > 0) {
             let content = message.content.parts.join("\n");
@@ -928,7 +939,10 @@
                         content_type: "output_image",
                         url: downloadUrl,
                       },
-                      { content_type: "output_text", text: prompt },
+                      {
+                        content_type: "output_text",
+                        text: prompt,
+                      },
                     ]);
                     break;
                   case "markdown":
@@ -963,20 +977,11 @@
         }
       }
 
-      async function traverseConversation(nodeId) {
-        const node = conversationApiData.mapping[nodeId];
-        if (!node) return;
-
-        await processMessage(nodeId);
-
-        if (node.children && node.children.length > 0) {
-          await traverseConversation(node.children[0]);
-        }
+      // Process only the visible messages in the order they appear on the page
+      for (const messageId of visibleMessageIds) {
+        await processMessage(messageId);
       }
 
-      if (conversationApiData.mapping["client-created-root"]) {
-        await traverseConversation("client-created-root");
-      }
       switch (filetype) {
         case "json":
           switch (version) {
@@ -991,7 +996,7 @@
                     case "image":
                       content = `${
                         content ? `${content}\n` : ""
-                      }${`![Image](${part.url})`}`;
+                      }$${`![Image](${part.url})`}`;
                       break;
                     case "text":
                     default:
