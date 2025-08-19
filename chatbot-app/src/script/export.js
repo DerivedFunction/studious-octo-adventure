@@ -230,109 +230,121 @@
         const script = document.createElement("script");
         script.textContent = `
         document.addEventListener('DOMContentLoaded', () => {
-            let light = document.documentElement.classList.contains('light');
-            const toggleButton = document.getElementById("toggleTheme");
-            if (toggleButton) {
-                toggleButton.addEventListener("click", () => {
-                    light = !light;
-                    const theme = light ? "light" : "dark";
-                    const removeTheme = light ? "dark" : "light";
-                    document.querySelectorAll("*").forEach((el) => {
-                        el.classList.remove(removeTheme);
-                        el.classList.add(theme);
-                    });
-                });
+          let light = document.documentElement.classList.contains("light");
+          const toggleButton = document.getElementById("toggleTheme");
+          toggleButton.addEventListener("click", () => {
+            light = !light;
+            const theme = light ? "light" : "dark";
+            const removeTheme = light ? "dark" : "light";
+            document.querySelectorAll("*").forEach((el) => {
+              el.classList.remove(removeTheme);
+              el.classList.add(theme);
+            });
+          });
+          document.body.addEventListener("click", (e) => {
+            const button = e.target.closest("button[data-copy-content]");
+            if (!button) return;
+            const contentToCopy = button.getAttribute("data-copy-content");
+            if (contentToCopy === null) return;
+            navigator.clipboard
+              .writeText(contentToCopy)
+              .then(() => {
+                const originalInnerHTML = button.innerHTML;
+                const checkSVG =
+                  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+                if (button.closest("pre") || button.closest(".popover")) {
+                  button.innerHTML = checkSVG + " Copied";
+                } else {
+                  button.innerHTML = checkSVG;
+                }
+                button.disabled = true;
+                setTimeout(() => {
+                  button.innerHTML = originalInnerHTML;
+                  button.disabled = false;
+                }, 2000);
+              })
+              .catch((err) => {
+                console.error("Failed to copy to clipboard:", err);
+                alert("Failed to copy!");
+              });
+          });
+          document.querySelectorAll(".reason").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const parent = btn.closest(".origin-top-left");
+              const thoughts = parent.querySelector("div.relative.z-0");
+              thoughts.classList.toggle("show-reason");
+            });
+          });
+
+          // Override Ctrl+P to use custom print function
+          document.addEventListener("keydown", (event) => {
+            if ((event.ctrlKey || event.metaKey) && event.key === "p") {
+              event.preventDefault();
+              document.querySelector("#printChat").click();
             }
-            document.body.addEventListener('click', (e) => {
-                const button = e.target.closest('button[data-copy-content]');
-                if (!button) return;
-                const contentToCopy = button.getAttribute('data-copy-content');
-                if (contentToCopy === null) return;
-                navigator.clipboard.writeText(contentToCopy).then(() => {
-                    const originalInnerHTML = button.innerHTML;
-                    const checkSVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-                    if (button.closest('pre') || button.closest('.popover')) {
-                        button.innerHTML = checkSVG + ' Copied';
-                    } else {
-                        button.innerHTML = checkSVG;
-                    }
-                    button.disabled = true;
-                    setTimeout(() => {
-                        button.innerHTML = originalInnerHTML;
-                        button.disabled = false;
-                    }, 2000);
-                }).catch(err => {
-                    console.error('Failed to copy to clipboard:', err);
-                    alert('Failed to copy!');
-                });
-            });
-            document.querySelectorAll(".reason").forEach(btn => {
-                btn.addEventListener("click", () => {
-                    const parent = btn.closest(".origin-top-left");
-                    const thoughts = parent.querySelector("div.relative.z-0");
-                    thoughts.classList.toggle("show-reason");
-                });
-            });
-            document.querySelector("#printChat").addEventListener("click", async () => {
-              // 1. Clone the main chat area. This serves as the base for both print and download.
-              const mainArea = document.querySelector("article")?.parentElement;
-              if (!mainArea) {
-                alert("Could not find chat content to export.");
-                return;
-              }
-              const area = mainArea.cloneNode(true);
-              const articles = area.querySelectorAll("article");
-              articles.forEach((article) => {
-                const content = article.querySelector("[tabindex]");
-                if (!content) return; // Clean up classes that might interfere with printing
+          });
+          document.querySelector("#printChat").addEventListener("click", async () => {
+            // 1. Clone the main chat area. This serves as the base for both print and download.
+            const mainArea = document.querySelector("article")?.parentElement;
+            if (!mainArea) {
+              alert("Could not find chat content to export.");
+              return;
+            }
+            const area = mainArea.cloneNode(true);
+            const articles = area.querySelectorAll("article");
+            articles.forEach((article) => {
+              const content = article.querySelector("[tabindex]");
+              if (!content) return; // Clean up classes that might interfere with printing
 
-                const codeBlocks = content.querySelectorAll("code");
-                codeBlocks.forEach((codeEl) => {
-                  if (codeEl.closest("div")) {
-                    codeEl.closest("div").style.padding = "12px";
-                  } // Apply print-friendly code styling
+              const codeBlocks = content.querySelectorAll("code");
+              codeBlocks.forEach((codeEl) => {
+                if (codeEl.closest("div")) {
+                  codeEl.closest("div").style.padding = "12px";
+                } // Apply print-friendly code styling
 
-                  codeEl.style.whiteSpace = "pre-wrap";
-                  codeEl.style.wordBreak = "break-word";
-                  codeEl.style.fontSize = "12px";
-                  codeEl.style.lineHeight = "1.4";
+                codeEl.style.whiteSpace = "pre-wrap";
+                codeEl.style.wordBreak = "break-word";
+                codeEl.style.fontSize = "12px";
+                codeEl.style.lineHeight = "1.4";
 
-                  // Handle nested elements in code blocks
-                  const codeChildren = codeEl.querySelectorAll("*");
-                  codeChildren.forEach((child) => {
-                    child.style.whiteSpace = "pre-wrap";
-                    child.style.wordBreak = "break-word";
-                  });
+                // Handle nested elements in code blocks
+                const codeChildren = codeEl.querySelectorAll("*");
+                codeChildren.forEach((child) => {
+                  child.style.whiteSpace = "pre-wrap";
+                  child.style.wordBreak = "break-word";
                 });
               });
-              // 5a. Create a hidden iframe to build the print content in isolation.
-              const printFrame = document.createElement("iframe");
-              printFrame.style.position = "absolute";
-              printFrame.style.width = "0";
-              printFrame.style.height = "0";
-              printFrame.style.border = "0";
-              document.body.appendChild(printFrame);
-              const printDocument = printFrame.contentWindow.document;
-
-              // 5b. Clone all stylesheets into the iframe.
-              document
-                .querySelectorAll('link[rel="stylesheet"], style')
-                .forEach((styleElement) => {
-                  printDocument.head.appendChild(styleElement.cloneNode(true));
-                });
-              printDocument.body.appendChild(area);
-              // 5e. Trigger the print dialog and clean up the iframe afterward.
-              setTimeout(() => {
-                printFrame.contentWindow.focus();
-                printFrame.contentWindow.print();
-                setTimeout(() => {
-                  if (document.body.contains(printFrame)) {
-                    document.body.removeChild(printFrame);
-                  }
-                }, 1000);
-              }, 200);
             });
-
+            // 5a. Create a hidden iframe to build the print content in isolation.
+            const printFrame = document.createElement("iframe");
+            printFrame.style.position = "absolute";
+            printFrame.style.width = "0";
+            printFrame.style.height = "0";
+            printFrame.style.border = "0";
+            document.body.appendChild(printFrame);
+            const printDocument = printFrame.contentWindow.document;
+            // 5b. Clone all stylesheets into the iframe.
+            document
+              .querySelectorAll('link[rel="stylesheet"], style')
+              .forEach((styleElement) => {
+                printDocument.head.appendChild(styleElement.cloneNode(true));
+              });
+            printDocument.body.appendChild(area);
+            printDocument.querySelectorAll("*").forEach((el) => {
+              el.classList.add("light");
+              el.classList.remove("dark");
+            });
+            // 5e. Trigger the print dialog and clean up the iframe afterward.
+            setTimeout(() => {
+              printFrame.contentWindow.focus();
+              printFrame.contentWindow.print();
+              setTimeout(() => {
+                if (document.body.contains(printFrame)) {
+                  document.body.removeChild(printFrame);
+                }
+              }, 1000);
+            }, 200);
+          });
         });
       `;
 
@@ -407,7 +419,7 @@
                 </div>
                 <div id="printChat" class="group flex cursor-pointer justify-center items-center gap-1 rounded-full min-h-9 touch:min-h-10 px-2.5 text-sm hover:bg-token-surface-hover focus-visible:bg-token-surface-hover font-normal whitespace-nowrap focus-visible:outline-none">
                   <div class="flex w-full items-center justify-center gap-1.5">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
                     <span>Print</span>
                   </div>
                 </div>
