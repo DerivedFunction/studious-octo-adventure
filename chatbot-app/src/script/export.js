@@ -83,11 +83,33 @@
    * and downloads the entire conversation as a single HTML file.
    */
   async function downloadHTML() {
+    
     try {
+      // 0. Open all reasoning.
+      let buttonsClicked = [];
+      document
+        .querySelectorAll(
+          "div.origin-top-left button:not(pre button) span span"
+        )
+        .forEach((el) => {
+          // find the nearest ancestor div.grow (or whatever parent you need)
+          const parent = el.closest("div.origin-top-left");
+          if (parent && parent.children.length !== 2) {
+            const button = el.closest("button");
+            button.click();
+            buttonsClicked.push(button);
+          }
+        });
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       // 1. Clone the main chat area
       const area = document
         .querySelector("article")
         .parentElement.cloneNode(true);
+      // 2. Unclick the reasoning
+      buttonsClicked.forEach((button) => {
+        button.click();
+      });
+
 
       const { canvasDataMap: canvasMap, fileContent } = await exportConversationToFileType(
         getConversationId(),
@@ -215,6 +237,7 @@
                 });
             });
         });
+      
     `;
 
       // 7. Create the theme toggle button element
