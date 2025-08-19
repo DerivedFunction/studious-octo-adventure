@@ -151,7 +151,7 @@
           const parts = canvas.type?.split("/") || [null];
           const title = escapeHTML(canvas.title); // escape for safety
           let type = parts.length > 1 ? parts[1] : parts[0];
-
+          if (!type) return;
           switch (type) {
             case "react":
               type = "tsx";
