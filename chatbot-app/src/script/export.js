@@ -132,8 +132,7 @@
         const copyBtn = buttonArray?.querySelector(
           "[data-testid='copy-turn-action-button']"
         );
-        const contentDiv = message.querySelector(".markdown");
-        if (copyBtn && contentDiv) {
+        if (copyBtn) {
           const message = data.messages.find((e) => e.id === id);
           const text = message?.content
             .filter((o) => o.content_type.split("_")[1] === "text")
