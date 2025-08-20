@@ -68,16 +68,21 @@ window.ChatGPTDataExport = (() => {
     return conversationId;
   }
   let apiData = null;
-  async function getApiData() {
+  /**
+   * Fetchs data from backend-api
+   * @param {*} id conversation id or current conversation
+   * @returns
+   */
+  async function getApiData(id = null) {
     apiData = null;
     const signal = AbortController ? new AbortController().signal : undefined;
     await getAccessToken();
-    getConversationId();
+    const convId = id || getConversationId();
     if (!conversationId) return;
     if (!accessToken) throw new Error("Access token not available.");
     console.log("[API Manager] Fetching API data.");
     const response = await fetch(
-      `https://chatgpt.com/backend-api/conversation/${conversationId}`,
+      `https://chatgpt.com/backend-api/conversation/${convId}`,
       {
         headers: {
           accept: "*/*",
@@ -562,10 +567,23 @@ window.ChatGPTDataExport = (() => {
       reasoningMapData,
       fileMapData,
     };
-    return apiData;
+    // Make sure we stil have the same match, if not, it is out of date
+    const curConvId = getConversationId();
+    if (curConvId !== convId) apiData = null;
+    return {
+      metaData,
+      userProfile,
+      turnMapData,
+      toolMapData,
+      messageMapData,
+      imageMapData,
+      canvasMapData,
+      reasoningMapData,
+      fileMapData,
+    };
   }
   let exportData;
-  async function convertExport() {
+  async function convertExport(id = null) {
     function formatCanvasContent(canvases) {
       if (!canvases || canvases.length === 0) return "";
       let canvasMarkdown = "";
@@ -583,7 +601,7 @@ window.ChatGPTDataExport = (() => {
     }
 
     try {
-      const { metaData, turnMapData, canvasMapData } = await getApiData();
+      const { metaData, turnMapData, canvasMapData } = await getApiData(id);
       const turns = Array.from(turnMapData, ([turnId, data]) => ({
         turnId,
         ...data,
@@ -723,7 +741,8 @@ window.ChatGPTDataExport = (() => {
       return exportData;
     } catch (error) {
       console.error("❌ Export failed:", error);
-      throw error;
+      exportData = null;
+      return null;
     }
   }
 
@@ -798,5 +817,3 @@ window.ChatGPTDataExport = (() => {
     },
   };
 })();
-// Run this init
-window.ChatGPTDataExport.getApiData().then((d) => console.log(d));
