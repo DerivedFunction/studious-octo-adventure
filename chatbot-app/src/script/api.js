@@ -73,6 +73,7 @@ window.ChatGPTDataExport = (() => {
     const signal = AbortController ? new AbortController().signal : undefined;
     await getAccessToken();
     getConversationId();
+    if (!conversationId) return;
     if (!accessToken) throw new Error("Access token not available.");
     console.log("[API Manager] Fetching API data.");
     const response = await fetch(
@@ -549,12 +550,10 @@ window.ChatGPTDataExport = (() => {
       jsonMetaData.link = `https://chatgpt.com/c/${conversationId}`;
       return jsonMetaData;
     }
-    await getUserMemory();
     const metaData = getMetaData();
     apiData = {
       metaData,
       userProfile,
-      userMemory,
       turnMapData,
       toolMapData,
       messageMapData,
@@ -733,7 +732,7 @@ window.ChatGPTDataExport = (() => {
     memories: [],
   };
   async function getUserMemory() {
-    console.log("🧠 [API Manager] Fetching memory...");
+    console.log("[API Manager] Fetching memory...");
     try {
       await getAccessToken();
       if (!accessToken)
@@ -775,7 +774,6 @@ window.ChatGPTDataExport = (() => {
     }
     return userMemory;
   }
-
   return {
     getApiData,
     convertExport,
@@ -800,3 +798,5 @@ window.ChatGPTDataExport = (() => {
     },
   };
 })();
+// Run this init
+window.ChatGPTDataExport.getApiData().then((d) => console.log(d));
