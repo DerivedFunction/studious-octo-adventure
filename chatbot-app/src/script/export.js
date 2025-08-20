@@ -126,16 +126,10 @@
         .forEach((el) => el.remove());
 
       // 2. Fetch necessary conversation data for populating the cloned content.
-      const { canvasDataMap, fileContent } = await exportConversationToFileType(
-        getConversationId(),
-        "json",
-        0
-      );
-      const data = JSON.parse(fileContent);
-      const conversationTitle = data.title;
-
+      const { canvasMapData: canvasDataMap, jsonCopy } = await convertExport();
+      const conversationTitle = jsonCopy.title;
+      const data = Array.from(jsonCopy.turns); // An array [] of {id, content}
       // --- SHARED DOM MANIPULATION ON THE CLONED AREA ---
-
       // 3a. Set attributes on reasoning buttons for offline interactivity or styling.
       area
         .querySelectorAll(
@@ -157,11 +151,8 @@
           "[data-testid='copy-turn-action-button']"
         );
         if (copyBtn) {
-          const messageData = data.messages.find((e) => e.id === id);
-          const text = messageData?.content
-            .filter((o) => o.content_type.split("_")[1] === "text")
-            .map((o) => o.text)
-            .join("\n");
+          const messageData = data.find((e) => e.id === id);
+          const text = messageData?.content;
           copyBtn.setAttribute("data-copy-content", text);
         }
       });
@@ -540,76 +531,151 @@
   }
   // --- MARKDOWN EXPORT FUNCTIONALITY ---
 
-  /**
-   * Formats timestamp to readable string.
-   */
-  function formatTimestamp(timestamp) {
-    if (!timestamp) return "";
-    return new Date(timestamp * 1000).toLocaleString();
-  }
 
   /**
    * Extracts and processes conversation data from ChatGPT API
    * @param {string} conversationId The conversation ID
    * @returns {Promise<string>}  { fileContent, conversationApiData, canvasDataMap, reasoningData }
    */
-  let title = null;
-  async function exportConversationToFileType(
-    conversationId,
-    filetype = "markdown",
-    version = 1
-  ) {
+  async function getApiData() {
     const signal = AbortController ? new AbortController().signal : undefined;
-    title = null;
-    try {
-      const token = await getAccessToken();
-      if (!token) throw new Error("Access token not available.");
+    const token = await getAccessToken();
+    const conversationId = getConversationId();
+    if (!token) throw new Error("Access token not available.");
 
-      const response = await fetch(
-        `https://chatgpt.com/backend-api/conversation/${conversationId}`,
-        {
-          headers: {
-            accept: "*/*",
-            authorization: `Bearer ${token}`,
-          },
-          method: "GET",
-          signal,
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          `Backend API request failed with status: ${response.status}`
-        );
+    const response = await fetch(
+      `https://chatgpt.com/backend-api/conversation/${conversationId}`,
+      {
+        headers: {
+          accept: "*/*",
+          authorization: `Bearer ${token}`,
+        },
+        method: "GET",
+        signal,
       }
+    );
 
-      const conversationApiData = await response.json();
-      const canvasDataMap = new Map();
-      const allCanvasOps = [];
+    if (!response.ok) {
+      throw new Error(
+        `Backend API request failed with status: ${response.status}`
+      );
+    }
 
-      // Correctly find all message ids that are visually visible on the webpage
-      const visibleMessageIds = [];
-      const visibleCanvasIds = [];
-      const visibleImageIds = [];
-      document.querySelectorAll("article[data-turn-id]").forEach((e) => {
-        visibleMessageIds.push(e.getAttribute("data-turn-id"));
-      });
-      document.querySelectorAll(".popover").forEach((e) => {
-        visibleCanvasIds.push(e.id.replace("textdoc-message-", ""));
-      });
-      document.querySelectorAll("article div[id^='image-']").forEach((e) => {
-        visibleImageIds.push({
-          id: e.getAttribute("id").replace("image-", ""),
-          messageId: e.closest("article").getAttribute("data-turn-id"),
+    const conversationApiData = await response.json();
+
+    // Correctly find all messages, canvases, and images for each turn.
+    const visibleTurnIds = [];
+    document.querySelectorAll("[data-turn-id]").forEach((e) => {
+      const turnId = e.getAttribute("data-turn-id");
+      visibleTurnIds.push(turnId);
+    });
+
+    const messageMapData = new Map();
+    const visibleMessageIds = [];
+    processAllMessages();
+    function processAllMessages() {
+      document.querySelectorAll("[data-message-id]").forEach((e) => {
+        const turnId = e.closest("article")?.getAttribute("data-turn-id");
+        const messageId = e.getAttribute("data-message-id");
+        visibleMessageIds.push({
+          turnId,
+          messageId,
         });
       });
-
-      // Pass 1: Collect all canvas operations
-      if (conversationApiData && conversationApiData.mapping) {
-        for (const messageId in conversationApiData.mapping) {
+      visibleMessageIds.forEach(async (turn) => {
+        try {
+          const messageId = turn.messageId;
+          const turnId = turn.turnId;
           const node = conversationApiData.mapping[messageId];
-          const recipient = node.message?.recipient;
+          const message = node?.message;
+          const content = node?.message?.content;
+          const role = message?.author?.role;
+          const parts = content?.parts;
+          let text = parts?.join("\n");
+          const messageData = {
+            messageId,
+            role,
+            text,
+          };
+          if (!messageMapData.has(turnId)) {
+            messageMapData.set(turnId, [messageData]);
+          } else {
+            messageMapData.get(turnId).push(messageData);
+          }
+        } catch (e) {
+          console.error("❌ [Export MD] Error processing message data:", e);
+        }
+      });
+    }
+    function getTurnId(id) {
+      let turn;
+      try {
+        for (const { turnId, messageId } of visibleMessageIds) {
+          // see if the messageId is in the array
+          if (messageId === id) {
+            turn = turnId;
+            break;
+          }
+        }
+      } catch (e) {
+        console.error("❌ [Export MD] Error getting turnId:", e);
+      }
+      return turn;
+    }
 
+    const imageMapData = new Map();
+    const visibleImageIds = [];
+    await processAllImages();
+    async function processAllImages() {
+      document.querySelectorAll("article div[id^='image-']").forEach((e) => {
+        visibleImageIds.push({
+          turnId: e.closest("article").getAttribute("data-turn-id"),
+          imageId: e.getAttribute("id").replace("image-", ""),
+        });
+      });
+      await Promise.all(
+        visibleImageIds.map(async (turn) => {
+          try {
+            const imageId = turn.imageId;
+            const turnId = turn.turnId;
+            const node = conversationApiData.mapping[imageId];
+            const message = node?.message;
+            const content = message?.content;
+            const image_gen_title = message?.metadata?.image_gen_title;
+            const fileId = content?.parts[0]?.asset_pointer.replace(
+              "sediment://",
+              ""
+            );
+            const downloadURL = await getImageDownloadUrl(
+              fileId,
+              conversationId
+            );
+            const imageData = {
+              url: downloadURL,
+              imageId: turnId,
+              prompt: image_gen_title,
+            };
+            if (!imageMapData.has(turnId)) {
+              imageMapData.set(turnId, [imageData]);
+            } else {
+              imageMapData.get(turnId).push(imageData);
+            }
+          } catch (e) {
+            console.error("❌ [Export MD] Error processing image data:", e);
+          }
+        })
+      );
+    }
+
+    const canvasMapData = new Map();
+    processAllCanvas();
+    function processAllCanvas() {
+      const allCanvasOps = [];
+      // Pass 1: Collect all canvas operations
+      for (const turnId in conversationApiData.mapping) {
+        try {
+          const node = conversationApiData.mapping[turnId];
+          const recipient = node.message?.recipient;
           if (
             recipient === "canmore.create_textdoc" ||
             recipient === "canmore.update_textdoc"
@@ -627,6 +693,8 @@
               }
             }
           }
+        } catch (e) {
+          console.error("❌ [Export MD] Error processing canvas data.", e);
         }
       }
 
@@ -659,7 +727,7 @@
           }
           const contentNode = JSON.parse(jsonString);
           // Find the final assistant message this canvas belongs to.
-          let attachToMessageId = null;
+          let messageId = null;
           let currentNodeId = toolNode.id;
           let currentNode = toolNode;
           while (
@@ -667,57 +735,71 @@
             currentNode.children &&
             currentNode.children.length > 0
           ) {
-            currentNodeId = currentNode.children[0];
-            currentNode = conversationApiData.mapping[currentNodeId];
-            if (
-              currentNode?.message?.author?.role === "assistant" &&
-              currentNode?.message?.recipient === "all"
-            ) {
-              break; // Found the final response to the user.
+            try {
+              currentNodeId = currentNode.children[0];
+              currentNode = conversationApiData.mapping[currentNodeId];
+              if (
+                currentNode?.message?.author?.role === "assistant" &&
+                currentNode?.message?.recipient === "all"
+              ) {
+                break; // Found the final response to the user.
+              }
+            } catch (e) {
+              console.error(
+                "❌ [Export MD] Error processing canvas data in loop:",
+                e
+              );
             }
           }
-          attachToMessageId = currentNodeId;
+          messageId = currentNodeId;
 
-          let currentType = textdoc_type || canvasTypes.get(textdoc_id);
-          if (currentType) {
-            canvasTypes.set(textdoc_id, currentType);
-          }
-          // Correctly track and carry over titles for updated canvases
-          let currentTitle = canvasTitle || canvasTitles.get(textdoc_id);
-          if (currentTitle) {
-            canvasTitles.set(textdoc_id, currentTitle);
-          } else {
-            currentTitle = contentNode.name || currentType;
-          }
-          const title = currentTitle;
-          const content =
-            contentNode.content || contentNode.updates?.[0]?.replacement || "";
-
-          if (attachToMessageId) {
-            const canvasData = {
-              version,
-              title,
-              content,
-              textdoc_id,
-              type: textdoc_type,
-            };
-
-            if (!canvasDataMap.has(attachToMessageId)) {
-              canvasDataMap.set(attachToMessageId, {
-                canvases: [],
-              });
+          try {
+            let currentType = textdoc_type || canvasTypes.get(textdoc_id);
+            if (currentType) {
+              canvasTypes.set(textdoc_id, currentType);
             }
-            canvasDataMap.get(attachToMessageId).canvases.push(canvasData);
+            // Correctly track and carry over titles for updated canvases
+            let currentTitle = canvasTitle || canvasTitles.get(textdoc_id);
+            if (currentTitle) {
+              canvasTitles.set(textdoc_id, currentTitle);
+            } else {
+              currentTitle = contentNode.name || currentType;
+            }
+            const title = currentTitle;
+            const content =
+              contentNode.content ||
+              contentNode.updates?.[0]?.replacement ||
+              "";
+
+            if (messageId) {
+              const canvasData = {
+                version,
+                title,
+                content,
+                textdoc_id,
+                type: textdoc_type,
+              };
+              let turnId = getTurnId(messageId);
+              if (!canvasMapData.has(turnId)) {
+                canvasMapData.set(turnId, [canvasData]);
+              } else {
+                canvasMapData.get(turnId).push(canvasData);
+              }
+            }
+          } catch (e) {
+            console.error("❌ [Export MD] Error processing canvas data:", e);
           }
         } catch (e) {
           console.error("❌ [Export MD] Error processing canvas data:", e);
         }
       }
-
-      const reasoningData = new Map(); // Pass 1.5: Collect all reasoning data
+    }
+    const reasoningMapData = new Map(); // Pass 1.5: Collect all reasoning data
+    processAllReasoning();
+    function processAllReasoning() {
       if (conversationApiData.mapping) {
-        for (const messageId in conversationApiData.mapping) {
-          const node = conversationApiData.mapping[messageId];
+        for (const turnId in conversationApiData.mapping) {
+          const node = conversationApiData.mapping[turnId];
           if (node.message?.content?.content_type === "thoughts") {
             const request_id = node.message.metadata.request_id;
             try {
@@ -743,16 +825,16 @@
                   Array.isArray(thoughts) &&
                   thoughts.length > 0
                 ) {
-                  let reasoningMarkdown =
-                    filetype === "json"
-                      ? "<think>"
-                      : "\n\n<details>\n<summary>View Reasoning</summary>\n\n";
-                  thoughts.forEach((thought) => {
-                    reasoningMarkdown += `**${thought.summary || "Step"}**\n\n${
-                      thought.content
-                    }${filetype === "json" ? "</think>" : "</details>\n\n"}`;
-                  });
-                  reasoningData.set(attachToMessageId, reasoningMarkdown);
+                  let turnID = getTurnId(attachToMessageId);
+                  const reasonData = {
+                    messageId: attachToMessageId,
+                    thoughts: thoughts,
+                  };
+                  if (!reasoningMapData.has(turnID)) {
+                    reasoningMapData.set(turnID, [reasonData]);
+                  } else {
+                    reasoningMapData.get(turnID).push(reasonData);
+                  }
                 }
               }
             } catch (e) {
@@ -764,312 +846,56 @@
           }
         }
       }
-
-      const imageDataMap = new Map();
-      if (conversationApiData.mapping) {
-        visibleImageIds.forEach(async (image) => {
-          const id = image.id;
-          const messageId = image.messageId;
-          const node = conversationApiData.mapping[id];
-          const message = node?.message;
-          const content = message?.content;
-          const image_gen_title = message?.metadata?.image_gen_title;
-          const fileId = content?.parts?.asset_pointer.replace(
-            "sediment://",
-            ""
-          );
-          const downloadURL = await getImageDownloadUrl(fileId, messageId);
-          const imageData = {
-            url: downloadURL,
-            messageId: messageId,
-            prompt: image_gen_title,
-          };
-          if (!imageDataMap.has(messageId)) {
-            imageDataMap.set(messageId, [imageData]);
-          } else {
-            imageDataMap.get(messageId).push(imageData);
-          }
-        });
-      }
-
-      let fileContent = ""; // Add conversation metadata
-      let jsonMetaData = {};
-      if (conversationApiData.title) {
-        switch (filetype) {
-          case "json":
-            jsonMetaData.title = conversationApiData.title;
-            break;
-          case "markdown":
-          default:
-            fileContent += `# ${conversationApiData.title}\n\n`;
-        }
-        title = conversationApiData.title;
-      }
-
-      if (conversationApiData.create_time) {
-        switch (filetype) {
-          case "json":
-            jsonMetaData.create_time = formatTimestamp(
-              conversationApiData.create_time
-            );
-            break;
-          case "markdown":
-          default:
-            fileContent += `**Created:** ${formatTimestamp(
-              conversationApiData.create_time
-            )}\n\n`;
-        }
-      }
-
-      if (conversationApiData.update_time) {
-        switch (filetype) {
-          case "json":
-            jsonMetaData.update_time = formatTimestamp(
-              conversationApiData.update_time
-            );
-            break;
-          case "markdown":
-          default:
-            fileContent += `**Updated:** ${formatTimestamp(
-              conversationApiData.update_time
-            )}\n\n`;
-        }
-      }
-      switch (filetype) {
-        case "json":
-          jsonMetaData.link = `https://chatgpt.com/c/${conversationId}`;
-          break;
-        case "markdown":
-        default:
-          fileContent += `**Link:** https://chatgpt.com/c/${conversationId}\n\n`;
-          fileContent += "---\n\n"; // Process messages in order
-      }
-
-      const processedMessages = new Set();
-
-      let messageData = [];
-
-      async function processMessage(messageId) {
-        if (!messageId || processedMessages.has(messageId)) return;
-
-        const node = conversationApiData.mapping[messageId];
-        if (!node?.message) return;
-
-        const message = node.message;
-        const author = message.author?.role;
-        const contentType = message.content?.content_type;
-
-        // Skip system messages, hidden messages, and intermediate steps.
-        // Allow tool messages that contain images ('multimodal_text').
-        if (
-          author === "system" ||
-          message.metadata?.is_visually_hidden_from_conversation ||
-          contentType === "model_editable_context" ||
-          (author === "assistant" && message.recipient !== "all") ||
-          (author === "tool" && contentType !== "multimodal_text")
-        ) {
-          processedMessages.add(messageId);
-          return;
-        }
-
-        processedMessages.add(messageId); // Add user messages
-
-        if (author === "user") {
-          if (message.content?.parts && message.content.parts.length > 0) {
-            const content = message.content.parts.join("\n");
-            if (content.trim()) {
-              switch (filetype) {
-                case "json":
-                  messageData.push({
-                    id: messageId,
-                    role: "user",
-                    content: [
-                      {
-                        content_type: "input_text",
-                        text: content,
-                      },
-                    ],
-                  });
-                  break;
-                case "markdown":
-                default:
-                  fileContent += `# You Said\n\n${content}\n\n---\n\n`;
-              }
-            }
-          }
-        }
-        // Add assistant messages
-        if (author === "assistant" && message.recipient === "all") {
-          if (message.content?.parts && message.content.parts.length > 0) {
-            let content = message.content.parts.join("\n");
-            const references = message.metadata?.content_references; // Correctly replace citations using API metadata
-
-            if (references && Array.isArray(references)) {
-              references.forEach((ref) => {
-                // Use the 'alt' property which contains the pre-formatted Markdown
-                if (ref.matched_text && ref.alt) {
-                  content = content.replace(ref.matched_text, ref.alt);
-                }
-              });
-            } // Fallback to remove any unprocessed citation characters for clean output
-
-            content = content.replace(/\uE200.*?\uE201/g, "").trim();
-
-            if (content) {
-              let fullAssistantContent = "";
-              // Append reasoning information if it exists
-              const reasoningContent = reasoningData.get(messageId);
-              if (reasoningContent && version > 0) {
-                fullAssistantContent += reasoningContent;
-              }
-              // Add canvas content if available
-              const additionalData = canvasDataMap.get(messageId);
-              if (additionalData?.canvases && version > 0) {
-                fullAssistantContent += formatCanvasContent(
-                  additionalData.canvases
-                );
-              }
-              fullAssistantContent += content;
-              const openings = (fullAssistantContent.match(/```/g) || [])
-                .length;
-              if (
-                openings % 2 !== 0 &&
-                !fullAssistantContent.trim().endsWith("```")
-              ) {
-                fullAssistantContent += "\n```";
-              }
-              switch (filetype) {
-                case "json":
-                  messageData.push({
-                    id: messageId,
-                    role: "assistant",
-                    content: [
-                      {
-                        content_type: "output_text",
-                        text: fullAssistantContent,
-                      },
-                    ],
-                  });
-                  break;
-                case "markdown":
-                default: {
-                  fileContent += `# ChatGPT said\n\n${fullAssistantContent}\n\n---\n\n`;
-                  break;
-                }
-              }
-            }
-          }
-        }
-        // Handle multimodal messages (e.g., images) from the tool role
-        const imageData = imageDataMap.get(messageId);
-        if (imageData) {
-          let markdownContent = "";
-          let jsonParts = [];
-          imageData.forEach((image) => {
-            const url = image.url;
-            const prompt = image.prompt;
-            switch (filetype) {
-              case "json":
-                jsonParts.push([
-                  {
-                    content_type: "output_image",
-                    url: url,
-                  },
-                  {
-                    content_type: "output_text",
-                    text: prompt,
-                  },
-                ]);
-                break;
-              case "markdown":
-              default:
-                markdownContent += `![${prompt}](${url})\n\n**Title:** *${prompt}*\n\n`;
-                break;
-            }
-          });
-          // Add the processed content to the final output
-          if (filetype === "json" && jsonParts.length > 0) {
-            messageData.push({
-              role: "assistant", // Attribute the image to the assistant
-              content: jsonParts.length === 1 ? jsonParts[0] : jsonParts,
-            });
-          } else if (filetype === "markdown" && markdownContent.trim()) {
-            fileContent += `# ChatGPT said\n\n${markdownContent}\n\n---\n\n`;
-          }
-        }
-      }
-
-      // Process only the visible messages in the order they appear on the page
-      for (const messageId of visibleMessageIds) {
-        await processMessage(messageId);
-      }
-
-      switch (filetype) {
-        case "json":
-          switch (version) {
-            case 2:
-              // We want chat completions, so  { "role": "role", "content": "text"}
-              messageData.forEach((message) => {
-                // for each message.content, only if content_type = "text" , set content to "text"
-                let content = "";
-                message.content.forEach((part) => {
-                  const type = part.content_type.split("_")[1] || "";
-                  switch (type) {
-                    case "image":
-                      content = `${
-                        content ? `${content}\n` : ""
-                      }$${`![Image](${part.url})`}`;
-                      break;
-                    case "text":
-                    default:
-                      content = `${content ? `${content}\n` : ""}${part.text}`;
-                      break;
-                  }
-                });
-                message.content = content;
-              });
-              jsonMetaData.messages = messageData;
-              break;
-            case 1:
-            default:
-              jsonMetaData.messages = messageData;
-              break;
-          }
-          fileContent = JSON.stringify({ ...jsonMetaData }, null, 2);
-          break;
-        default:
-          break;
-      }
-      return {
-        fileContent,
-        conversationApiData,
-        canvasDataMap,
-        reasoningData,
-        imageDataMap,
-      };
-    } catch (error) {
-      console.error("❌ [Export MD] Export failed:", error);
-      throw error;
     }
-  }
-  function formatCanvasContent(canvases) {
-    if (!canvases || canvases.length === 0) return "";
 
-    let canvasMarkdown = "";
+    const turnMapData = new Map();
+    processedAllTurns();
+    function processedAllTurns() {
+      // Now let's map messageMapData, imageMapData, and canvasMapData
+      visibleTurnIds.forEach((turnId) => {
+        const messages = messageMapData.get(turnId);
+        const images = imageMapData.get(turnId);
+        const canvases = canvasMapData.get(turnId);
+        const reasoning = reasoningMapData.get(turnId);
+        const turnData = {
+          messages,
+          images,
+          canvases,
+          reasoning,
+        };
+        turnMapData.set(turnId, turnData);
+      });
+    }
 
-    canvases.forEach((canvas, index) => {
-      if (!canvas.type) return;
-      const parts = canvas.type?.split("/");
-      let type = parts[0];
-      if (parts.length > 1) type = parts[1];
-      if (type.includes("react")) type = "typescript";
-      canvasMarkdown += `#### ${canvas.title}\n\n`;
-      canvasMarkdown += `\`\`\`${type ? type : ""}\n${
-        canvas.content
-      }\n\`\`\`\n\n`;
-    });
+    function getMetaData() {
+      /**
+       * Formats timestamp to readable string.
+       */
+      function formatTimestamp(timestamp) {
+        if (!timestamp) return "";
+        return new Date(timestamp * 1000).toLocaleString();
+      }
+      let jsonMetaData = {};
+      jsonMetaData.title = conversationApiData.title;
+      jsonMetaData.create_time = formatTimestamp(
+        conversationApiData.create_time
+      );
+      jsonMetaData.update_time = formatTimestamp(
+        conversationApiData.update_time
+      );
+      jsonMetaData.link = `https://chatgpt.com/c/${conversationId}`;
+      return jsonMetaData;
+    }
 
-    return canvasMarkdown;
+    const metaData = getMetaData();
+    return {
+      metaData,
+      turnMapData,
+      messageMapData,
+      imageMapData,
+      canvasMapData,
+      reasoningMapData,
+    };
   }
 
   /**
@@ -1090,29 +916,130 @@
   }
 
   /**
-   * Main function to trigger the markdown export process.
+   *  Main function to trigger the markdown export process.
    */
-  async function exportCurrentConversation(
-    filetype = "markdown",
-    extension = "md",
-    version = 1
-  ) {
+  async function convertExport() {
+    function formatCanvasContent(canvases) {
+      if (!canvases || canvases.length === 0) return "";
+      let canvasMarkdown = "";
+      canvases.forEach((canvas) => {
+        if (!canvas.type) return;
+        const parts = canvas.type?.split("/");
+        let type = parts[0];
+        if (parts.length > 1) type = parts[1];
+        if (type.includes("react")) type = "typescript";
+
+        canvasMarkdown += `**${canvas.title}** (v${canvas.version})\n\n`;
+        canvasMarkdown += `\`\`\`${type || ""}\n${canvas.content}\n\`\`\`\n\n`;
+      });
+      return canvasMarkdown;
+    }
+
     try {
-      const conversationId = getConversationId();
-      if (!conversationId) {
-        alert("No conversation found.");
-        return;
-      }
-      const { fileContent: content } = await exportConversationToFileType(
-        conversationId,
-        filetype,
-        version
-      );
-      const filename = `ChatGPT-${title || conversationId}.${extension}`;
-      downloadFile(content, filename, filetype);
+      const { metaData, turnMapData, canvasMapData } = await getApiData();
+      const turns = Array.from(turnMapData, ([turnId, data]) => ({
+        turnId,
+        ...data,
+      }));
+
+      const header = [
+        `# ${metaData.title}`,
+        `Link: ${metaData.link}`,
+        `Created: ${metaData.create_time}`,
+        `Updated: ${metaData.update_time}`,
+        "",
+        "## Turns",
+      ].join("\n\n");
+
+      let markdown = header;
+      let jsonAPI = { ...metaData, turns: [] };
+      let jsonCopy = { ...metaData, turns: [] };
+
+      turns.forEach((turn, idx) => {
+        const {
+          turnId,
+          messages = [],
+          images = [],
+          canvases = [],
+          reasoning = [],
+        } = turn;
+
+        // Determine role
+        let turnRole = "user";
+        if (reasoning?.length || canvases?.length || images?.length) {
+          turnRole = "assistant";
+        } else if (messages.length > 0) {
+          turnRole = messages[0].role || "assistant";
+        }
+
+        // --- Markdown (collapsible reasoning, roles) ---
+        let mdTurn = "";
+        if (reasoning?.length) {
+          mdTurn += `<details>\n<summary>**Reasoning**</summary>\n\n${reasoning
+            .map((r) =>
+              r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n")
+            )
+            .join("\n")}\n</details>\n`;
+        }
+        if (messages?.length)
+          mdTurn +=
+            messages.map((m) => `- [${m.role}] ${m.text}`).join("\n") + "\n";
+        if (images?.length)
+          mdTurn +=
+            images.map((img) => `![${img.prompt}](${img.url})`).join("\n") +
+            "\n";
+        if (canvases?.length) mdTurn += formatCanvasContent(canvases);
+
+        markdown += `\n\n### Turn ${
+          idx + 1
+        } [${turnRole}] (${turnId})\n${mdTurn}`;
+
+        // --- JSON Full (with <think> tags, include role) ---
+        let mdFull = "";
+        if (reasoning?.length) {
+          mdFull += `<think>\n${reasoning
+            .map((r) =>
+              r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n")
+            )
+            .join("\n")}\n</think>\n`;
+        }
+        if (messages?.length)
+          mdFull += messages.map((m) => m.text).join("\n") + "\n";
+        if (images?.length)
+          mdFull +=
+            images.map((img) => `![${img.prompt}](${img.url})`).join("\n") +
+            "\n";
+        if (canvases?.length) mdFull += formatCanvasContent(canvases);
+
+        jsonAPI.turns.push({ role: turnRole, content: mdFull.trim() });
+
+        // --- JSON Copy (no reasoning, no roles) ---
+        let mdCopy = "";
+        if (messages?.length)
+          mdCopy += messages.map((m) => m.text).join("\n") + "\n";
+        if (images?.length)
+          mdCopy +=
+            images.map((img) => `![${img.prompt}](${img.url})`).join("\n") +
+            "\n";
+        if (canvases?.length) mdCopy += formatCanvasContent(canvases);
+        jsonCopy.turns.push({ id: turnId, content: mdCopy.trim() });
+      });
+
+      // Balance code fences
+      const fenceCount = (markdown.match(/```/g) || []).length;
+      if (fenceCount % 2 !== 0) markdown += "\n```";
+
+      return {
+        markdown,
+        jsonAPI,
+        jsonCopy,
+        turnMapData,
+        canvasMapData,
+        metaData,
+      };
     } catch (error) {
-      console.error("❌ [Export MD] Export failed:", error);
-      alert("Export failed. Check the console for details.");
+      console.error("❌ Export failed:", error);
+      throw error;
     }
   }
 
@@ -1266,20 +1193,35 @@
       dropdown.classList.remove("show");
     });
 
-    dropdown.querySelector("#export-md-item").addEventListener("click", () => {
-      exportCurrentConversation();
-      dropdown.classList.remove("show");
-    });
+    dropdown
+      .querySelector("#export-md-item")
+      .addEventListener("click", async () => {
+        const { markdown, metaData } = await convertExport();
+        if (markdown) {
+          downloadFile(markdown, `ChatGPT-${metaData.title}.md`, "markdown");
+        }
+        dropdown.classList.remove("show");
+      });
     dropdown
       .querySelector("#export-json-chat-item")
-      .addEventListener("click", () => {
-        exportCurrentConversation("json", "json");
+      .addEventListener("click", async () => {
+        const { jsonAPI, metaData } = await convertExport();
+        if (jsonAPI) {
+          downloadFile(JSON.stringify(jsonAPI, null, 2), `ChatGPT-${metaData.title}.md`, "markdown");
+        }
         dropdown.classList.remove("show");
       });
     dropdown
       .querySelector("#export-json-item")
-      .addEventListener("click", () => {
-        exportCurrentConversation("json", "json", 2);
+      .addEventListener("click", async() => {
+         const { turnMapData, metaData } = await convertExport();
+        if (turnMapData) {
+          downloadFile(
+            JSON.stringify(turnMapData, null, 2),
+            `ChatGPT-${metaData.title}.md`,
+            "markdown"
+          );
+        }
         dropdown.classList.remove("show");
       });
 

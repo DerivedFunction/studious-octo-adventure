@@ -436,148 +436,120 @@
       reasoningMapData,
     };
   }
-  async function exportConversationToAllVersions() {
-    function formatCanvasContent(canvases) {
-      if (!canvases || canvases.length === 0) return "";
-      let canvasMarkdown = "";
-      canvases.forEach((canvas) => {
-        if (!canvas.type) return;
-        const parts = canvas.type?.split("/");
-        let type = parts[0];
-        if (parts.length > 1) type = parts[1];
-        if (type.includes("react")) type = "typescript";
+async function convertExport() {
+  function formatCanvasContent(canvases) {
+    if (!canvases || canvases.length === 0) return "";
+    let canvasMarkdown = "";
+    canvases.forEach((canvas) => {
+      if (!canvas.type) return;
+      const parts = canvas.type?.split("/");
+      let type = parts[0];
+      if (parts.length > 1) type = parts[1];
+      if (type.includes("react")) type = "typescript";
 
-        canvasMarkdown += `**${canvas.title}** (v${canvas.version})\n\n`;
-        canvasMarkdown += `\`\`\`${type || ""}\n${canvas.content}\n\`\`\`\n\n`;
-      });
-      return canvasMarkdown;
-    }
-
-    try {
-      const { metaData, turnMapData } = await getApiData();
-      const turns = Array.from(turnMapData, ([turnId, data]) => ({
-        turnId,
-        ...data,
-      }));
-
-      // Markdown headers
-      const markdownHeader = [
-        `# ${metaData.title}`,
-        `Link: ${metaData.link}`,
-        `Created: ${metaData.create_time}`,
-        `Updated: ${metaData.update_time}`,
-        "",
-        "## Turns",
-      ].join("\n\n");
-
-      let markdownV1 = markdownHeader;
-      let markdownV2 = markdownHeader;
-
-      const jsonFull = { ...metaData, turns: [] };
-      const jsonCopySafe = { ...metaData, turns: [] };
-
-      turns.forEach((turn, idx) => {
-        const {
-          turnId,
-          messages = [],
-          images = [],
-          canvases = [],
-          reasoning = [],
-        } = turn;
-
-        // Determine role
-        let turnRole = "user";
-        if (reasoning?.length || canvases?.length || images?.length) {
-          turnRole = "assistant";
-        } else if (messages.length > 0) {
-          turnRole = messages[0].role || "user";
-        }
-
-        // === Markdown Version 1 (no reasoning) ===
-        let turnMarkdownV1 = "";
-        if (messages?.length) {
-          turnMarkdownV1 +=
-            messages.map((m) => `- [${m.role}] ${m.text}`).join("\n") + "\n";
-        }
-        if (images?.length) {
-          turnMarkdownV1 +=
-            images.map((img) => `![${img.prompt}](${img.url})`).join("\n") +
-            "\n";
-        }
-        if (canvases?.length) {
-          turnMarkdownV1 += formatCanvasContent(canvases);
-        }
-        markdownV1 += `\n\n### Turn ${
-          idx + 1
-        } [${turnRole}] (${turnId})\n${turnMarkdownV1}`;
-
-        // === Markdown Version 2 (with <think>) ===
-        let turnMarkdownV2 = "";
-        if (reasoning?.length) {
-          turnMarkdownV2 += `<think>\n${reasoning
-            .map((r) =>
-              r.thoughts
-                .map(
-                  (thought) => `*${thought.summary}*\n\n${thought.content}\n`
-                )
-                .join("\n")
-            )
-            .join("\n")}\n</think>\n`;
-        }
-        if (messages?.length) {
-          turnMarkdownV2 +=
-            messages.map((m) => `- [${m.role}] ${m.text}`).join("\n") + "\n";
-        }
-        if (images?.length) {
-          turnMarkdownV2 +=
-            images.map((img) => `![${img.prompt}](${img.url})`).join("\n") +
-            "\n";
-        }
-        if (canvases?.length) {
-          turnMarkdownV2 += formatCanvasContent(canvases);
-        }
-        markdownV2 += `\n\n### Turn ${
-          idx + 1
-        } [${turnRole}] (${turnId})\n${turnMarkdownV2}`;
-
-        // === JSON Full (no role markers, keep <think>) ===
-        let turnMarkdownFull = turnMarkdownV2
-          .replace(/^- \[[^\]]+\]\s*/gm, "")
-          .trim();
-        jsonFull.turns.push({
-          role: turnRole,
-          content: turnMarkdownFull,
-        });
-
-        // === JSON Copy-Safe (no reasoning, no role markers) ===
-        let turnMarkdownCopySafe = turnMarkdownV2
-          .replace(/<think>[\s\S]*?<\/think>/g, "") // remove reasoning
-          .replace(/^- \[[^\]]+\]\s*/gm, "") // remove role markers
-          .trim();
-        jsonCopySafe.turns.push({
-          id: turnId,
-          role: turnRole,
-          content: turnMarkdownCopySafe,
-        });
-      });
-
-      // Balance code fences
-      [markdownV1, markdownV2].forEach((md, i, arr) => {
-        const fenceCount = (md.match(/```/g) || []).length;
-        if (fenceCount % 2 !== 0) arr[i] += "\n```";
-      });
-
-      return {
-        markdownV1,
-        markdownV2,
-        jsonFull,
-        jsonCopySafe,
-      };
-    } catch (error) {
-      console.error("❌ [Export All] Export failed:", error);
-      throw error;
-    }
+      canvasMarkdown += `**${canvas.title}** (v${canvas.version})\n\n`;
+      canvasMarkdown += `\`\`\`${type || ""}\n${canvas.content}\n\`\`\`\n\n`;
+    });
+    return canvasMarkdown;
   }
 
-  console.log(await exportConversationToAllVersions());
+  try {
+    const { metaData, turnMapData } = await getApiData();
+    const turns = Array.from(turnMapData, ([turnId, data]) => ({
+      turnId,
+      ...data,
+    }));
+
+    const header = [
+      `# ${metaData.title}`,
+      `Link: ${metaData.link}`,
+      `Created: ${metaData.create_time}`,
+      `Updated: ${metaData.update_time}`,
+      "",
+      "## Turns",
+    ].join("\n\n");
+
+    let markdown = header;
+    let jsonAPI = { ...metaData, turns: [] };
+    let jsonCopy = { ...metaData, turns: [] };
+    
+    turns.forEach((turn, idx) => {
+      const {
+        turnId,
+        messages = [],
+        images = [],
+        canvases = [],
+        reasoning = [],
+      } = turn;
+
+      // Determine role
+      let turnRole = "user";
+      if (reasoning?.length || canvases?.length || images?.length) {
+        turnRole = "assistant";
+      } else if (messages.length > 0) {
+        turnRole = messages[0].role || "assistant";
+      }
+
+      // --- Markdown (collapsible reasoning, roles) ---
+      let mdTurn = "";
+      if (reasoning?.length) {
+        mdTurn += `<details>\n<summary>**Reasoning**</summary>\n\n${reasoning
+          .map((r) =>
+            r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n")
+          )
+          .join("\n")}\n</details>\n`;
+      }
+      if (messages?.length)
+        mdTurn +=
+          messages.map((m) => `- [${m.role}] ${m.text}`).join("\n") + "\n";
+      if (images?.length)
+        mdTurn +=
+          images.map((img) => `![${img.prompt}](${img.url})`).join("\n") + "\n";
+      if (canvases?.length) mdTurn += formatCanvasContent(canvases);
+
+      markdown += `\n\n### Turn ${
+        idx + 1
+      } [${turnRole}] (${turnId})\n${mdTurn}`;
+
+      // --- JSON Full (with <think> tags, include role) ---
+      let mdFull = "";
+      if (reasoning?.length) {
+        mdFull += `<think>\n${reasoning
+          .map((r) =>
+            r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n")
+          )
+          .join("\n")}\n</think>\n`;
+      }
+      if (messages?.length)
+        mdFull += messages.map((m) => m.text).join("\n") + "\n";
+      if (images?.length)
+        mdFull +=
+          images.map((img) => `![${img.prompt}](${img.url})`).join("\n") + "\n";
+      if (canvases?.length) mdFull += formatCanvasContent(canvases);
+
+      jsonAPI.turns.push({ role: turnRole, content: mdFull.trim() });
+
+      // --- JSON Copy (no reasoning, no roles) ---
+      let mdCopy = "";
+      if (messages?.length)
+        mdCopy += messages.map((m) => m.text).join("\n") + "\n";
+      if (images?.length)
+        mdCopy +=
+          images.map((img) => `![${img.prompt}](${img.url})`).join("\n") + "\n";
+      if (canvases?.length) mdCopy += formatCanvasContent(canvases);
+      jsonCopy.turns.push({ id: turnId, content: mdCopy.trim() });
+    });
+
+    // Balance code fences
+    const fenceCount = (markdown.match(/```/g) || []).length;
+    if (fenceCount % 2 !== 0) markdown += "\n```";
+
+    return { markdown, jsonAPI, jsonCopy, turnMapData };
+  } catch (error) {
+    console.error("❌ Export failed:", error);
+    throw error;
+  }
+}
+
+  console.log(await convertExport());
 })();
