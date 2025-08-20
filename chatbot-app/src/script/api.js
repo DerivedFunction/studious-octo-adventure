@@ -1,4 +1,4 @@
-window.ChatGPTDataExport = (() => {
+window.ChatGPT = (() => {
   let accessToken = null;
   /**
    * Fetches the public download URL for a given file ID.

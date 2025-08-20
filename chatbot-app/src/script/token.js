@@ -43,9 +43,10 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   let db; // To hold the database instance
   let apiData = null;
   const DB_NAME = "TokenManagerCacheDB";
-  const DB_VERSION = 1;
-  // new store name to not interfere
-  const STORE_NAME = "conversationApiCache";
+  const DB_VERSION = 3; // << UPDATED DB Version
+  const API_STORE_NAME = "conversationApiCache";
+  const CHECKED_ITEMS_STORE_NAME = "checkedItemsCache"; // << NEW STORE for checked items
+
   /**
    * Opens and initializes the IndexedDB for caching.
    * @returns {Promise<IDBDatabase>} The database instance.
@@ -61,50 +62,77 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       };
       request.onupgradeneeded = (e) => {
         const dbInstance = e.target.result;
-        if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
-          dbInstance.createObjectStore(STORE_NAME, { keyPath: "id" });
+        // Create store for API data if it doesn't exist
+        if (!dbInstance.objectStoreNames.contains(API_STORE_NAME)) {
+          dbInstance.createObjectStore(API_STORE_NAME, { keyPath: "id" });
+        }
+        // Create store for checked items if it doesn't exist
+        if (!dbInstance.objectStoreNames.contains(CHECKED_ITEMS_STORE_NAME)) {
+          dbInstance.createObjectStore(CHECKED_ITEMS_STORE_NAME, {
+            keyPath: "id",
+          });
         }
       };
     });
   }
-  /**
-   * Retrieves an item from the IndexedDB cache.
-   * @param {string} id The conversation ID (key).
-   * @returns {Promise<object|null>} The cached data object or null.
-   */
 
+  // --- IndexedDB Helper Functions for API Cache ---
   async function getCacheFromDB(id) {
     const db = await openDB();
     return new Promise((resolve) => {
-      const transaction = db.transaction(STORE_NAME, "readonly");
-      const store = transaction.objectStore(STORE_NAME);
+      const transaction = db.transaction(API_STORE_NAME, "readonly");
+      const store = transaction.objectStore(API_STORE_NAME);
       const request = store.get(id);
       request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => resolve(null); // Resolve with null on error
+      request.onerror = () => resolve(null);
     });
   }
-  /**
-   * Stores an item in the IndexedDB cache with a timestamp.
-   * @param {string} id The conversation ID (key).
-   * @param {object} data The data to cache.
-   */
 
   async function setCacheInDB(id, data) {
     const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction(API_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(API_STORE_NAME);
     store.put({ id, data, timestamp: Date.now() });
   }
-  /**
-   * Deletes an item from the IndexedDB cache.
-   * @param {string} id The conversation ID (key).
-   */
 
   async function deleteCacheFromDB(id) {
     const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction(API_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(API_STORE_NAME);
     store.delete(id);
+  }
+
+  // --- IndexedDB Helper Functions for Checked Items Cache ---
+  /**
+   * Retrieves the set of checked items for a conversation from IndexedDB.
+   * @param {string} id The conversation ID.
+   * @returns {Promise<Set<string>>} A promise that resolves with the set of checked item IDs.
+   */
+  async function getCheckedItemsFromDB(id) {
+    const db = await openDB();
+    return new Promise((resolve) => {
+      const transaction = db.transaction(CHECKED_ITEMS_STORE_NAME, "readonly");
+      const store = transaction.objectStore(CHECKED_ITEMS_STORE_NAME);
+      const request = store.get(id);
+      request.onsuccess = () => {
+        // Return a new Set from the stored array, or an empty set if not found
+        resolve(new Set(request.result?.checkedItems || []));
+      };
+      request.onerror = () => resolve(new Set()); // Resolve with an empty set on error
+    });
+  }
+
+  /**
+   * Stores the set of checked items for a conversation in IndexedDB.
+   * @param {string} id The conversation ID.
+   * @param {Set<string>} checkedItems The set of checked item IDs to store.
+   */
+  async function setCheckedItemsInDB(id, checkedItems) {
+    const db = await openDB();
+    const transaction = db.transaction(CHECKED_ITEMS_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(CHECKED_ITEMS_STORE_NAME);
+    // Convert Set to an Array for storage
+    store.put({ id, checkedItems: Array.from(checkedItems) });
   }
 
   // --- UI & TOKEN CALCULATION LOGIC (Ported & Refactored) ---
@@ -286,7 +314,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
     [...apiData.canvasMapData.entries()].forEach(([messageId, canvases]) => {
       canvases.forEach((canvas) => {
-        const itemId = `canvas-${canvas.textdoc_id}`;
+        const itemId = `textdoc-${canvas.textdoc_id}-(v${canvas.version})`;
         if (checkedItems.has(itemId)) {
           const canvasTokens = enc.encode(canvas.content || "").length;
           maxPossibleTokens += canvasTokens;
@@ -607,7 +635,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     const filesFragment = document.createDocumentFragment();
     [...apiData.fileMapData.entries()].forEach(([messageId, files]) => {
       files.forEach((f, index) => {
-        const id = `file-${messageId}-${index}`;
+        const id = `file-${f.id}-(${index})`;
         const itemDiv = document.createElement("div");
         itemDiv.className = "token-item";
         const tokens = f.file_token_size || 0;
@@ -682,15 +710,20 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         await chrome.storage.local.set({
           [`memory_enabled_${conversationId}`]: e.target.checked,
         });
+        // Re-run check when memory is toggled
+        runTokenCheck();
       } else {
-        const currentChecked = Array.from(
-          popupDiv.querySelectorAll(
-            'input[type="checkbox"]:not(#toggle-memory):checked'
-          )
-        ).map((cb) => cb.id);
-        await chrome.storage.local.set({
-          [`checked_items_${conversationId}`]: currentChecked,
-        });
+        const currentChecked = new Set(
+          Array.from(
+            popupDiv.querySelectorAll(
+              'input[type="checkbox"]:not(#toggle-memory):checked'
+            )
+          ).map((cb) => cb.id)
+        );
+        // Save to IndexedDB instead of chrome.storage
+        await setCheckedItemsInDB(conversationId, currentChecked);
+        // Re-run check when an item is checked/unchecked
+        runTokenCheck();
       }
     });
 
@@ -740,13 +773,12 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       return;
     }
 
-    const storageKey = `checked_items_${conversationId}`;
+    // Get checked items from IndexedDB instead of chrome.storage
+    const checkedItems = await getCheckedItemsFromDB(conversationId);
+
     const memoryStorageKey = `memory_enabled_${conversationId}`;
-    const {
-      [storageKey]: checkedItemsRaw = [],
-      [memoryStorageKey]: isMemoryEnabled = true,
-    } = await chrome.storage.local.get([storageKey, memoryStorageKey]);
-    const checkedItems = new Set(checkedItemsRaw);
+    const { [memoryStorageKey]: isMemoryEnabled = true } =
+      await chrome.storage.local.get([memoryStorageKey]);
 
     const promptBox = document.querySelector("[contenteditable='true']");
     const promptText = promptBox ? promptBox.textContent || "" : "";
@@ -839,14 +871,14 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== "local") return;
     const conversationId = ChatGPT.getConversationId();
-    const checkedItemsKey = `checked_items_${conversationId}`;
     const memoryKey = `memory_enabled_${conversationId}`;
 
+    // Removed the check for checked_items, as it's handled via direct DB interaction
     if (
       changes.isScriptingEnabled ||
       changes.globalSystemPrompt ||
       changes.contextWindow ||
-      (conversationId && (changes[checkedItemsKey] || changes[memoryKey]))
+      (conversationId && changes[memoryKey])
     ) {
       runTokenCheck();
     }
@@ -864,7 +896,6 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       );
       runTokenCheck();
     } else {
-      // Simplified mutation check to avoid skipping UI updates
       debouncedRunTokenCheck();
     }
   });

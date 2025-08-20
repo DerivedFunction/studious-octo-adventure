@@ -17,11 +17,12 @@ export default defineConfig({
         history: resolve(__dirname, "src/script/history.js"), // your separate file
         label: resolve(__dirname, "src/script/label.js"), // your separate file
         export: resolve(__dirname, "src/script/export.js"), // your separate file
+        api: resolve(__dirname, "src/script/api.js"),
       },
       output: {
         entryFileNames: (assetInfo) => {
           if (
-            ["theme", "token", "history", "label", "export"].find(
+            ["theme", "token", "history", "label", "export", "api"].find(
               (e) => e === assetInfo.name
             )
           ) {
