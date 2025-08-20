@@ -419,13 +419,13 @@
     }
 
     const metaData = getMetaData();
+    console.log(Array.from(canvasMapData, ([turnId, canvases]) => [
+      turnId, canvases
+    ]));
     console.log({
-      metaData,
-      turnMapData,
-      messageMapData,
-      imageMapData,
+      
       canvasMapData,
-      reasoningMapData,
+
     });
     return {
       metaData,
