@@ -148,7 +148,7 @@
 
       // 3b. Set 'data-copy-content' attribute for entire messages to enable copying.
       area.querySelectorAll("[data-message-id]").forEach((message) => {
-        const id = message.getAttribute("data-message-id");
+        const id = message.closest("article").getAttribute("data-turn-id");
         const buttonArray = message.parentElement.nextElementSibling;
         const copyBtn = buttonArray?.querySelector(
           "[data-testid='copy-turn-action-button']"
@@ -198,7 +198,7 @@
           const articleContent = area.querySelector(
             `article[data-turn-id='${turnId}'] div.w-full`
           );
-          if (articleContent) articleContent.appendChild(codeEl);
+          if (articleContent) articleContent.insertBefore(codeEl, articleContent.firstChild);
         });
       }
 
@@ -575,6 +575,7 @@
     const messageMapData = new Map();
     const visibleMessageIds = [];
     processAllMessages();
+    // TODO: Fix citations to this format for copy ([CBS News][3])
     function processAllMessages() {
       document.querySelectorAll("[data-message-id]").forEach((e) => {
         const turnId = e.closest("article")?.getAttribute("data-turn-id");
@@ -931,7 +932,7 @@
         if (parts.length > 1) type = parts[1];
         if (type.includes("react")) type = "typescript";
 
-        canvasMarkdown += `**${canvas.title}** (v${canvas.version})\n\n`;
+        canvasMarkdown += `\n\n**${canvas.title}** (v${canvas.version})\n\n`;
         canvasMarkdown += `\`\`\`${type || ""}\n${canvas.content}\n\`\`\`\n\n`;
       });
       return canvasMarkdown;
@@ -945,12 +946,11 @@
       }));
 
       const header = [
-        `# ${metaData.title}`,
-        `Link: ${metaData.link}`,
-        `Created: ${metaData.create_time}`,
-        `Updated: ${metaData.update_time}`,
+        `# **${metaData.title}**`,
+        `**Link:** ${metaData.link}`,
+        `**Created:** ${metaData.create_time}`,
+        `**Updated:** ${metaData.update_time}`,
         "",
-        "## Turns",
       ].join("\n\n");
 
       let markdown = header;
@@ -977,9 +977,9 @@
         // --- Markdown (collapsible reasoning, roles) ---
         let mdTurn = "";
         if (reasoning?.length) {
-          mdTurn += `<details>\n<summary>**Reasoning**</summary>\n\n${reasoning
+          mdTurn += `<details>\n<summary>View Reasoning</summary>\n\n${reasoning
             .map((r) =>
-              r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n")
+              r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n\n")
             )
             .join("\n")}\n</details>\n`;
         }
@@ -999,7 +999,7 @@
         if (reasoning?.length) {
           mdFull += `<think>\n${reasoning
             .map((r) =>
-              r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n")
+              r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n\n")
             )
             .join("\n")}\n</think>\n`;
         }
@@ -1013,15 +1013,10 @@
 
         jsonAPI.turns.push({ role: turnRole, content: mdFull.trim() });
 
-        // --- JSON Copy (no reasoning, no roles) ---
+        // --- JSON Copy (no reasoning, no roles, no canvas, no images) ---
         let mdCopy = "";
         if (messages?.length)
           mdCopy += messages.map((m) => m.text).join("\n") + "\n";
-        if (images?.length)
-          mdCopy +=
-            images.map((img) => `![${img.prompt}](${img.url})`).join("\n") +
-            "\n";
-        if (canvases?.length) mdCopy += formatCanvasContent(canvases);
         jsonCopy.turns.push({ id: turnId, content: mdCopy.trim() });
       });
 
@@ -1029,11 +1024,12 @@
       const fenceCount = (markdown.match(/```/g) || []).length;
       if (fenceCount % 2 !== 0) markdown += "\n```";
 
+      const jsonData = { ...metaData, messages: turns}
       return {
         markdown,
         jsonAPI,
         jsonCopy,
-        turnMapData,
+        jsonData,
         canvasMapData,
         metaData,
       };
@@ -1198,6 +1194,7 @@
       .addEventListener("click", async () => {
         const { markdown, metaData } = await convertExport();
         if (markdown) {
+          console.log("Markdown:", markdown, metaData)
           downloadFile(markdown, `ChatGPT-${metaData.title}.md`, "markdown");
         }
         dropdown.classList.remove("show");
@@ -1205,12 +1202,12 @@
     dropdown
       .querySelector("#export-json-chat-item")
       .addEventListener("click", async () => {
-        const { jsonAPI, metaData } = await convertExport();
-        if (jsonAPI) {
+        const { turns, metaData } = await convertExport();
+        if (turns) {
           downloadFile(
-            JSON.stringify(jsonAPI, null, 2),
-            `ChatGPT-${metaData.title}.md`,
-            "markdown"
+            JSON.stringify(turns, null, 2),
+            `ChatGPT-Output-${metaData.title}.json`,
+            "json"
           );
         }
         dropdown.classList.remove("show");
@@ -1218,12 +1215,12 @@
     dropdown
       .querySelector("#export-json-item")
       .addEventListener("click", async () => {
-        const { turnMapData, metaData } = await convertExport();
-        if (turnMapData) {
+        const { jsonAPI, metaData } = await convertExport();
+        if (jsonAPI) {
           downloadFile(
-            JSON.stringify(turnMapData, null, 2),
-            `ChatGPT-${metaData.title}.md`,
-            "markdown"
+            JSON.stringify(jsonAPI, null, 2),
+            `ChatGPT-Input-${metaData.title}.json`,
+            "json"
           );
         }
         dropdown.classList.remove("show");
