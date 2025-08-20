@@ -590,11 +590,18 @@
       // Correctly find all message ids that are visually visible on the webpage
       const visibleMessageIds = [];
       const visibleCanvasIds = [];
-      document.querySelectorAll("article [data-message-id]").forEach((e) => {
-        visibleMessageIds.push(e.getAttribute("data-message-id"));
+      const visibleImageIds = [];
+      document.querySelectorAll("article[data-turn-id]").forEach((e) => {
+        visibleMessageIds.push(e.getAttribute("data-turn-id"));
       });
       document.querySelectorAll(".popover").forEach((e) => {
         visibleCanvasIds.push(e.id.replace("textdoc-message-", ""));
+      });
+      document.querySelectorAll("article div[id^='image-']").forEach((e) => {
+        visibleImageIds.push({
+          id: e.getAttribute("id").replace("image-", ""),
+          messageId: e.closest("article").getAttribute("data-turn-id"),
+        });
       });
 
       // Pass 1: Collect all canvas operations
@@ -757,6 +764,34 @@
           }
         }
       }
+
+      const imageDataMap = new Map();
+      if (conversationApiData.mapping) {
+        visibleImageIds.forEach(async (image) => {
+          const id = image.id;
+          const messageId = image.messageId;
+          const node = conversationApiData.mapping[id];
+          const message = node?.message;
+          const content = message?.content;
+          const image_gen_title = message?.metadata?.image_gen_title;
+          const fileId = content?.parts?.asset_pointer.replace(
+            "sediment://",
+            ""
+          );
+          const downloadURL = await getImageDownloadUrl(fileId, messageId);
+          const imageData = {
+            url: downloadURL,
+            messageId: messageId,
+            prompt: image_gen_title,
+          };
+          if (!imageDataMap.has(messageId)) {
+            imageDataMap.set(messageId, [imageData]);
+          } else {
+            imageDataMap.get(messageId).push(imageData);
+          }
+        });
+      }
+
       let fileContent = ""; // Add conversation metadata
       let jsonMetaData = {};
       if (conversationApiData.title) {
@@ -811,8 +846,9 @@
       }
 
       const processedMessages = new Set();
-      const imageDataMap = new Map();
+
       let messageData = [];
+
       async function processMessage(messageId) {
         if (!messageId || processedMessages.has(messageId)) return;
 
@@ -925,77 +961,32 @@
           }
         }
         // Handle multimodal messages (e.g., images) from the tool role
-        if (author === "tool" && contentType === "multimodal_text") {
+        const imageData = imageDataMap.get(messageId);
+        if (imageData) {
           let markdownContent = "";
           let jsonParts = [];
-
-          for (const part of message.content.parts) {
-            if (
-              part.content_type === "image_asset_pointer" &&
-              part.asset_pointer
-            ) {
-              const fileId = part.asset_pointer.replace("sediment://", "");
-              const conversationId = getConversationId();
-
-              // Find the image prompt by traversing up the conversation tree
-              let prompt = "Image"; // Default prompt
-              try {
-                const parentNode = conversationApiData.mapping[node.parent];
-                const grandparentNode = parentNode
-                  ? conversationApiData.mapping[parentNode.parent]
-                  : null;
-                if (
-                  grandparentNode &&
-                  grandparentNode.message?.content?.content_type === "code"
-                ) {
-                  const promptData = JSON.parse(
-                    grandparentNode.message.content.text
-                  );
-                  prompt = promptData.prompt || "Image";
-                }
-              } catch (e) {
-                console.warn("Could not parse image prompt, using default.", e);
-              }
-
-              const downloadUrl = await getImageDownloadUrl(
-                fileId,
-                conversationId
-              );
-
-              if (downloadUrl) {
-                switch (filetype) {
-                  case "json":
-                    jsonParts.push([
-                      {
-                        content_type: "output_image",
-                        url: downloadUrl,
-                      },
-                      {
-                        content_type: "output_text",
-                        text: prompt,
-                      },
-                    ]);
-                    break;
-                  case "markdown":
-                  default:
-                    markdownContent += `![${prompt}](${downloadUrl})\n\n**Prompt:** *${prompt}*\n\n`;
-                    break;
-                }
-                const imageData = {
-                  url: downloadUrl,
-                  messageId: messageId,
-                  prompt: prompt,
-                };
-
-                if (!imageDataMap.has(messageId)) {
-                  imageDataMap.set(messageId, [imageData]);
-                } else {
-                  imageDataMap.get(messageId).push(imageData);
-                }
-              }
+          imageData.forEach((image) => {
+            const url = image.url;
+            const prompt = image.prompt;
+            switch (filetype) {
+              case "json":
+                jsonParts.push([
+                  {
+                    content_type: "output_image",
+                    url: url,
+                  },
+                  {
+                    content_type: "output_text",
+                    text: prompt,
+                  },
+                ]);
+                break;
+              case "markdown":
+              default:
+                markdownContent += `![${prompt}](${url})\n\n**Title:** *${prompt}*\n\n`;
+                break;
             }
-          }
-
+          });
           // Add the processed content to the final output
           if (filetype === "json" && jsonParts.length > 0) {
             messageData.push({
