@@ -33,7 +33,7 @@ window.ChatGPTDataExport = (() => {
       return data.download_url;
     } catch (error) {
       console.error(
-        "❌ [Export Script] Failed to get image download URL:",
+        "❌ [API Manager] Failed to get image download URL:",
         error
       );
       return null;
@@ -53,10 +53,7 @@ window.ChatGPTDataExport = (() => {
       accessToken = session.accessToken;
       return accessToken;
     } catch (error) {
-      console.error(
-        "❌ [Export Script] Could not retrieve access token:",
-        error
-      );
+      console.error("❌ [API Manager] Could not retrieve access token:", error);
       accessToken = null;
       return null;
     }
@@ -70,12 +67,14 @@ window.ChatGPTDataExport = (() => {
     conversationId = window.location.pathname.split("/")[2];
     return conversationId;
   }
+  let apiData = null;
   async function getApiData() {
+    apiData = null;
     const signal = AbortController ? new AbortController().signal : undefined;
     await getAccessToken();
     getConversationId();
     if (!accessToken) throw new Error("Access token not available.");
-
+    console.log("[API Manager] Fetching API data.");
     const response = await fetch(
       `https://chatgpt.com/backend-api/conversation/${conversationId}`,
       {
@@ -164,11 +163,7 @@ window.ChatGPTDataExport = (() => {
             text,
             references,
           };
-          if (!messageMapData.has(turnId)) {
-            messageMapData.set(turnId, [messageData]);
-          } else {
-            messageMapData.get(turnId).push(messageData);
-          }
+          pushMapData(turnId, messageMapData, messageData);
         } catch (e) {
           console.error("❌ [Export MD] Error processing message data:", e);
         }
@@ -222,11 +217,7 @@ window.ChatGPTDataExport = (() => {
               imageId: turnId,
               prompt: image_gen_title,
             };
-            if (!imageMapData.has(turnId)) {
-              imageMapData.set(turnId, [imageData]);
-            } else {
-              imageMapData.get(turnId).push(imageData);
-            }
+            pushMapData(turnId, imageMapData, imageData);
           } catch (e) {
             console.error("❌ [Export MD] Error processing image data:", e);
           }
@@ -347,11 +338,7 @@ window.ChatGPTDataExport = (() => {
                 type: textdoc_type,
               };
               let turnId = getTurnId(messageId);
-              if (!canvasMapData.has(turnId)) {
-                canvasMapData.set(turnId, [canvasData]);
-              } else {
-                canvasMapData.get(turnId).push(canvasData);
-              }
+              pushMapData(turnId, canvasMapData, canvasData);
             }
           } catch (e) {
             console.error("❌ [Export MD] Error processing canvas data:", e);
@@ -397,11 +384,7 @@ window.ChatGPTDataExport = (() => {
                     messageId: attachToMessageId,
                     thoughts: thoughts,
                   };
-                  if (!reasoningMapData.has(turnID)) {
-                    reasoningMapData.set(turnID, [reasonData]);
-                  } else {
-                    reasoningMapData.get(turnID).push(reasonData);
-                  }
+                  pushMapData(turnID, reasoningMapData, reasonData);
                 }
               }
             } catch (e) {
@@ -434,6 +417,119 @@ window.ChatGPTDataExport = (() => {
       });
     }
 
+    let userProfile = {};
+    processUserProfile();
+    function processUserProfile() {
+      for (const turnId in conversationApiData.mapping) {
+        try {
+          const node = conversationApiData.mapping[turnId];
+          const message = node?.message;
+          const content = message?.content;
+          if (!content) continue;
+          const { content_type, user_profile, user_instructions } = content;
+          if (content_type === "user_editable_context") {
+            userProfile = { user_profile, user_instructions };
+            break;
+          }
+        } catch (e) {
+          console.error("[API Mananger] Error processing user data", e);
+        }
+      }
+    }
+
+    const toolMapData = new Map();
+    processToolData();
+    function processToolData() {
+      for (const turnId in conversationApiData.mapping) {
+        try {
+          const node = conversationApiData.mapping[turnId];
+          const message = node?.message;
+          if (!message) continue;
+          const { content, author, metadata } = message;
+          const { content_type, parts, text, language } = content;
+          if (author?.role === "tool" && content_type === "text" && parts) {
+            // skip failure textdoc creation or updates
+            if (
+              metadata?.canvas?.is_failure ||
+              author?.name === "canmore.update_textdoc" ||
+              metadata?.ui_card_title === "Processing image"
+            )
+              continue;
+            const toolData = {
+              instruction: parts,
+            };
+            pushMapData(turnId, toolMapData, toolData);
+          }
+          // extracting prompt used to generate image
+          if (
+            author?.role === "assistant" &&
+            text &&
+            content_type === "code" &&
+            language === "json"
+          ) {
+            const json = JSON.parse(text) || {};
+            const prompt = json?.prompt;
+            if (!prompt) continue;
+            const toolData = {
+              instruction: prompt,
+            };
+            pushMapData(turnId, toolMapData, toolData);
+          }
+        } catch (e) {
+          console.error("[API Mananger] Error processing tool data", e);
+        }
+      }
+    }
+
+    const fileMapData = new Map();
+    processFileData();
+    function processFileData() {
+      for (const turnId in conversationApiData.mapping) {
+        try {
+          const node = conversationApiData.mapping[turnId];
+          const message = node?.message;
+          if (!message) continue;
+          const { metadata } = message;
+          const attachments = metadata?.attachments;
+          if (!attachments) continue;
+          attachments.forEach((attachment) => {
+            try {
+              const { id, name, file_token_size, mime_type, size } = attachment;
+              const fileData = {
+                id,
+                name,
+                mime_type,
+                file_token_size,
+                size,
+              };
+              pushMapData(turnId, fileMapData, fileData);
+            } catch (e) {
+              console.error(
+                "[API Mananger] Error processing attachment data",
+                e
+              );
+            }
+          });
+        } catch (e) {
+          console.error("[API Mananger] Error processing file data", e);
+        }
+      }
+    }
+
+    /**
+     * Pushes data to an array for turnID
+     * @param {*} turnId
+     * @param {*} MapData map to search
+     * @param {*} object object to push
+     */
+    function pushMapData(turnId, MapData, object) {
+      if (!MapData.get(turnId)) {
+        MapData.set(turnId, [object]);
+      } else {
+        MapData.get(turnId).push(object);
+      }
+    }
+
     function getMetaData() {
       /**
        * Formats timestamp to readable string.
@@ -453,17 +549,23 @@ window.ChatGPTDataExport = (() => {
       jsonMetaData.link = `https://chatgpt.com/c/${conversationId}`;
       return jsonMetaData;
     }
-
+    await getUserMemory();
     const metaData = getMetaData();
-    return {
+    apiData = {
       metaData,
+      userProfile,
+      userMemory,
       turnMapData,
+      toolMapData,
       messageMapData,
       imageMapData,
       canvasMapData,
       reasoningMapData,
+      fileMapData,
     };
+    return apiData;
   }
+  let exportData;
   async function convertExport() {
     function formatCanvasContent(canvases) {
       if (!canvases || canvases.length === 0) return "";
@@ -611,7 +713,7 @@ window.ChatGPTDataExport = (() => {
         if (fenceCount % 2 !== 0) markdown += "\n```";
       });
       const jsonData = { ...metaData, messages: turns };
-      return {
+      exportData = {
         markdown,
         jsonAPI,
         jsonCopy,
@@ -619,21 +721,82 @@ window.ChatGPTDataExport = (() => {
         canvasMapData,
         metaData,
       };
+      return exportData;
     } catch (error) {
       console.error("❌ Export failed:", error);
       throw error;
     }
   }
+
+  let userMemory = {
+    memoryTokens: 0,
+    memories: [],
+  };
+  async function getUserMemory() {
+    console.log("🧠 [API Manager] Fetching memory...");
+    try {
+      await getAccessToken();
+      if (!accessToken)
+        throw new Error("Access token not available for memory fetch.");
+
+      const response = await fetch(
+        "https://chatgpt.com/backend-api/memories?include_memory_entries=true",
+        {
+          headers: {
+            accept: "*/*",
+            authorization: `Bearer ${accessToken}`,
+          },
+          method: "GET",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Memory API request failed with status: ${response.status}`
+        );
+      }
+
+      const data = await response.json();
+      const memoryTokens = data?.memory_num_tokens || 0;
+      const memories = data?.memories;
+      userMemory = {
+        memoryTokens,
+        memories,
+      };
+    } catch (error) {
+      console.error(
+        "❌ [API Manager] Could not retrieve memory tokens:",
+        error
+      );
+      userMemory = {
+        memoryTokens: 0,
+        memories: [],
+      }; // Return 0 on failure to avoid breaking the main flow
+    }
+    return userMemory;
+  }
+
   return {
     getApiData,
     convertExport,
     getAccessToken,
     getImageDownloadUrl,
+    getConversationId,
+    getUserMemory,
+    get userMemory() {
+      return userMemory;
+    },
     get accessToken() {
       return accessToken;
     },
     get conversationId() {
       return conversationId;
+    },
+    get apiData() {
+      return apiData;
+    },
+    get exportData() {
+      return exportData;
     },
   };
 })();
