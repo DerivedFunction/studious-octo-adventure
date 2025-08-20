@@ -1279,10 +1279,10 @@
     dropdown
       .querySelector("#export-json-chat-item")
       .addEventListener("click", async () => {
-        const { turns, metaData } = await convertExport();
-        if (turns) {
+        const { jsonData, metaData } = await convertExport();
+        if (jsonData) {
           downloadFile(
-            JSON.stringify(turns, null, 2),
+            JSON.stringify(jsonData, null, 2),
             `ChatGPT-Output-${metaData.title}.json`,
             "json"
           );
