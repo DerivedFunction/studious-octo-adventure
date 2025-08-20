@@ -130,7 +130,8 @@
       const conversationTitle = jsonCopy.title;
       const data = Array.from(jsonCopy.turns); // An array [] of {id, content}
       const canvasDataMap = Array.from(canvasMapData, ([turnId, canvases]) => [
-        turnId, canvases
+        turnId,
+        canvases,
       ]);
       // --- SHARED DOM MANIPULATION ON THE CLONED AREA ---
       // 3a. Set attributes on reasoning buttons for offline interactivity or styling.
@@ -198,7 +199,8 @@
           const articleContent = area.querySelector(
             `article[data-turn-id='${turnId}'] div.w-full`
           );
-          if (articleContent) articleContent.insertBefore(codeEl, articleContent.firstChild);
+          if (articleContent)
+            articleContent.insertBefore(codeEl, articleContent.firstChild);
         });
       }
 
@@ -575,7 +577,6 @@
     const messageMapData = new Map();
     const visibleMessageIds = [];
     processAllMessages();
-    // TODO: Fix citations to this format for copy ([CBS News][3])
     function processAllMessages() {
       document.querySelectorAll("[data-message-id]").forEach((e) => {
         const turnId = e.closest("article")?.getAttribute("data-turn-id");
@@ -595,10 +596,44 @@
           const role = message?.author?.role;
           const parts = content?.parts;
           let text = parts?.join("\n");
+          const content_references = message?.metadata?.content_references;
+          const references = [];
+          const urlMap = new Map(); // url -> id
+
+          // Correctly replace citations using API metadata
+          if (content_references && Array.isArray(content_references)) {
+            content_references.forEach((ref) => {
+              if (ref.matched_text && ref.alt) {
+                text = text.replace(ref.matched_text, ref.alt);
+              }
+            });
+          }
+          // Fallback to remove any unprocessed citation characters
+          text = text.replace(/\uE200.*?\uE201/g, "").trim();
+          let id = 1;
+          // Replace markdown links with reference-style links
+          text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+            let refId;
+            if (urlMap.has(url)) {
+              // Reuse existing id
+              refId = urlMap.get(url);
+            } else {
+              // Assign new id
+              refId = id++;
+              urlMap.set(url, refId);
+              references.push({
+                id: refId,
+                url,
+              });
+            }
+            return `[${label}][${refId}]`;
+          });
+
           const messageData = {
             messageId,
             role,
             text,
+            references,
           };
           if (!messageMapData.has(turnId)) {
             messageMapData.set(turnId, [messageData]);
@@ -900,7 +935,6 @@
       reasoningMapData,
     };
   }
-
   /**
    * Downloads the markdown content as a file.
    */
@@ -974,57 +1008,100 @@
           turnRole = messages[0].role || "assistant";
         }
 
+        /**
+         * Formats messages with attacted references
+         * @param {*} messages the message data
+         * @returns markdown formatting of messages with references
+         */
+        function renderMessagesWithRefs(messages, appendRef = true) {
+          return messages
+            .map((m) => {
+              const body = m.text;
+              const refs = appendRef
+                ? m.references?.map((r) => `[${r.id}]: ${r.url}`).join("\n")
+                : null;
+
+              return body + (refs ? "\n\n" + refs : "");
+            })
+            .join("\n\n");
+        }
+
+        function renderImages(images) {
+          return images
+            .map((img) => `![${img.prompt}](${img.url})`)
+            .join("\n\n");
+        }
+
         // --- Markdown (collapsible reasoning, roles) ---
         let mdTurn = "";
+
         if (reasoning?.length) {
           mdTurn += `<details>\n<summary>View Reasoning</summary>\n\n${reasoning
             .map((r) =>
-              r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n\n")
+              r.thoughts
+                .map((t) => `*${t.summary}*\n\n${t.content}`)
+                .join("\n\n")
             )
-            .join("\n")}\n</details>\n`;
+            .join("\n\n")}\n\n</details>\n\n`;
         }
-        if (messages?.length)
-          mdTurn +=
-            messages.map((m) => `${m.text}`).join("\n") + "\n";
-        if (images?.length)
-          mdTurn +=
-            images.map((img) => `![${img.prompt}](${img.url})`).join("\n") +
-            "\n";
-        if (canvases?.length) mdTurn += formatCanvasContent(canvases);
 
-        markdown += `\n\n## **${turnRole === "user" ? "You" : "ChatGPT"} Said**\n${mdTurn}`;
+        if (messages?.length) {
+          mdTurn += renderMessagesWithRefs(messages) + "\n\n";
+        }
+
+        if (images?.length) {
+          mdTurn += renderImages(images) + "\n\n";
+        }
+
+        if (canvases?.length) {
+          mdTurn += formatCanvasContent(canvases) + "\n\n";
+        }
+
+        markdown += `\n\n## **${
+          turnRole === "user" ? "You" : "ChatGPT"
+        } Said**\n\n${mdTurn.trim()}\n`;
 
         // --- JSON Full (with <think> tags, include role) ---
         let mdFull = "";
+
         if (reasoning?.length) {
           mdFull += `<think>\n${reasoning
             .map((r) =>
-              r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n\n")
+              r.thoughts
+                .map((t) => `*${t.summary}*\n\n${t.content}`)
+                .join("\n\n")
             )
-            .join("\n")}\n</think>\n`;
+            .join("\n\n")}\n</think>\n\n`;
         }
-        if (messages?.length)
-          mdFull += messages.map((m) => m.text).join("\n") + "\n";
-        if (images?.length)
-          mdFull +=
-            images.map((img) => `![${img.prompt}](${img.url})`).join("\n") +
-            "\n";
-        if (canvases?.length) mdFull += formatCanvasContent(canvases);
+
+        if (messages?.length) {
+          mdFull += renderMessagesWithRefs(messages) + "\n\n";
+        }
+
+        if (images?.length) {
+          mdFull += renderImages(images) + "\n\n";
+        }
+
+        if (canvases?.length) {
+          mdFull += formatCanvasContent(canvases) + "\n\n";
+        }
 
         jsonAPI.turns.push({ role: turnRole, content: mdFull.trim() });
 
-        // --- JSON Copy (no reasoning, no roles, no canvas, no images) ---
+        // --- JSON Copy (no reasoning, no roles, no canvas) ---
         let mdCopy = "";
-        if (messages?.length)
-          mdCopy += messages.map((m) => m.text).join("\n") + "\n";
+
+        if (messages?.length) {
+          mdCopy += renderMessagesWithRefs(messages) + "\n\n";
+        }
+
         jsonCopy.turns.push({ id: turnId, content: mdCopy.trim() });
+
+        // --- Balance code fences ---
+        const fenceCount = (markdown.match(/```/g) || []).length;
+        if (fenceCount % 2 !== 0) markdown += "\n```";
       });
-
-      // Balance code fences
-      const fenceCount = (markdown.match(/```/g) || []).length;
-      if (fenceCount % 2 !== 0) markdown += "\n```";
-
-      const jsonData = { ...metaData, messages: turns}
+      const jsonData = { ...metaData, messages: turns };
       return {
         markdown,
         jsonAPI,
@@ -1194,7 +1271,7 @@
       .addEventListener("click", async () => {
         const { markdown, metaData } = await convertExport();
         if (markdown) {
-          console.log("Markdown:", markdown, metaData)
+          console.log("Markdown:", markdown, metaData);
           downloadFile(markdown, `ChatGPT-${metaData.title}.md`, "markdown");
         }
         dropdown.classList.remove("show");

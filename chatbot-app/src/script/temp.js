@@ -123,10 +123,44 @@
           const role = message?.author?.role;
           const parts = content?.parts;
           let text = parts?.join("\n");
+          const content_references = message?.metadata?.content_references;
+          const references = [];
+          const urlMap = new Map(); // url -> id
+
+          // Correctly replace citations using API metadata
+          if (content_references && Array.isArray(content_references)) {
+            content_references.forEach((ref) => {
+              if (ref.matched_text && ref.alt) {
+                text = text.replace(ref.matched_text, ref.alt);
+              }
+            });
+          }
+          // Fallback to remove any unprocessed citation characters
+          text = text.replace(/\uE200.*?\uE201/g, "").trim();
+          let id = 1;
+          // Replace markdown links with reference-style links
+          text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+            let refId;
+            if (urlMap.has(url)) {
+              // Reuse existing id
+              refId = urlMap.get(url);
+            } else {
+              // Assign new id
+              refId = id++;
+              urlMap.set(url, refId);
+              references.push({
+                id: refId,
+                url,
+              });
+            }
+            return `[${label}][${refId}]`;
+          });
+
           const messageData = {
             messageId,
             role,
             text,
+            references,
           };
           if (!messageMapData.has(turnId)) {
             messageMapData.set(turnId, [messageData]);
@@ -419,14 +453,6 @@
     }
 
     const metaData = getMetaData();
-    console.log(Array.from(canvasMapData, ([turnId, canvases]) => [
-      turnId, canvases
-    ]));
-    console.log({
-      
-      canvasMapData,
-
-    });
     return {
       metaData,
       turnMapData,
@@ -436,120 +462,166 @@
       reasoningMapData,
     };
   }
-async function convertExport() {
-  function formatCanvasContent(canvases) {
-    if (!canvases || canvases.length === 0) return "";
-    let canvasMarkdown = "";
-    canvases.forEach((canvas) => {
-      if (!canvas.type) return;
-      const parts = canvas.type?.split("/");
-      let type = parts[0];
-      if (parts.length > 1) type = parts[1];
-      if (type.includes("react")) type = "typescript";
+  async function convertExport() {
+    function formatCanvasContent(canvases) {
+      if (!canvases || canvases.length === 0) return "";
+      let canvasMarkdown = "";
+      canvases.forEach((canvas) => {
+        if (!canvas.type) return;
+        const parts = canvas.type?.split("/");
+        let type = parts[0];
+        if (parts.length > 1) type = parts[1];
+        if (type.includes("react")) type = "typescript";
 
-      canvasMarkdown += `**${canvas.title}** (v${canvas.version})\n\n`;
-      canvasMarkdown += `\`\`\`${type || ""}\n${canvas.content}\n\`\`\`\n\n`;
-    });
-    return canvasMarkdown;
-  }
+        canvasMarkdown += `\n\n**${canvas.title}** (v${canvas.version})\n\n`;
+        canvasMarkdown += `\`\`\`${type || ""}\n${canvas.content}\n\`\`\`\n\n`;
+      });
+      return canvasMarkdown;
+    }
 
-  try {
-    const { metaData, turnMapData } = await getApiData();
-    const turns = Array.from(turnMapData, ([turnId, data]) => ({
-      turnId,
-      ...data,
-    }));
-
-    const header = [
-      `# ${metaData.title}`,
-      `Link: ${metaData.link}`,
-      `Created: ${metaData.create_time}`,
-      `Updated: ${metaData.update_time}`,
-      "",
-      "## Turns",
-    ].join("\n\n");
-
-    let markdown = header;
-    let jsonAPI = { ...metaData, turns: [] };
-    let jsonCopy = { ...metaData, turns: [] };
-    
-    turns.forEach((turn, idx) => {
-      const {
+    try {
+      const { metaData, turnMapData, canvasMapData } = await getApiData();
+      const turns = Array.from(turnMapData, ([turnId, data]) => ({
         turnId,
-        messages = [],
-        images = [],
-        canvases = [],
-        reasoning = [],
-      } = turn;
+        ...data,
+      }));
 
-      // Determine role
-      let turnRole = "user";
-      if (reasoning?.length || canvases?.length || images?.length) {
-        turnRole = "assistant";
-      } else if (messages.length > 0) {
-        turnRole = messages[0].role || "assistant";
-      }
+      const header = [
+        `# **${metaData.title}**`,
+        `**Link:** ${metaData.link}`,
+        `**Created:** ${metaData.create_time}`,
+        `**Updated:** ${metaData.update_time}`,
+        "",
+      ].join("\n\n");
 
-      // --- Markdown (collapsible reasoning, roles) ---
-      let mdTurn = "";
-      if (reasoning?.length) {
-        mdTurn += `<details>\n<summary>**Reasoning**</summary>\n\n${reasoning
-          .map((r) =>
-            r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n")
-          )
-          .join("\n")}\n</details>\n`;
-      }
-      if (messages?.length)
-        mdTurn +=
-          messages.map((m) => `- [${m.role}] ${m.text}`).join("\n") + "\n";
-      if (images?.length)
-        mdTurn +=
-          images.map((img) => `![${img.prompt}](${img.url})`).join("\n") + "\n";
-      if (canvases?.length) mdTurn += formatCanvasContent(canvases);
+      let markdown = header;
+      let jsonAPI = { ...metaData, turns: [] };
+      let jsonCopy = { ...metaData, turns: [] };
 
-      markdown += `\n\n### Turn ${
-        idx + 1
-      } [${turnRole}] (${turnId})\n${mdTurn}`;
+      turns.forEach((turn) => {
+        const {
+          turnId,
+          messages = [],
+          images = [],
+          canvases = [],
+          reasoning = [],
+        } = turn;
 
-      // --- JSON Full (with <think> tags, include role) ---
-      let mdFull = "";
-      if (reasoning?.length) {
-        mdFull += `<think>\n${reasoning
-          .map((r) =>
-            r.thoughts.map((t) => `*${t.summary}*\n\n${t.content}`).join("\n")
-          )
-          .join("\n")}\n</think>\n`;
-      }
-      if (messages?.length)
-        mdFull += messages.map((m) => m.text).join("\n") + "\n";
-      if (images?.length)
-        mdFull +=
-          images.map((img) => `![${img.prompt}](${img.url})`).join("\n") + "\n";
-      if (canvases?.length) mdFull += formatCanvasContent(canvases);
+        // Determine role
+        let turnRole = "user";
+        if (reasoning?.length || canvases?.length || images?.length) {
+          turnRole = "assistant";
+        } else if (messages.length > 0) {
+          turnRole = messages[0].role || "assistant";
+        }
 
-      jsonAPI.turns.push({ role: turnRole, content: mdFull.trim() });
+        /**
+         * Formats messages with attacted references
+         * @param {*} messages the message data
+         * @returns markdown formatting of messages with references
+         */
+        function renderMessagesWithRefs(messages, appendRef = true) {
+          return messages
+            .map((m) => {
+              const body = m.text;
+              const refs = appendRef
+                ? m.references?.map((r) => `[${r.id}]: ${r.url}`).join("\n")
+                : null;
 
-      // --- JSON Copy (no reasoning, no roles) ---
-      let mdCopy = "";
-      if (messages?.length)
-        mdCopy += messages.map((m) => m.text).join("\n") + "\n";
-      if (images?.length)
-        mdCopy +=
-          images.map((img) => `![${img.prompt}](${img.url})`).join("\n") + "\n";
-      if (canvases?.length) mdCopy += formatCanvasContent(canvases);
-      jsonCopy.turns.push({ id: turnId, content: mdCopy.trim() });
-    });
+              return body + (refs ? "\n\n" + refs : "");
+            })
+            .join("\n\n");
+        }
 
-    // Balance code fences
-    const fenceCount = (markdown.match(/```/g) || []).length;
-    if (fenceCount % 2 !== 0) markdown += "\n```";
+        function renderImages(images) {
+          return images
+            .map((img) => `![${img.prompt}](${img.url})`)
+            .join("\n\n");
+        }
 
-    return { markdown, jsonAPI, jsonCopy, turnMapData };
-  } catch (error) {
-    console.error("❌ Export failed:", error);
-    throw error;
+        // --- Markdown (collapsible reasoning, roles) ---
+        let mdTurn = "";
+
+        if (reasoning?.length) {
+          mdTurn += `<details>\n<summary>View Reasoning</summary>\n\n${reasoning
+            .map((r) =>
+              r.thoughts
+                .map((t) => `*${t.summary}*\n\n${t.content}`)
+                .join("\n\n")
+            )
+            .join("\n\n")}\n\n</details>\n\n`;
+        }
+
+        if (messages?.length) {
+          mdTurn += renderMessagesWithRefs(messages) + "\n\n";
+        }
+
+        if (images?.length) {
+          mdTurn += renderImages(images) + "\n\n";
+        }
+
+        if (canvases?.length) {
+          mdTurn += formatCanvasContent(canvases) + "\n\n";
+        }
+
+        markdown += `\n\n## **${
+          turnRole === "user" ? "You" : "ChatGPT"
+        } Said**\n\n${mdTurn.trim()}\n`;
+
+        // --- JSON Full (with <think> tags, include role) ---
+        let mdFull = "";
+
+        if (reasoning?.length) {
+          mdFull += `<think>\n${reasoning
+            .map((r) =>
+              r.thoughts
+                .map((t) => `*${t.summary}*\n\n${t.content}`)
+                .join("\n\n")
+            )
+            .join("\n\n")}\n</think>\n\n`;
+        }
+
+        if (messages?.length) {
+          mdFull += renderMessagesWithRefs(messages) + "\n\n";
+        }
+
+        if (images?.length) {
+          mdFull += renderImages(images) + "\n\n";
+        }
+
+        if (canvases?.length) {
+          mdFull += formatCanvasContent(canvases) + "\n\n";
+        }
+
+        jsonAPI.turns.push({ role: turnRole, content: mdFull.trim() });
+
+        // --- JSON Copy (no reasoning, no roles, no canvas) ---
+        let mdCopy = "";
+
+        if (messages?.length) {
+          mdCopy += renderMessagesWithRefs(messages) + "\n\n";
+        }
+
+        jsonCopy.turns.push({ id: turnId, content: mdCopy.trim() });
+
+        // --- Balance code fences ---
+        const fenceCount = (markdown.match(/```/g) || []).length;
+        if (fenceCount % 2 !== 0) markdown += "\n```";
+      });
+      const jsonData = { ...metaData, messages: turns };
+      return {
+        markdown,
+        jsonAPI,
+        jsonCopy,
+        jsonData,
+        canvasMapData,
+        metaData,
+      };
+    } catch (error) {
+      console.error("❌ Export failed:", error);
+      throw error;
+    }
   }
-}
 
   console.log(await convertExport());
 })();
