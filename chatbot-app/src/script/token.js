@@ -374,11 +374,25 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     // 1.5 Tool Instructions (Hidden Tool Output)
     const totalToolInstructionTokens = [...apiData.toolMapData.values()]
       .flat()
-      .reduce(
-        (acc, tool) =>
-          acc + enc.encode((tool.instruction || []).join("\n") || "").length,
-        0
-      );
+      .reduce((acc, tool) => {
+        const instruction = tool?.instruction;
+
+        if (Array.isArray(instruction)) {
+          return (
+            acc +
+            instruction.reduce(
+              (sum, str) =>
+                sum + 
+                (typeof str === "string" ? enc.encode(str.trim()).length : 0),
+              0
+            )
+          );
+        }
+        if (typeof instruction === "string") {
+          return acc + enc.encode(instruction.trim()).length;
+        }
+        return acc;
+      }, 0);
     maxPossibleTokens += totalToolInstructionTokens;
     if (totalToolInstructionTokens > 0) {
       if (currentTotalTokens < limit) {
