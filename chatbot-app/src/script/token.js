@@ -308,45 +308,65 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     // 0. Global System Prompt
     maxPossibleTokens += globalSystemPromptTokens;
     if (globalSystemPromptTokens > 0) {
-      if (globalSystemPromptTokens > limit) {
-        globalSystemPromptCost = limit;
-        globalSystemPromptTruncatedFrom = globalSystemPromptTokens;
-        currentTotalTokens = limit;
+      if (currentTotalTokens < limit) {
+        const remainingSpace = limit - currentTotalTokens;
+        if (globalSystemPromptTokens > remainingSpace) {
+          globalSystemPromptCost = remainingSpace;
+          globalSystemPromptTruncatedFrom = globalSystemPromptTokens;
+          currentTotalTokens = limit;
+        } else {
+          globalSystemPromptCost = globalSystemPromptTokens;
+          currentTotalTokens += globalSystemPromptTokens;
+        }
       } else {
-        globalSystemPromptCost = globalSystemPromptTokens;
-        currentTotalTokens += globalSystemPromptTokens;
+        // No space remaining
+        globalSystemPromptCost = 0;
+        globalSystemPromptTruncatedFrom = globalSystemPromptTokens;
       }
     }
 
     // 0.5. Memory
     maxPossibleTokens += memoryTokens;
     if (memoryTokens > 0) {
-      const remainingSpace = limit - currentTotalTokens;
-      if (memoryTokens > remainingSpace) {
-        memoryCost = remainingSpace;
-        memoryTruncatedFrom = memoryTokens;
-        currentTotalTokens = limit;
+      if (currentTotalTokens < limit) {
+        const remainingSpace = limit - currentTotalTokens;
+        if (memoryTokens > remainingSpace) {
+          memoryCost = remainingSpace;
+          memoryTruncatedFrom = memoryTokens;
+          currentTotalTokens = limit;
+        } else {
+          memoryCost = memoryTokens;
+          currentTotalTokens += memoryTokens;
+        }
       } else {
-        memoryCost = memoryTokens;
-        currentTotalTokens += memoryTokens;
+        // No space remaining
+        memoryCost = 0;
+        memoryTruncatedFrom = memoryTokens;
       }
     }
 
     // 1. Custom Instructions
+    let instrTokens = 0;
     if (apiData.userProfile) {
-      const instrTokens =
+      instrTokens =
         enc.encode(apiData.userProfile.user_profile || "").length +
         enc.encode(apiData.userProfile.user_instructions || "").length;
       maxPossibleTokens += instrTokens;
-      if (currentTotalTokens < limit && instrTokens > 0) {
-        const remainingSpace = limit - currentTotalTokens;
-        if (instrTokens > remainingSpace) {
-          instructionsCost = remainingSpace;
-          instructionsTruncatedFrom = instrTokens;
-          currentTotalTokens = limit;
+      if (instrTokens > 0) {
+        if (currentTotalTokens < limit) {
+          const remainingSpace = limit - currentTotalTokens;
+          if (instrTokens > remainingSpace) {
+            instructionsCost = remainingSpace;
+            instructionsTruncatedFrom = instrTokens;
+            currentTotalTokens = limit;
+          } else {
+            instructionsCost = instrTokens;
+            currentTotalTokens += instrTokens;
+          }
         } else {
-          instructionsCost = instrTokens;
-          currentTotalTokens += instrTokens;
+          // No space remaining
+          instructionsCost = 0;
+          instructionsTruncatedFrom = instrTokens;
         }
       }
     }
@@ -360,48 +380,66 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         0
       );
     maxPossibleTokens += totalToolInstructionTokens;
-    if (currentTotalTokens < limit && totalToolInstructionTokens > 0) {
-      const remainingSpace = limit - currentTotalTokens;
-      if (totalToolInstructionTokens > remainingSpace) {
-        toolInstructionCost = remainingSpace;
-        toolInstructionTruncatedFrom = totalToolInstructionTokens;
-        currentTotalTokens = limit;
+    if (totalToolInstructionTokens > 0) {
+      if (currentTotalTokens < limit) {
+        const remainingSpace = limit - currentTotalTokens;
+        if (totalToolInstructionTokens > remainingSpace) {
+          toolInstructionCost = remainingSpace;
+          toolInstructionTruncatedFrom = totalToolInstructionTokens;
+          currentTotalTokens = limit;
+        } else {
+          toolInstructionCost = totalToolInstructionTokens;
+          currentTotalTokens += totalToolInstructionTokens;
+        }
       } else {
-        toolInstructionCost = totalToolInstructionTokens;
-        currentTotalTokens += totalToolInstructionTokens;
+        // No space remaining
+        toolInstructionCost = 0;
+        toolInstructionTruncatedFrom = totalToolInstructionTokens;
       }
     }
 
     // 2. User Prompt
-    if (currentTotalTokens < limit && promptTokens > 0) {
-      const remainingSpace = limit - currentTotalTokens;
-      if (promptTokens > remainingSpace) {
-        promptCost = remainingSpace;
-        promptTruncatedFrom = promptTokens;
-        currentTotalTokens = limit;
+    if (promptTokens > 0) {
+      if (currentTotalTokens < limit) {
+        const remainingSpace = limit - currentTotalTokens;
+        if (promptTokens > remainingSpace) {
+          promptCost = remainingSpace;
+          promptTruncatedFrom = promptTokens;
+          currentTotalTokens = limit;
+        } else {
+          promptCost = promptTokens;
+          currentTotalTokens += promptTokens;
+        }
       } else {
-        promptCost = promptTokens;
-        currentTotalTokens += promptTokens;
+        // No space remaining
+        promptCost = 0;
+        promptTruncatedFrom = promptTokens;
       }
     }
 
     // 3. Files & Canvases
     [...apiData.fileMapData.entries()].forEach(([messageId, files]) => {
       files.forEach((file, index) => {
-        const itemId = `file-${messageId}-(${index})`;
+        const itemId = `file-${file.id}-(${index})`;
         if (checkedItems.has(itemId)) {
           const fileTokens = file.file_token_size || 0;
           maxPossibleTokens += fileTokens;
+
           if (currentTotalTokens < limit) {
             const remainingSpace = limit - currentTotalTokens;
             if (fileTokens > remainingSpace) {
+              // File is truncated - only part of it fits
               truncatedItems.set(itemId, remainingSpace);
               attachmentsCost += remainingSpace;
               currentTotalTokens = limit;
             } else {
+              // File fits completely
               attachmentsCost += fileTokens;
               currentTotalTokens += fileTokens;
             }
+          } else {
+            // No space remaining - file gets 0 tokens but is still truncated
+            truncatedItems.set(itemId, 0);
           }
         }
       });
@@ -413,16 +451,22 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         if (checkedItems.has(itemId)) {
           const canvasTokens = enc.encode(canvas.content || "").length;
           maxPossibleTokens += canvasTokens;
+
           if (currentTotalTokens < limit) {
             const remainingSpace = limit - currentTotalTokens;
             if (canvasTokens > remainingSpace) {
+              // Canvas is truncated - only part of it fits
               truncatedItems.set(itemId, remainingSpace);
               attachmentsCost += remainingSpace;
               currentTotalTokens = limit;
             } else {
+              // Canvas fits completely
               attachmentsCost += canvasTokens;
               currentTotalTokens += canvasTokens;
             }
+          } else {
+            // No space remaining - canvas gets 0 tokens but is still truncated
+            truncatedItems.set(itemId, 0);
           }
         }
       });
