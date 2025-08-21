@@ -793,6 +793,20 @@ window.ChatGPT = (() => {
     }
     return userMemory;
   }
+
+  const observer = new MutationObserver(() => {
+    getConversationId();
+  });
+  const interval = setInterval(() => {
+    const main = document.body.querySelector("main");
+    if (main) {
+      clearInterval(interval);
+      observer.observe(main, {
+        childList: true,
+        subtree: true,
+      });
+    }
+  }, 500);
   return {
     getApiData,
     convertExport,

@@ -37,7 +37,6 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     @var apiData // Finished apiData
     @var exportData // Finished exportData
    */
-  let ChatGPT = window.ChatGPTDataExport;
   let lastCheckState = {};
 
   let db; // To hold the database instance
@@ -140,6 +139,9 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   /**
    * Injects CSS for the hover popup into the document head.
    */
+  /**
+   * Injects CSS for the hover popup into the document head.
+   */
   function injectPopupCSS() {
     const styleId = "token-popup-styles";
     if (document.getElementById(styleId)) return;
@@ -147,19 +149,112 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     const style = document.createElement("style");
     style.id = styleId;
     style.textContent = `
-        .token-status-container { position: relative; display: inline-block; }
-        .token-status-container:hover .token-popup { display: block; }
-        .token-popup { display: none; position: absolute; bottom: 125%; left: 50%; transform: translateX(-50%); background-color: var(--main-surface-primary); border: 1px solid var(--border-medium); border-radius: 8px; padding: 12px; width: 375px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.15); color: var(--text-secondary); font-size: 12px; text-align: left; }
-        .token-popup h4 { margin-top: 0; margin-bottom: 8px; font-weight: bold; color: var(--text-primary); border-bottom: 1px solid var(--border-medium); padding-bottom: 4px; }
-        .token-popup .token-section { margin-bottom: 8px; }
-        .token-popup .token-section:last-child { margin-bottom: 0; }
-        .token-popup .token-item { display: flex; align-items: center; justify-content: space-between; }
-        .token-popup .token-item label { display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 8px; cursor: pointer; }
-        .token-popup .token-item input { margin-right: 6px; }
-        .token-popup .token-item span { font-weight: bold; white-space: nowrap; }
-        .token-popup .token-total-line { font-weight: bold; display: flex; justify-content: space-between; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border-light); }
-        .truncated-text { font-style: italic; color: var(--text-secondary); margin-left: 4px; }
-    `;
+    .token-status-container { 
+      position: relative; 
+      display: inline-block; 
+    }
+    .token-status-container:hover .token-popup { 
+      display: block; 
+    }
+    .token-popup { 
+      display: none; 
+      position: absolute; 
+      bottom: 0%; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      background-color: var(--main-surface-primary); 
+      border: 1px solid var(--border-medium); 
+      border-radius: 12px; 
+      padding: 16px; 
+      width: 400px; 
+      z-index: 1000; 
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08); 
+      color: var(--text-secondary); 
+      font-size: 13px; 
+      text-align: left; 
+      line-height: 1.4;
+    }
+    .token-popup h4 { 
+      margin: 0 0 12px 0; 
+      font-weight: 600; 
+      color: var(--text-primary); 
+      border-bottom: 1px solid var(--border-light); 
+      padding-bottom: 8px; 
+      font-size: 14px;
+    }
+    .token-popup .token-section { 
+      margin-bottom: 12px; 
+    }
+    .token-popup .token-section:last-child { 
+      margin-bottom: 0; 
+    }
+    .token-popup .token-item { 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between; 
+      padding: 6px 0;
+      min-height: 24px;
+    }
+    .token-popup .token-item:hover {
+      background-color: var(--surface-hover);
+      border-radius: 6px;
+      margin: 0 -8px;
+      padding: 6px 8px;
+    }
+    .token-popup .token-item label { 
+      display: flex; 
+      align-items: center; 
+      white-space: nowrap; 
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+      margin-right: 12px; 
+      cursor: pointer;
+      flex: 1;
+      font-size: 13px;
+    }
+    .token-popup .token-item input { 
+      margin-right: 8px; 
+      cursor: pointer;
+      accent-color: var(--selection);
+    }
+    .token-popup .token-item span:last-child { 
+      font-weight: 600; 
+      white-space: nowrap; 
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+    .token-popup .token-total-line { 
+      font-weight: 600; 
+      display: flex; 
+      justify-content: space-between; 
+      margin-top: 12px; 
+      padding-top: 12px; 
+      border-top: 1px solid var(--border-light);
+      color: var(--text-primary);
+    }
+    .token-popup hr {
+      border: none;
+      border-top: 1px solid var(--border-light);
+      margin: 12px 0;
+    }
+    .truncated-text { 
+      font-style: italic; 
+      color: var(--text-tertiary); 
+      margin-left: 6px; 
+    }
+    .token-popup #refreshData {
+      cursor: pointer;
+      text-align: right;
+      margin-top: 8px;
+      color: var(--link);
+      font-size: 12px;
+      padding: 4px 0;
+    }
+    .token-popup #refreshData:hover {
+      color: var(--link-hover);
+      text-decoration: underline;
+    }
+  `;
     document.head.appendChild(style);
   }
 
@@ -225,7 +320,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
 
     // 0.5. Memory
     maxPossibleTokens += memoryTokens;
-    if (currentTotalTokens < limit && memoryTokens > 0) {
+    if (memoryTokens > 0) {
       const remainingSpace = limit - currentTotalTokens;
       if (memoryTokens > remainingSpace) {
         memoryCost = remainingSpace;
@@ -293,7 +388,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     // 3. Files & Canvases
     [...apiData.fileMapData.entries()].forEach(([messageId, files]) => {
       files.forEach((file, index) => {
-        const itemId = `file-${messageId}-${index}`;
+        const itemId = `file-${messageId}-(${index})`;
         if (checkedItems.has(itemId)) {
           const fileTokens = file.file_token_size || 0;
           maxPossibleTokens += fileTokens;
@@ -419,11 +514,9 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       promptTruncatedFrom !== null ? promptTruncatedFrom : promptCost;
     if (originalPromptTokens > 0) {
       let text = `Prompt: ${originalPromptTokens} tokens`;
+      promptTokenDiv.style.color = "var(--text-secondary)";
       if (promptTruncatedFrom) {
         text = `Prompt: ${promptCost} / ${originalPromptTokens} tokens (Overflow)`;
-        promptTokenDiv.style.color = "var(--text-danger)";
-      } else {
-        promptTokenDiv.style.color = "var(--text-secondary)";
       }
       promptTokenDiv.textContent = text;
     } else {
@@ -560,155 +653,197 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     if (!statusContainer) return;
 
     const effectiveTotal = tokenData.baseTokenCost + totalChatTokens;
+
     statusContainer.innerHTML = `
-        <div class="tokenstatus" style="display: inline-block; margin-left: 8px; font-size: 12px; color: var(--text-secondary); font-weight: normal;">
-            Effective tokens: ${effectiveTotal}/${limit}
-        </div>
-        <div class="token-popup"></div>
-    `;
+    <div class="tokenstatus" style="display: inline-block; margin-left: 8px; font-size: 12px; color: var(--text-secondary); font-weight: normal;">
+        Effective tokens: ${effectiveTotal}/${limit}
+    </div>
+    <div class="token-popup"></div>
+`;
 
     const popupDiv = statusContainer.querySelector(".token-popup");
-    const popupFragment = document.createDocumentFragment();
 
-    const createTokenItem = (label, value) => {
+    // Create popup content with better structure
+    const popupContent = document.createElement("div");
+
+    // Header
+    const header = document.createElement("h4");
+    header.textContent = "Token Breakdown (Effective/Total)";
+    popupContent.appendChild(header);
+
+    // Helper function to create token items with Tailwind-like styling
+    const createTokenItem = (
+      label,
+      value,
+      isInteractive = false,
+      id = null,
+      checked = false,
+      tokens = 0
+    ) => {
       const item = document.createElement("div");
       item.className = "token-item";
-      item.innerHTML = `<span>${label}</span><span>${value}</span>`;
+
+      if (isInteractive && id) {
+        item.innerHTML = `
+      <label for="${id}" class="flex items-center cursor-pointer flex-1 text-sm" title="${label}">
+        <input type="checkbox" id="${id}" data-tokens="${tokens}" ${
+          checked ? "checked" : ""
+        } class="mr-2 cursor-pointer">
+        <span class="truncate">${label}</span>
+      </label>
+      <span class="font-semibold whitespace-nowrap text-sm">${value}</span>
+    `;
+      } else {
+        item.innerHTML = `
+      <span class="text-sm">${label}</span>
+      <span class="font-semibold whitespace-nowrap text-sm">${value}</span>
+    `;
+      }
       return item;
     };
 
-    popupFragment.innerHTML = "<h4>Token Breakdown (Effective/Total)</h4>";
-
-    // Build sections
+    // System components
     if (
       tokenData.globalSystemPromptCost > 0 ||
       tokenData.globalSystemPromptTruncatedFrom
     ) {
       const val = tokenData.globalSystemPromptTruncatedFrom
         ? `${tokenData.globalSystemPromptCost} / ${tokenData.globalSystemPromptTruncatedFrom}`
-        : tokenData.globalSystemPromptCost;
-      popupFragment.appendChild(createTokenItem("Global System Prompt", val));
+        : tokenData.globalSystemPromptCost.toString();
+      popupContent.appendChild(createTokenItem("Global System Prompt", val));
     }
 
+    // Memory item (interactive)
     const memVal = tokenData.memoryTruncatedFrom
       ? `${tokenData.memoryCost} / ${tokenData.memoryTruncatedFrom}`
-      : tokenData.memoryCost;
+      : tokenData.memoryCost.toString();
     const memoryItem = document.createElement("div");
     memoryItem.className = "token-item";
-    memoryItem.innerHTML = `<label for="toggle-memory"><input type="checkbox" id="toggle-memory" ${
+    memoryItem.innerHTML = `
+  <label for="toggle-memory" class="flex items-center cursor-pointer flex-1 text-sm">
+    <input type="checkbox" id="toggle-memory" ${
       isMemoryEnabled ? "checked" : ""
-    }>Memory</label><span>${memVal}</span>`;
-    popupFragment.appendChild(memoryItem);
+    } class="mr-2 cursor-pointer">
+    <span>Memory</span>
+  </label>
+  <span class="font-semibold whitespace-nowrap text-sm">${memVal}</span>
+`;
+    popupContent.appendChild(memoryItem);
 
+    // Custom instructions
     if (tokenData.instructionsCost > 0 || tokenData.instructionsTruncatedFrom) {
       const val = tokenData.instructionsTruncatedFrom
         ? `${tokenData.instructionsCost} / ${tokenData.instructionsTruncatedFrom}`
-        : tokenData.instructionsCost;
-      popupFragment.appendChild(createTokenItem("Custom Instructions", val));
+        : tokenData.instructionsCost.toString();
+      popupContent.appendChild(createTokenItem("Custom Instructions", val));
     }
 
+    // Tool instructions
     if (
       tokenData.toolInstructionCost > 0 ||
       tokenData.toolInstructionTruncatedFrom
     ) {
       const val = tokenData.toolInstructionTruncatedFrom
         ? `${tokenData.toolInstructionCost} / ${tokenData.toolInstructionTruncatedFrom}`
-        : tokenData.toolInstructionCost;
-      popupFragment.appendChild(createTokenItem("Hidden Tool Output", val));
+        : tokenData.toolInstructionCost.toString();
+      popupContent.appendChild(createTokenItem("Hidden Tool Output", val));
     }
 
-    popupFragment.appendChild(document.createElement("hr"));
+    // Separator
+    const separator = document.createElement("hr");
+    popupContent.appendChild(separator);
 
+    // Prompt and chat
     const promptVal =
       tokenData.promptTruncatedFrom !== null
         ? `${tokenData.promptCost} / ${tokenData.promptTruncatedFrom}`
-        : tokenData.promptCost;
-    popupFragment.appendChild(createTokenItem("Current Prompt", promptVal));
+        : tokenData.promptCost.toString();
+    popupContent.appendChild(createTokenItem("Current Prompt", promptVal));
 
     const chatVal =
       maxChatTokens > totalChatTokens
         ? `${totalChatTokens} / ${maxChatTokens}`
-        : totalChatTokens;
-    popupFragment.appendChild(createTokenItem("Chat History", chatVal));
+        : totalChatTokens.toString();
+    popupContent.appendChild(createTokenItem("Chat History", chatVal));
 
-    // Files and Canvases
-    const filesFragment = document.createDocumentFragment();
+    // Files section
+    const fileItems = [];
     [...apiData.fileMapData.entries()].forEach(([messageId, files]) => {
       files.forEach((f, index) => {
         const id = `file-${f.id}-(${index})`;
-        const itemDiv = document.createElement("div");
-        itemDiv.className = "token-item";
         const tokens = f.file_token_size || 0;
         const val = truncatedItems.has(id)
           ? `${truncatedItems.get(id)} / ${tokens}`
-          : tokens;
-        itemDiv.innerHTML = `<label for="${id}" title="${
-          f.name
-        }"><input type="checkbox" id="${id}" data-tokens="${tokens}" ${
-          checkedItems.has(id) ? "checked" : ""
-        }>${f.name}</label><span>${val}</span>`;
-        filesFragment.appendChild(itemDiv);
+          : tokens.toString();
+        fileItems.push(
+          createTokenItem(f.name, val, true, id, checkedItems.has(id), tokens)
+        );
       });
     });
 
-    const canvasFragment = document.createDocumentFragment();
+    if (fileItems.length > 0) {
+      const filesHeader = document.createElement("h4");
+      filesHeader.textContent = "Files";
+      popupContent.appendChild(filesHeader);
+      fileItems.forEach((item) => popupContent.appendChild(item));
+    }
+
+    // Canvas section
+    const canvasItems = [];
     [...apiData.canvasMapData.entries()].forEach(([messageId, canvases]) => {
       canvases.forEach((c) => {
-        const id = `canvas-${c.textdoc_id}`;
-        const itemDiv = document.createElement("div");
-        itemDiv.className = "token-item";
+        const id = `textdoc-${c.textdoc_id}-(v${c.version})`;
         const tokens = enc.encode(c.content || "").length;
         const val = truncatedItems.has(id)
           ? `${truncatedItems.get(id)} / ${tokens}`
-          : tokens;
+          : tokens.toString();
         const title = c.title.replace(/_/g, " ");
-        itemDiv.innerHTML = `<label for="${id}" title="${title} (v${
-          c.version
-        })"><input type="checkbox" id="${id}" data-tokens="${tokens}" ${
-          checkedItems.has(id) ? "checked" : ""
-        }>${title}</label><span>${val}</span>`;
-        canvasFragment.appendChild(itemDiv);
+        canvasItems.push(
+          createTokenItem(
+            `${title} (v${c.version})`,
+            val,
+            true,
+            id,
+            checkedItems.has(id),
+            tokens
+          )
+        );
       });
     });
 
-    if (filesFragment.hasChildNodes()) {
-      const h4 = document.createElement("h4");
-      h4.textContent = "Files";
-      popupFragment.appendChild(h4);
-      popupFragment.appendChild(filesFragment);
-    }
-    if (canvasFragment.hasChildNodes()) {
-      const h4 = document.createElement("h4");
-      h4.textContent = "Canvas";
-      popupFragment.appendChild(h4);
-      popupFragment.appendChild(canvasFragment);
+    if (canvasItems.length > 0) {
+      const canvasHeader = document.createElement("h4");
+      canvasHeader.textContent = "Canvas";
+      popupContent.appendChild(canvasHeader);
+      canvasItems.forEach((item) => popupContent.appendChild(item));
     }
 
-    // Totals and Refresh
+    // Total line
     const totalLine = document.createElement("div");
     totalLine.className = "token-total-line";
-    totalLine.innerHTML = `<span>Total tokens:</span><span id="popup-total-tokens">${effectiveTotal} / ${limit}</span>`;
-    popupFragment.appendChild(totalLine);
+    totalLine.innerHTML = `
+  <span>Total tokens:</span>
+  <span id="popup-total-tokens">${effectiveTotal} / ${limit}</span>
+`;
+    popupContent.appendChild(totalLine);
 
-    const refreshLine = document.createElement("div");
-    refreshLine.id = "refreshData";
-    refreshLine.textContent = "Refresh";
-    Object.assign(refreshLine.style, {
-      cursor: "pointer",
-      textAlign: "right",
-      marginTop: "4px",
-    });
-    popupFragment.appendChild(refreshLine);
-    popupDiv.appendChild(popupFragment);
+    // Refresh button
+    const refreshButton = document.createElement("div");
+    refreshButton.id = "refreshData";
+    refreshButton.textContent = "Refresh";
+    popupContent.appendChild(refreshButton);
+
+    // Append all content to popup
+    popupDiv.appendChild(popupContent);
 
     popupDiv.addEventListener("change", async (e) => {
       if (e.target.type !== "checkbox") return;
-      const conversationId = ChatGPT.getConversationId();
+      const conversationId = getConversationId();
       if (!conversationId) return;
 
       if (e.target.id === "toggle-memory") {
         await chrome.storage.local.set({
-          [`memory_enabled_${conversationId}`]: e.target.checked,
+          [`memory_enabled`]: e.target.checked,
         });
         // Re-run check when memory is toggled
         runTokenCheck();
@@ -731,7 +866,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       if (e.target.id === "refreshData") {
         e.target.textContent = "Refreshing...";
         lastCheckState = {};
-        await deleteCacheFromDB(ChatGPT.getConversationId());
+        await deleteCacheFromDB(getConversationId());
+        await chrome.storage.local.remove("memory");
         runTokenCheck();
       }
     });
@@ -767,7 +903,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       return;
     }
 
-    const conversationId = ChatGPT.getConversationId();
+    const conversationId = getConversationId();
     if (!conversationId) {
       clearTokenUI();
       return;
@@ -776,13 +912,13 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     // Get checked items from IndexedDB instead of chrome.storage
     const checkedItems = await getCheckedItemsFromDB(conversationId);
 
-    const memoryStorageKey = `memory_enabled_${conversationId}`;
+    const memoryStorageKey = `memory_enabled`;
     const { [memoryStorageKey]: isMemoryEnabled = true } =
       await chrome.storage.local.get([memoryStorageKey]);
 
     const promptBox = document.querySelector("[contenteditable='true']");
     const promptText = promptBox ? promptBox.textContent || "" : "";
-    const turnCount = document.querySelectorAll("[data-message-id]").length;
+    const turnCount = document.querySelectorAll("article").length;
     const checkedItemsStr = JSON.stringify(Array.from(checkedItems).sort());
 
     const newState = {
@@ -823,9 +959,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         throw new Error("Failed to fetch or retrieve API data.");
       }
 
-      const { memoryTokens } = isMemoryEnabled
-        ? await ChatGPT.getUserMemory()
-        : { memoryTokens: 0 };
+      const memoryTokens = await getMemory();
       const promptTokens = enc.encode(promptText).length + 4;
       const globalSystemPromptTokens = enc.encode(
         globalSystemPrompt || ""
@@ -867,39 +1001,103 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
     }
   }
 
+  async function getMemory() {
+    const { memory, memory_enabled } = await chrome.storage.local.get([
+      "memory",
+      "memory_enabled",
+    ]);
+
+    if (!memory_enabled) return 0;
+
+    const time = Date.now();
+    const timestamp = memory?.time ?? 0; // fallback to 0 if undefined
+
+    if (!memory || time > timestamp + 1000 * 60 * 30) {
+      const { memoryTokens } = await ChatGPT.getUserMemory();
+      const memoryData = { memoryTokens, time };
+      await chrome.storage.local.set({ memory: memoryData }); // key wrapper required
+      return memoryTokens;
+    }
+    return memory.memoryTokens;
+  }
+
   // --- EVENT LISTENERS & OBSERVERS ---
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== "local") return;
-    const conversationId = ChatGPT.getConversationId();
-    const memoryKey = `memory_enabled_${conversationId}`;
-
-    // Removed the check for checked_items, as it's handled via direct DB interaction
-    if (
-      changes.isScriptingEnabled ||
-      changes.globalSystemPrompt ||
-      changes.contextWindow ||
-      (conversationId && changes[memoryKey])
-    ) {
+    if (changes.isScriptingEnabled || changes.globalSystemPrompt) {
+      runTokenCheck();
+      return;
+    }
+    const conversationId = window.location.pathname.split("/")[2];
+    const memoryKey = `memory_enabled`;
+    if (changes.contextWindow || (conversationId && changes[memoryKey])) {
       runTokenCheck();
     }
   });
 
-  const debouncedRunTokenCheck = debounce(runTokenCheck, 1500);
-  let lastConvoId = ChatGPT.getConversationId();
+  const debouncedRunTokenCheck = debounce(runTokenCheck, 3000);
+  let lastUrl = location.href;
   const observer = new MutationObserver((mutationList) => {
-    const cId = ChatGPT.getConversationId();
-    if (cId !== lastConvoId) {
-      lastConvoId = cId;
+    const url = location.href;
+    if (url !== lastUrl) {
+      lastUrl = url;
       lastCheckState = {}; // Reset state on URL change
       console.log(
         "🔄 [Token Manager] URL changed, running token check immediately."
       );
       runTokenCheck();
     } else {
-      debouncedRunTokenCheck();
+      let skip = false;
+      const ignoredClasses = new Set([
+        "extra-token-info",
+        "token-count-display",
+        "token-status-container",
+        "tokenstatus",
+        "token-popup",
+        "truncated-text",
+        "token-item",
+        "prompt-token-count",
+        "@thread-xl/thread:pt-header-height",
+        "placeholder",
+      ]);
+      const ignoredElementParent = [];
+
+      mutationList.forEach((m) => {
+        if (skip) return;
+
+        const targetElement =
+          m.type === "characterData" ? m.target.parentElement : m.target;
+
+        if (!targetElement || !targetElement.classList) return;
+
+        const classList = targetElement.classList;
+        for (const cls of classList) {
+          if (ignoredClasses.has(cls)) {
+            skip = true;
+            break;
+          }
+        }
+
+        if (!skip) {
+          for (const selector of ignoredElementParent) {
+            const parent = document.querySelector(selector);
+            if (parent && parent.contains(targetElement)) {
+              skip = true;
+              break;
+            }
+          }
+        }
+      });
+
+      if (!skip) debouncedRunTokenCheck();
     }
   });
-
+  // Run the script when the page is ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", debouncedRunTokenCheck());
+  } else {
+    debouncedRunTokenCheck();
+  }
   const interval = setInterval(() => {
     const main = document.body.querySelector("main");
     if (main) {
@@ -909,9 +1107,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         subtree: true,
         characterData: true,
       });
-      runTokenCheck(); // Initial run
     }
-  }, 500);
+  }, 1000);
 
   // --- UTILITY FUNCTIONS ---
   function debounce(func, wait) {
@@ -924,5 +1121,8 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
       clearTimeout(timeout);
       timeout = setTimeout(later, wait);
     };
+  }
+  function getConversationId() {
+    return window.location.pathname.split("/")[2];
   }
 })();
