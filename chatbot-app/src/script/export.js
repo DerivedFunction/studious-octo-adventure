@@ -75,7 +75,7 @@
     let buttonsClicked = [];
     try {
       // --- SHARED SETUP AND DOM PREPARATION ---
-      showStatusBar("Begin Export", 1, 20);
+      showStatusBar("Begin Export", 1, 5);
       // 0. Open all reasoning sections to ensure their content is in the DOM for cloning.
       document
         .querySelectorAll(
@@ -95,7 +95,7 @@
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
-      showStatusBar("Preparing content", 20, 40);
+      showStatusBar("Preparing content", 5, 15);
 
       // 1. Clone the main chat area. This serves as the base for both print and download.
       const mainArea = document.querySelector("article")?.parentElement;
@@ -113,7 +113,7 @@
         )
         .forEach((el) => el.remove());
 
-      showStatusBar("Fetching conversation data", 40, 60);
+      showStatusBar("Fetching conversation data", 15, 30);
 
       // 2. Fetch necessary conversation data for populating the cloned content.
       const { canvasMapData, jsonCopy } = await ChatGPT.convertExport();
@@ -124,7 +124,7 @@
         canvases,
       ]);
 
-      showStatusBar("Processing content", 60, 80);
+      showStatusBar("Processing content", 30, 50);
 
       // --- SHARED DOM MANIPULATION ON THE CLONED AREA ---
       // 3a. Set attributes on reasoning buttons for offline interactivity or styling.
@@ -214,11 +214,10 @@
           "mx-auto flex-1 group/turn-messages focus-visible:outline-hidden relative flex w-full min-w-0 flex-col";
       });
 
-      showStatusBar("Finalizing export", 80, 90);
-
       // --- ACTION-SPECIFIC OUTPUT GENERATION ---
 
       if (action === "download") {
+        showStatusBar("Building HTML page", 50, 60);
         // 4a. Create the interactive script for the offline HTML file.
         const script = document.createElement("script");
         script.textContent = `
@@ -352,15 +351,22 @@
           .forEach((el) => {
             stylesHTML += el.outerHTML;
           });
-
+        let currentPercent = 60.0;
         // fetch and inline external CSS <link>
         const linkEls = document.querySelectorAll('link[rel="stylesheet"]');
+        let delta = Math.round((75 - currentPercent) / linkEls.length);
         for (let link of linkEls) {
           const href = link.href;
           try {
+            showStatusBar(
+              "Applying styling",
+              currentPercent,
+              currentPercent + delta
+            );
             const resp = await fetch(href);
             const cssText = await resp.text();
             stylesHTML += `<style>\n${cssText}\n</style>`;
+            currentPercent += delta;
           } catch (err) {
             console.warn("Failed to fetch stylesheet:", href, err);
             stylesHTML += link.outerHTML;
@@ -390,6 +396,35 @@
       `;
         stylesHTML += `<style>${customStyles}</style>`;
         const conversationId = ChatGPT.getConversationId();
+        const images = area.querySelectorAll("img");
+        delta = Math.round((95 - currentPercent) / images.length);
+        for (const img of images) {
+          try {
+            // Skip if already data URI
+            showStatusBar(
+              "Downloading images",
+              currentPercent,
+              currentPercent + delta
+            );
+            currentPercent += delta;
+            if (img.src.startsWith("data:")) continue;
+            const response = await fetch(img.src, { mode: "cors" }).catch(
+              () => null
+            );
+            if (!response || !response.ok) continue;
+
+            const blob = await response.blob();
+            const reader = new FileReader();
+
+            reader.onloadend = () => {
+              img.src = reader.result; // Replace with data URI
+            };
+
+            reader.readAsDataURL(blob);
+          } catch (err) {
+            console.warn("Failed to convert image:", img.src, err);
+          }
+        }
         // 4d. Construct the full HTML document string.
         const fullHTML = `
         <!DOCTYPE html>
@@ -431,6 +466,7 @@
           "text/html"
         );
       } else if (action === "print") {
+        showStatusBar("Preparing print", 60, 90);
         // 5a.1 Fix code blocks inside articles and add user message borders.
         const articles = area.querySelectorAll("article");
         articles.forEach((article) => {
@@ -458,9 +494,6 @@
             });
           });
         });
-
-        showStatusBar("Preparing print", 90);
-
         // 5a. Create a hidden iframe to build the print content in isolation.
         const printFrame = document.createElement("iframe");
         printFrame.style.position = "absolute";
@@ -504,7 +537,7 @@
           el.classList.remove("dark");
         });
 
-        showStatusBar("Opening print dialog", 100);
+        showStatusBar("Opening print dialog", 90, 100);
 
         // 5e. Trigger the print dialog and clean up the iframe afterward.
         setTimeout(() => {
