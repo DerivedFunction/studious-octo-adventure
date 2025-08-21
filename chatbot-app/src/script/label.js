@@ -319,7 +319,7 @@
 
     const container = document.createElement("div");
     container.id = "le-modal-container";
-    container.className = "le-modal-container";
+    container.className = "le-modal-container ignore-this";
     container.innerHTML = `
       <div id="le-modal" class="le-modal">
         <div class="le-header">
@@ -447,7 +447,7 @@
       labelItemsHTML = labelEntries
         .map(
           ([id, { name, color }]) => `
-        <div class="le-popover-label-item">
+        <div class="le-popover-label-item ignore-this">
           <input type="checkbox" id="le-cb-${id}" data-label-id="${id}" ${
             assignedLabelIds.has(id) ? "checked" : ""
           }>

@@ -144,12 +144,14 @@
       transaction.objectStore(this.CONVERSATION_STORE).clear();
     },
   }; // --- End of Cache Manager ---
+
+  let is_fetching = false;
   /**
    * Fetches ALL conversations (paged) from the server to fully sync the local cache.
    * This is the main data fetching function called on refresh or when cache is stale.
    * Full load continues to load all for N iterations of 100 conversations
+   * If is_fetching = true, it will not fetch, as another method is already fetching
    */
-
   async function syncAllConversationsWithServer(fullLoad = 999) {
     showLoader(
       `${
@@ -170,19 +172,26 @@
 
     try {
       let allItems = []; // Fetch both active and archived conversations
-
+      let hasSkip = false;
       for (const isArchived of [false, true]) {
         let offset = 0;
         let hasMore = true;
 
         let iterationCount = 0;
-
+        if (is_fetching) {
+          hasSkip = true;
+          console.log(
+            `[History Manager] Already fetching data elsewhere. Aborting new fetch.`
+          );
+          break;
+        } // we called fetch somewhere else, no need to do it again
         while (hasMore && iterationCount < fullLoad) {
+          is_fetching = true;
           const response = await fetch(
             `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=100&is_archived=${isArchived}`,
             { headers: { authorization: `Bearer ${token}` } }
           );
-
+          is_fetching = false;
           if (!response.ok) {
             throw new Error(
               `API request failed with status ${response.status}`
@@ -205,11 +214,12 @@
         `[History Manager] Fetched a total of ${allItems.length} conversations. Updating cache.`
       ); // Perform a clean sync: clear old data, add new data, and set the timestamp
 
-      if (fullLoad === 999) await cacheManager.clearConversations();
+      if (!hasSkip) {
+        if (fullLoad === 999) await cacheManager.clearConversations();
+        if (fullLoad > 0)
+          await cacheManager.setMetadata("lastSyncTimestamp", Date.now()); // Refresh the current view with the newly synced data
+      }
       await cacheManager.bulkAddConversations(allItems);
-      if (fullLoad > 0)
-        await cacheManager.setMetadata("lastSyncTimestamp", Date.now()); // Refresh the current view with the newly synced data
-
       await loadConversationsForView(currentView);
       console.log("✅ [History Manager] Cache sync complete.");
     } catch (error) {
@@ -227,7 +237,6 @@
    * @param {object} payload - The data to send in the PATCH request body.
    * @returns {Promise<boolean>} True on success, false on failure.
    */
-
   async function updateConversationOnServer(conversationId, payload) {
     const token = await ChatGPT.getAccessToken();
     if (!token) return false;
@@ -307,7 +316,7 @@
     const container = document.createElement("div");
     container.id = "chm-container";
     container.innerHTML = `
-      <div id="chm-modal">
+      <div id="chm-modal" class="ignore-this">
         <button id="chm-close-btn">×</button>
         <div id="chm-tabs">
           <button id="historyTab" class="active">History</button>
@@ -381,6 +390,7 @@
   function addEventListeners() {
     document.getElementById("chm-container").addEventListener("click", (e) => {
       if (e.target.id === "chm-container") toggleUiVisibility(false);
+      if (e.target.id === "chm-loader") hideLoader();
     });
     document
       .getElementById("chm-close-btn")
@@ -636,12 +646,13 @@
     document.getElementById("selectAllArchived").checked = false;
 
     const lastSync = await cacheManager.getMetadata("lastSyncTimestamp");
+    await loadConversationsForView(view);
     if (!lastSync || Date.now() - lastSync > cacheManager.CACHE_EXPIRATION_MS) {
       console.log("[History Manager] Cache is stale or missing. Forcing sync.");
+
       await syncAllConversationsWithServer(1); // Perform a partial sync
     } else {
       console.log("[History Manager] Cache is fresh. Loading from IndexedDB.");
-      await loadConversationsForView(view);
     }
   }
   /**

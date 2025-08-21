@@ -382,7 +382,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
             acc +
             instruction.reduce(
               (sum, str) =>
-                sum + 
+                sum +
                 (typeof str === "string" ? enc.encode(str.trim()).length : 0),
               0
             )
@@ -1118,35 +1118,30 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         "@thread-xl/thread:pt-header-height",
         "placeholder",
       ]);
-      const ignoredElementParent = [];
 
-      mutationList.forEach((m) => {
+      for (const m in mutationList) {
         if (skip) return;
 
         const targetElement =
           m.type === "characterData" ? m.target.parentElement : m.target;
 
-        if (!targetElement || !targetElement.classList) return;
-
+        if (
+          !targetElement ||
+          !targetElement.classList ||
+          targetElement.closest(".ignore-this") ||
+          targetElement.closest("main")
+        ) {
+          skip = true;
+          return;
+        }
         const classList = targetElement.classList;
         for (const cls of classList) {
           if (ignoredClasses.has(cls)) {
             skip = true;
-            break;
+            return;
           }
         }
-
-        if (!skip) {
-          for (const selector of ignoredElementParent) {
-            const parent = document.querySelector(selector);
-            if (parent && parent.contains(targetElement)) {
-              skip = true;
-              break;
-            }
-          }
-        }
-      });
-
+      }
       if (!skip) debouncedRunTokenCheck();
     }
   });
