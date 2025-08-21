@@ -1156,17 +1156,11 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   } else {
     debouncedRunTokenCheck();
   }
-  const interval = setInterval(() => {
-    const main = document.body.querySelector("main");
-    if (main) {
-      clearInterval(interval);
-      observer.observe(main, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
-    }
-  }, 1000);
+  observer.observe(document, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
 
   // --- UTILITY FUNCTIONS ---
   function debounce(func, wait) {

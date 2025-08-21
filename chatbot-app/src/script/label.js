@@ -814,15 +814,15 @@
     if (!sidebarNav) return false;
 
     console.log("🚀 [Label Explorer] Injecting sidebar button...");
-    const buttonElement = document.createElement("div");
-    buttonElement.id = "le-sidebar-btn";
-    buttonElement.tabIndex = "0";
-    buttonElement.className = "group __menu-item hoverable cursor-pointer";
+    const mainButton = document.createElement("div");
+    mainButton.id = "le-sidebar-btn";
+    mainButton.tabIndex = "0";
+    mainButton.className = "group __menu-item hoverable cursor-pointer";
 
     const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
     const modifierKey = isMac ? "⌘" : "Ctrl";
 
-    buttonElement.innerHTML = `
+    mainButton.innerHTML = `
       <div class="flex min-w-0 items-center gap-1.5">
         <div class="flex items-center justify-center icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
@@ -847,54 +847,49 @@
         </div>
       </div>
     `;
-
-    buttonElement.addEventListener("click", (e) => {
-      e.preventDefault();
-      toggleModalVisibility(true);
+    const tinyButton = document.createElement("div");
+    tinyButton.innerHTML = `
+    <div class="">
+      <div tabindex="0" data-fill="" class="group __menu-item hoverable">
+        <div
+          class="flex items-center justify-center group-disabled:opacity-50 group-data-disabled:opacity-50 icon"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+            <line x1="7" y1="7" x2="7.01" y2="7"></line>
+          </svg>
+        </div>
+      </div>
+    </div>
+    `;
+    const tinySidebar = document
+      .querySelector(
+        "#stage-sidebar-tiny-bar [data-testid='create-new-chat-button']"
+      )
+      ?.closest("div:not([data-state])");
+    if (!tinySidebar) return false;
+    [mainButton, tinyButton].forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        toggleModalVisibility(true);
+      });
     });
-
-    sidebarNav.appendChild(buttonElement);
+    tinySidebar.appendChild(tinyButton);
+    sidebarNav.appendChild(mainButton);
     console.log("✅ [Label Explorer] Sidebar button injected successfully.");
     return true;
   };
 
   function injectSidebarButton() {
     const observer = new MutationObserver(injectionLogic);
-    const interval = setInterval(() => {
-      const aside = document.body.querySelector("aside");
-      if (aside) {
-        clearInterval(interval);
-        observer.observe(aside, { childList: true, subtree: true });
-        injectionLogic();
-      }
-    }, 2000);
+    observer.observe(document, { childList: true, subtree: true });
   }
 
   function initializeSidebarObserver() {
-    const observer = new MutationObserver((mutations) => {
-      const newChatLinks = new Set();
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === 1) {
-            if (node.matches('a[href^="/c/"]')) newChatLinks.add(node);
-            node
-              .querySelectorAll('a[href^="/c/"]')
-              .forEach((link) => newChatLinks.add(link));
-          }
-        });
-      });
-      newChatLinks.forEach(injectSidebarUI);
+    const observer = new MutationObserver(() => {
+      document.querySelectorAll("nav a[href^='/c/']")?.forEach(injectSidebarUI);
     });
-
-    const navElement = document.querySelector("nav");
-    if (navElement) {
-      observer.observe(navElement, { childList: true, subtree: true });
-      setTimeout(() => {
-        navElement.querySelectorAll('a[href^="/c/"]').forEach(injectSidebarUI);
-      }, 3000);
-    } else {
-      setTimeout(initializeSidebarObserver, 1000);
-    }
+    observer.observe(document, { childList: true, subtree: true });
   }
 
   async function main() {

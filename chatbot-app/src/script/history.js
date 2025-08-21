@@ -9,13 +9,11 @@
     CONVERSATION_STORE: "conversations",
     METADATA_STORE: "metadata",
     CACHE_EXPIRATION_MS: 60 * 1000, // 1 minute
-    db: null
+    db: null,
     /**
      * Opens and initializes the IndexedDB database.
      * @returns {Promise<IDBDatabase>} The database instance.
-     */,
-
-    async openDB() {
+     */ async openDB() {
       if (this.db) return this.db;
       return new Promise((resolve, reject) => {
         const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
@@ -57,14 +55,12 @@
           }
         };
       });
-    }
+    },
     /**
      * Retrieves a metadata value (e.g., last sync timestamp).
      * @param {string} key The key for the metadata entry.
      * @returns {Promise<any|null>} The metadata value or null.
-     */,
-
-    async getMetadata(key) {
+     */ async getMetadata(key) {
       const db = await this.openDB();
       return new Promise((resolve) => {
         const transaction = db.transaction(this.METADATA_STORE, "readonly");
@@ -74,26 +70,22 @@
           resolve(request.result ? request.result.value : null);
         request.onerror = () => resolve(null);
       });
-    }
+    },
     /**
      * Stores a metadata value.
      * @param {string} key The key for the metadata entry.
      * @param {any} value The value to store.
-     */,
-
-    async setMetadata(key, value) {
+     */ async setMetadata(key, value) {
       const db = await this.openDB();
       const transaction = db.transaction(this.METADATA_STORE, "readwrite");
       const store = transaction.objectStore(this.METADATA_STORE);
       store.put({ key, value });
-    }
+    },
     /**
      * Retrieves all conversations for a specific view (history or archived).
      * @param {boolean} isArchived - True to get archived, false for history.
      * @returns {Promise<Array>} An array of conversation objects.
-     */,
-
-    async getConversations(isArchived) {
+     */ async getConversations(isArchived) {
       const db = await this.openDB();
       return new Promise((resolve) => {
         const transaction = db.transaction(this.CONVERSATION_STORE, "readonly");
@@ -104,13 +96,11 @@
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => resolve([]);
       });
-    }
+    },
     /**
      * Adds or updates a batch of conversations in the database.
      * @param {Array<object>} conversations - The conversations to add/update.
-     */,
-
-    async bulkAddConversations(conversations) {
+     */ async bulkAddConversations(conversations) {
       const db = await this.openDB();
       const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
       const store = transaction.objectStore(this.CONVERSATION_STORE);
@@ -119,14 +109,12 @@
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       });
-    }
+    },
     /**
      * Updates a single conversation in the database with new properties.
      * @param {string} id - The ID of the conversation to update.
      * @param {object} changes - An object with properties to update (e.g., { is_archive: 1 }).
-     */,
-
-    async updateConversation(id, changes) {
+     */ async updateConversation(id, changes) {
       const db = await this.openDB();
       const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
       const store = transaction.objectStore(this.CONVERSATION_STORE);
@@ -138,28 +126,24 @@
           store.put(conversation);
         }
       };
-    }
+    },
     /**
      * Deletes multiple conversations from the database by their IDs.
      * @param {Array<string>} ids - An array of conversation IDs to delete.
-     */,
-
-    async deleteConversations(ids) {
+     */ async deleteConversations(ids) {
       const db = await this.openDB();
       const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
       const store = transaction.objectStore(this.CONVERSATION_STORE);
       ids.forEach((id) => store.delete(id));
-    }
+    },
     /**
      * Clears all conversations from the database. Used during a full sync.
-     */,
-
-    async clearConversations() {
+     */ async clearConversations() {
       const db = await this.openDB();
       const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
       transaction.objectStore(this.CONVERSATION_STORE).clear();
     },
-  };  // --- End of Cache Manager ---
+  }; // --- End of Cache Manager ---
   /**
    * Fetches ALL conversations (paged) from the server to fully sync the local cache.
    * This is the main data fetching function called on refresh or when cache is stale.
@@ -564,17 +548,17 @@
               </label>
               <span class="title">
                 <a href="/c/${
-            item.id
-          }" target="_blank" rel="noopener noreferrer">${
+                  item.id
+                }" target="_blank" rel="noopener noreferrer">${
             item.title || "Untitled"
           }</a>
               </span>
               <span class="time">${new Date(
-            item.update_time
-          ).toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit",
-          })}</span>
+                item.update_time
+              ).toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+              })}</span>
             </div>
           `;
         });
@@ -776,13 +760,13 @@
     if (document.getElementById("chm-sidebar-btn")) return true;
     const sidebarNav = document.querySelector("aside");
     if (!sidebarNav) return false;
-    const buttonElement = document.createElement("div");
-    buttonElement.id = "chm-sidebar-btn";
-    buttonElement.tabIndex = "0";
-    buttonElement.className = "group __menu-item hoverable cursor-pointer";
+    const mainButton = document.createElement("div");
+    mainButton.id = "chm-sidebar-btn";
+    mainButton.tabIndex = "0";
+    mainButton.className = "group __menu-item hoverable cursor-pointer";
     const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
     const modifierKey = isMac ? "⌘" : "Ctrl";
-    buttonElement.innerHTML = `
+    mainButton.innerHTML = `
       <div class="flex min-w-0 items-center gap-1.5">
         <div class="flex items-center justify-center icon">
           <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg">
@@ -807,12 +791,48 @@
         </div>
       </div>
     `;
-    buttonElement
-      .addEventListener("click", (e) => {
+
+    const tinyButton = document.createElement("div");
+    tinyButton.innerHTML = `
+    <div class="">
+      <div tabindex="0" data-fill="" class="group __menu-item hoverable">
+        <div
+          class="flex items-center justify-center group-disabled:opacity-50 group-data-disabled:opacity-50 icon"
+        >
+          <svg
+            stroke="currentColor"
+            fill="none"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-4 w-4"
+            height="1em"
+            width="1em"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+            <path d="M3 3v5h5"></path>
+            <path d="M12 7v5l4 2"></path>
+          </svg>
+        </div>
+      </div>
+    </div>
+    `;
+    const tinySidebar = document
+      .querySelector(
+        "#stage-sidebar-tiny-bar [data-testid='create-new-chat-button']"
+      )
+      ?.closest("div:not([data-state])");
+    if (!tinySidebar) return false;
+    [mainButton, tinyButton].forEach((btn) => {
+      btn.addEventListener("click", (e) => {
         e.preventDefault();
         toggleUiVisibility(true);
       });
-    sidebarNav.appendChild(buttonElement);
+    });
+    tinySidebar.appendChild(tinyButton);
+    sidebarNav.appendChild(mainButton);
     console.log("✅ [History Manager] Sidebar button injected successfully.");
     return true;
   } // --- Initialization and Event Listeners ---
@@ -826,15 +846,8 @@
     }
   }); // Use MutationObserver to inject the button reliably
 
-  const observer = new MutationObserver(() => {
-    if (
-      document.querySelector("nav") &&
-      !document.getElementById("chm-sidebar-btn")
-    ) {
-      injectSidebarButton(); // obs.disconnect(); // Can disconnect if the nav is stable
-    }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+  const observer = new MutationObserver(injectSidebarButton);
+  observer.observe(document, { childList: true, subtree: true });
 
   console.log("✅ [History Manager] Script loaded. Press Ctrl+H to open.");
 })();
