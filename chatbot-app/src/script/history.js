@@ -322,7 +322,7 @@
                   <span class="chm-custom-checkbox"></span>
                   <span>Select All</span>
                 </label>
-                <span>Time Range: </span>
+                <span class="hidden md:block">Time Range: </span>
                 <select id="chm-time-filter">
                   <option value="15m">Last 15 min</option>
                   <option value="1h">Last hour</option>
@@ -333,7 +333,7 @@
                 </select>
               </div>
               <div class="chm-action-bar-group">
-                <span id="chm-last-updated" style="font-size: 0.8rem; color: var(--text-tertiary); margin-right: 12px;"></span>
+                <span id="chm-last-updated" class="hidden md:block" style="font-size: 0.8rem; color: var(--text-tertiary); margin-right: 12px;"></span>
                 <button id="chm-refresh-btn" class="chm-btn action-secondary">Refresh</button>
               </div>
             </div>
@@ -456,6 +456,10 @@
 
     if (show) {
       container.style.display = "flex";
+      if (window.matchMedia("(max-width: 767px)").matches) {
+        console.log("Closing sidebar for small screens");
+        document.querySelector("[aria-label='Close sidebar']")?.click();
+      }
       setTimeout(() => {
         container.classList.add("visible");
         switchView(currentView); // Load data when shown

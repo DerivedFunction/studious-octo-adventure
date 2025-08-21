@@ -496,7 +496,10 @@
     popover
       .querySelector(".le-popover-close-btn")
       .addEventListener("click", closeLabelAssignmentPopover);
-
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      console.log("Closing sidebar for small screens");
+      document.querySelector("[aria-label='Close sidebar']")?.click();
+    }
     // Close on backdrop click
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) closeLabelAssignmentPopover();
@@ -616,6 +619,10 @@
     const container = document.getElementById("le-modal-container");
     if (show) {
       container.style.display = "flex";
+      if (window.matchMedia("(max-width: 767px)").matches) {
+        console.log("Closing sidebar for small screens");
+        document.querySelector("[aria-label='Close sidebar']")?.click();
+      }
       setTimeout(() => container.classList.add("visible"), 10);
       const input = document.getElementById("le-search-input");
       input.value = "";
