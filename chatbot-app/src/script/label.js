@@ -41,7 +41,7 @@
         chrome.storage &&
         chrome.storage.sync
       ) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
           chrome.storage.sync.get([STORAGE_KEY], (result) => {
             if (chrome.runtime.lastError) {
               console.error(
