@@ -71,6 +71,7 @@
 
       // 3b. Set 'data-copy-content' attribute for entire messages to enable copying.
       area.querySelectorAll("[data-message-id]").forEach((message) => {
+        message.style.opacity = 1;
         const id = message.closest("article").getAttribute("data-turn-id");
         const buttonArray = message.parentElement.nextElementSibling;
         const copyBtn = buttonArray?.querySelector(
@@ -87,7 +88,6 @@
       area
         .querySelectorAll(".popover")
         .forEach((codeEl) => codeEl.parentElement.removeChild(codeEl));
-
       for (const [turnId, canvases] of canvasDataMap) {
         canvases.forEach((canvas) => {
           const parts = canvas.type?.split("/") || [null];
@@ -695,6 +695,13 @@
     if ((event.ctrlKey || event.metaKey) && event.key === "p") {
       event.preventDefault();
       exportOrPrintHTML("print");
+    }
+  });
+  // Override Ctrl+S to use custom html function
+  document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+      event.preventDefault();
+      exportOrPrintHTML("download");
     }
   });
 
