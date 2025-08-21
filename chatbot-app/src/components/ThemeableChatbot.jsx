@@ -49,7 +49,7 @@ const ThemeableChatbot = () => {
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [isScriptingEnabled, setIsScriptingEnabled] = useState(false);
   const [isThemeActive, setIsThemeActive] = useState(false);
-  const [contextWindow, setContextWindow] = useState(8 * 2 ** 10); //  tokens
+  const [contextWindow, setContextWindow] = useState(0); //  tokens
   const [globalSystemPrompt, setGlobalSystemPrompt] = useState("");
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const [tempPrompt, setTempPrompt] = useState("");
