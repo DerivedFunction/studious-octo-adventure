@@ -1,41 +1,94 @@
 (() => {
   // --- SHARED UTILITIES ---
-
-  // Create a status bar showing status export
-  function showStatusBar(text, percent, toPercent = null) {
-    // Remove existing status bar if present
-    const existingStatusBar = document.getElementById("export-status-bar");
+  const canceledJobs = new Set();
+  function cancelJob(jobid) {
+    canceledJobs.add(jobid);
+    showStatusBar(jobid, `Canceling Export`, 0);
+  }
+  /**
+   * Create a status bar showing status export
+   *  */
+  function showStatusBar(jobid = Date.now(), text, percent, toPercent = null) {
+    // Remove existing status bar with same ID if present
+    const existingStatusBar = document.getElementById(
+      `export-status-bar-${jobid}`
+    );
     if (existingStatusBar) {
       existingStatusBar.remove();
+    }
+    if (canceledJobs.has(jobid)) {
+      return;
     }
 
     // Create status bar container
     const statusBar = document.createElement("div");
-    statusBar.id = "export-status-bar";
+    statusBar.id = `export-status-bar-${jobid}`;
     statusBar.className = "export-status-bar";
 
-    // Create content
+    // Create content with cancel button
     statusBar.innerHTML = `
-      <div class="export-status-content ignore-this">
-        <div class="export-status-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" x2="12" y1="15" y2="3"/>
-          </svg>
-        </div>
-        <div class="export-status-text">${text}</div>
-        <div class="export-status-progress">
-          <div class="export-status-progress-bar" style="width: ${percent}%"></div>
-        </div>
-        <div class="export-status-percentage">${percent}%</div>
+    <div class="export-status-content ignore-this">
+      <div class="export-status-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" x2="12" y1="15" y2="3"/>
+        </svg>
       </div>
-    `;
-
-    document.body.appendChild(statusBar);
+      <div class="export-status-text">${text}</div>
+      <div class="export-status-progress">
+        <div class="export-status-progress-bar" style="width: ${percent}%"></div>
+      </div>
+      <div class="export-status-percentage">${percent}%</div>
+      <button class="export-status-cancel">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  `;
+    statusBar
+      .querySelector("button.export-status-cancel")
+      .addEventListener("click", () => cancelJob(jobid));
+    let container = document.querySelector("#export-status-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "export-status-container";
+      document.body.appendChild(container);
+    }
+    container.appendChild(statusBar);
 
     // Auto-hide when progress reaches 100%
     if (percent >= 100 || percent == 0) {
+      closeStatusBar();
+    }
+    if (toPercent) {
+      const status = statusBar.querySelector(".export-status-progress-bar");
+      const percentage = statusBar.querySelector(".export-status-percentage");
+
+      let current = percent;
+      const step = () => {
+        if (current <= toPercent && !canceledJobs.has(jobid)) {
+          status.style.width = `${current}%`;
+          percentage.textContent = `${current}%`;
+          current++;
+          setTimeout(step, 100); // adjust speed
+          if (current >= 100) {
+            closeStatusBar();
+          }
+        } else if (current >= toPercent && canceledJobs.has(jobid)) {
+          setTimeout(() => {
+            canceledJobs.delete(jobid); // Clean up the job from the Set
+          }, 1000 * 5 * 60);
+        }
+      };
+      step();
+    }
+    // return a jobid if it is null
+    return jobid;
+
+    function closeStatusBar() {
       setTimeout(() => {
         if (statusBar && statusBar.parentNode) {
           statusBar.style.opacity = "0";
@@ -45,21 +98,6 @@
           }, 300);
         }
       }, 1500);
-    }
-    if (toPercent) {
-      const status = statusBar.querySelector(".export-status-progress-bar");
-      const percentage = statusBar.querySelector(".export-status-percentage");
-
-      let current = percent;
-      const step = () => {
-        if (current <= toPercent) {
-          status.style.width = `${current}%`;
-          percentage.textContent = `${current}%`;
-          current++;
-          setTimeout(step, 100); // adjust speed
-        }
-      };
-      step();
     }
   }
 
@@ -72,10 +110,11 @@
    * @param {'print' | 'download'} action - The desired action to perform.
    */
   async function exportOrPrintHTML(action) {
+    const jobid = Date.now();
     let buttonsClicked = [];
     try {
       // --- SHARED SETUP AND DOM PREPARATION ---
-      showStatusBar("Begin Export", 1, 5);
+      showStatusBar(jobid, `${action}: Begin Export`, 1, 5);
       // 0. Open all reasoning sections to ensure their content is in the DOM for cloning.
       document
         .querySelectorAll(
@@ -95,13 +134,14 @@
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
-      showStatusBar("Preparing content", 5, 15);
+      if (canceledJobs.has(jobid)) return;
+      showStatusBar(jobid, `${action}: Preparing content`, 5, 15);
 
       // 1. Clone the main chat area. This serves as the base for both print and download.
       const mainArea = document.querySelector("article")?.parentElement;
       if (!mainArea) {
         alert("Could not find chat content to export.");
-        showStatusBar("Export Canceled", 0);
+        showStatusBar(jobid, `${action}: Export Canceled`, 0);
         return;
       }
       const area = mainArea.cloneNode(true);
@@ -113,7 +153,8 @@
         )
         .forEach((el) => el.remove());
 
-      showStatusBar("Fetching conversation data", 15, 30);
+      if (canceledJobs.has(jobid)) return;
+      showStatusBar(jobid, `${action}: Fetching conversation data`, 15, 30);
 
       // 2. Fetch necessary conversation data for populating the cloned content.
       const { canvasMapData, jsonCopy } = await ChatGPT.convertExport();
@@ -124,7 +165,8 @@
         canvases,
       ]);
 
-      showStatusBar("Processing content", 30, 50);
+      if (canceledJobs.has(jobid)) return;
+      showStatusBar(jobid, `${action}: Processing content`, 30, 50);
 
       // --- SHARED DOM MANIPULATION ON THE CLONED AREA ---
       // 3a. Set attributes on reasoning buttons for offline interactivity or styling.
@@ -215,9 +257,9 @@
       });
 
       // --- ACTION-SPECIFIC OUTPUT GENERATION ---
-
-      if (action === "download") {
-        showStatusBar("Building HTML page", 50, 60);
+      if (action === "Download HTML") {
+        if (canceledJobs.has(jobid)) return;
+        showStatusBar(jobid, `${action}: Building HTML page`, 50, 60);
         // 4a. Create the interactive script for the offline HTML file.
         const script = document.createElement("script");
         script.textContent = `
@@ -356,9 +398,11 @@
         const linkEls = document.querySelectorAll('link[rel="stylesheet"]');
         let delta = Math.round((75 - currentPercent) / linkEls.length);
         for (let link of linkEls) {
+          if (canceledJobs.has(jobid)) return;
           const href = link.href;
           try {
             showStatusBar(
+              jobid,
               "Applying styling",
               currentPercent,
               currentPercent + delta
@@ -368,6 +412,11 @@
             stylesHTML += `<style>\n${cssText}\n</style>`;
             currentPercent += delta;
           } catch (err) {
+            showStatusBar(
+              jobid,
+              "Stylesheet Error. Appending link.",
+              currentPercent
+            );
             console.warn("Failed to fetch stylesheet:", href, err);
             stylesHTML += link.outerHTML;
           }
@@ -401,7 +450,9 @@
         for (const img of images) {
           try {
             // Skip if already data URI
+            if (canceledJobs.has(jobid)) return;
             showStatusBar(
+              jobid,
               "Downloading images",
               currentPercent,
               currentPercent + delta
@@ -425,6 +476,8 @@
             console.warn("Failed to convert image:", img.src, err);
           }
         }
+
+        if (canceledJobs.has(jobid)) return;
         // 4d. Construct the full HTML document string.
         const fullHTML = `
         <!DOCTYPE html>
@@ -442,7 +495,7 @@
               </div>
               <div class="flex-1"></div>
               <div class="flex items-center mx-2 gap-1.5">
-                <div id="toggleTheme" class="group flex cursor-pointer justify-center items-center gap-1 rounded-full min-h-9 touch:min-h-10 px-2.5 text-sm hover:bg-token-surface-hover focus-visible:bg-token-surface-hover font-normal whitespace-nowrap focus-visible:outline-none">
+                <div id="toggleTheme" class="group flex cursor-pointer justify-center items-center gap-1 rounded-full min-h-9 touch:min-h-10 px-2.5 text-sm hover:bg-token-surface-hover focus-visible:bg-token-surface-hover font-normal whitespace-nowap focus-visible:outline-none">
                   <div class="flex w-full items-center justify-center gap-1.5">Toggle Theme</div>
                 </div>
                 <div id="printChat" class="group flex cursor-pointer justify-center items-center gap-1 rounded-full min-h-9 touch:min-h-10 px-2.5 text-sm hover:bg-token-surface-hover focus-visible:bg-token-surface-hover font-normal whitespace-nowrap focus-visible:outline-none">
@@ -463,10 +516,13 @@
         downloadFile(
           fullHTML,
           `ChatGPT-${conversationTitle}.html`,
-          "text/html"
+          "text/html",
+          jobid,
+          action
         );
-      } else if (action === "print") {
-        showStatusBar("Preparing print", 60, 90);
+      } else if (action === "Printing") {
+        if (canceledJobs.has(jobid)) return;
+        showStatusBar(jobid, `${action}: Preparing print`, 60, 90);
         // 5a.1 Fix code blocks inside articles and add user message borders.
         const articles = area.querySelectorAll("article");
         articles.forEach((article) => {
@@ -537,7 +593,8 @@
           el.classList.remove("dark");
         });
 
-        showStatusBar("Opening print dialog", 90, 100);
+        if (canceledJobs.has(jobid)) return;
+        showStatusBar(jobid, `${action}: Opening print dialog`, 90, 100);
 
         // 5e. Trigger the print dialog and clean up the iframe afterward.
         setTimeout(() => {
@@ -555,7 +612,7 @@
       alert(
         `Failed to ${action} conversation. Check the console for more details.`
       );
-      showStatusBar("Export failed", 0);
+      showStatusBar(jobid, `${action}: Export failed`, 0);
     } finally {
       // --- SHARED CLEANUP ---
       // Un-click the reasoning buttons to restore the original page state.
@@ -564,7 +621,6 @@
       });
     }
   }
-
   function escapeHTML(str) {
     if (!str) return "";
     return str
@@ -581,7 +637,9 @@
   function downloadFile(
     content,
     filename,
-    mimeType = "application/octet-stream"
+    mimeType = "application/octet-stream",
+    jobId,
+    action
   ) {
     const blob =
       content instanceof Blob
@@ -592,8 +650,8 @@
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
-    showStatusBar("Downloading file", 100);
-    a.click();
+    if (!canceledJobs.has(jobId)) a.click();
+    showStatusBar(jobId, `${action}: Downloading file`, 100);
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
@@ -665,10 +723,12 @@
     const statusStyle = document.createElement("style");
     statusStyle.id = "export-status-styles";
     statusStyle.textContent = `
+    #export-status-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+    }
     .export-status-bar {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
       background: var(--main-surface-primary);
       border: 1px solid var(--border-light);
       border-radius: 12px;
@@ -733,13 +793,7 @@
       text-align: right;
       flex-shrink: 0;
     }
-    
-    /* Dark mode compatibility */
-    .dark .export-status-bar {
-      background: var(--gray-800);
-      border-color: var(--gray-700);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-    }
+  
   `;
     document.head.appendChild(statusStyle);
   }
@@ -825,26 +879,34 @@
       dropdown
         .querySelector("#print-chat-item")
         .addEventListener("click", () => {
-          exportOrPrintHTML("print");
+          exportOrPrintHTML("Printing");
           dropdown.classList.remove("show");
         });
       dropdown
         .querySelector("#html-chat-item")
         .addEventListener("click", () => {
-          exportOrPrintHTML("download");
+          exportOrPrintHTML("Download HTML");
           dropdown.classList.remove("show");
         });
       dropdown
         .querySelector("#export-md-item")
         .addEventListener("click", async () => {
-          showStatusBar("Fetching conversation data", 1, 60);
+          const id = Date.now();
+          showStatusBar(
+            id,
+            "Download markdown: Fetching conversation data",
+            1,
+            60
+          );
           const { markdown, metaData } = await ChatGPT.convertExport();
-          showStatusBar("Processing Data", 60, 95);
+          showStatusBar(id, "Processing Data", 60, 95);
           if (markdown) {
             downloadFile(
               markdown,
               `ChatGPT-${metaData.title}.md`,
-              "text/markdown"
+              "text/markdown",
+              id,
+              "Download markdown"
             );
           }
           dropdown.classList.remove("show");
@@ -852,14 +914,17 @@
       dropdown
         .querySelector("#export-json-chat-item")
         .addEventListener("click", async () => {
-          showStatusBar("Fetching conversation data", 1, 60);
+          const id = Date.now();
+          showStatusBar(id, "Download JSON: Fetching conversation data", 1, 60);
           const { jsonData, metaData } = await ChatGPT.convertExport();
-          showStatusBar("Processing Data", 60, 95);
+          showStatusBar(id, "Processing Data", 60, 95);
           if (jsonData) {
             downloadFile(
               JSON.stringify(jsonData, null, 2),
               `ChatGPT-Output-${metaData.title}.json`,
-              "application/json"
+              "application/json",
+              id,
+              "Download JSON"
             );
           }
           dropdown.classList.remove("show");
@@ -867,14 +932,17 @@
       dropdown
         .querySelector("#export-json-item")
         .addEventListener("click", async () => {
-          showStatusBar("Fetching conversation data", 1, 60);
+          const id = Date.now();
+          showStatusBar(id, "Download JSON: Fetching conversation data", 1, 60);
           const { jsonAPI, metaData } = await ChatGPT.convertExport();
-          showStatusBar("Processing Data", 60, 95);
+          showStatusBar(id, "Processing Data", 60, 95);
           if (jsonAPI) {
             downloadFile(
               JSON.stringify(jsonAPI, null, 2),
               `ChatGPT-Input-${metaData.title}.json`,
-              "application/json"
+              "application/json",
+              id,
+              "Download JSON"
             );
           }
           dropdown.classList.remove("show");
@@ -921,14 +989,14 @@
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === "p") {
       event.preventDefault();
-      exportOrPrintHTML("print");
+      exportOrPrintHTML("Printing");
     }
   });
   // Override Ctrl+S to use custom html function
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === "s") {
       event.preventDefault();
-      exportOrPrintHTML("download");
+      exportOrPrintHTML("Download HTML");
     }
   });
 
