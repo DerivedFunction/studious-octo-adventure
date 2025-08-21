@@ -352,7 +352,11 @@
       `;
 
         // 4e. Trigger the download.
-        downloadFile(fullHTML, `ChatGPT-${conversationTitle}.html`, "html");
+        downloadFile(
+          fullHTML,
+          `ChatGPT-${conversationTitle}.html`,
+          "text/html"
+        );
       } else if (action === "print") {
         // 5a.1 Fix code blocks inside articles and add user message borders.
         const articles = area.querySelectorAll("article");
@@ -462,10 +466,15 @@
   /**
    * Downloads the markdown content as a file.
    */
-  function downloadFile(content, filename, filetype = "markdown") {
-    const blob = new Blob([content], {
-      type: filetype === "json" ? "application/json" : `text/${filetype}`,
-    });
+  function downloadFile(
+    content,
+    filename,
+    mimeType = "application/octet-stream"
+  ) {
+    const blob =
+      content instanceof Blob
+        ? content
+        : new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -632,7 +641,11 @@
         const { markdown, metaData } = await ChatGPT.convertExport();
         if (markdown) {
           console.log("Markdown:", markdown, metaData);
-          downloadFile(markdown, `ChatGPT-${metaData.title}.md`, "markdown");
+          downloadFile(
+            markdown,
+            `ChatGPT-${metaData.title}.md`,
+            "text/markdown"
+          );
         }
         dropdown.classList.remove("show");
       });
@@ -644,7 +657,7 @@
           downloadFile(
             JSON.stringify(jsonData, null, 2),
             `ChatGPT-Output-${metaData.title}.json`,
-            "json"
+            "application/json"
           );
         }
         dropdown.classList.remove("show");
@@ -657,7 +670,7 @@
           downloadFile(
             JSON.stringify(jsonAPI, null, 2),
             `ChatGPT-Input-${metaData.title}.json`,
-            "json"
+            "application/json"
           );
         }
         dropdown.classList.remove("show");
