@@ -11,76 +11,188 @@
 
   // --- 1. CORE LOGIC & DATA MANAGEMENT ---
 
-  // --- IndexedDB Helper for Label Data ---
-  const DB_NAME = "LabelExplorerDB";
-  const DB_VERSION = 1;
-  const STORE_NAME = "labelData";
-  const DATA_KEY = "appData";
+  // --- Chrome Storage Sync Helper for Label Data ---
+  const STORAGE_KEY = "labelExplorerData";
+  const MAX_STORAGE_SIZE = 102400; // Chrome storage.sync limit is ~100KB per item
+  let idCounter = 0; // For generating short IDs
 
-  let db; // To hold the LabelExplorerDB instance
-
-  function openDB() {
-    return new Promise((resolve, reject) => {
-      if (db) return resolve(db);
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onerror = (event) => {
-        console.error("[Label Explorer] IndexedDB error:", event.target.error);
-        reject("IndexedDB error");
-      };
-      request.onsuccess = (event) => {
-        db = event.target.result;
-        resolve(db);
-      };
-      request.onupgradeneeded = (event) => {
-        const dbInstance = event.target.result;
-        if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
-          dbInstance.createObjectStore(STORE_NAME, { keyPath: "id" });
-        }
-      };
+  // Initialize ID counter from existing data
+  async function initializeIdCounter() {
+    const data = await getStoredData();
+    const existingIds = Object.keys(data.labels).map((id) => {
+      // Extract numeric part from IDs like "l1", "l2", etc.
+      const match = id.match(/^l(\d+)$/);
+      return match ? parseInt(match[1], 10) : 0;
     });
+    idCounter = existingIds.length > 0 ? Math.max(...existingIds) : 0;
   }
 
-  async function getFromDB(key) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readonly");
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.get(key);
-      request.onerror = (event) => reject(event.target.error);
-      request.onsuccess = () =>
-        resolve(request.result ? request.result.value : null);
-    });
+  // Generate short, sequential IDs instead of timestamp-based ones
+  function generateShortId() {
+    return `l${++idCounter}`;
   }
 
-  async function setToDB(key, value) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, "readwrite");
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.put({ id: key, value: value });
-      request.onerror = (event) => reject(event.target.error);
-      request.onsuccess = () => resolve();
-    });
-  }
-
+  // Storage helper functions using Chrome Storage Sync
   async function getStoredData() {
     try {
-      const data = await getFromDB(DATA_KEY);
-      if (data && data.labels && data.chatLabels) return data;
+      // Check if we're in a Chrome extension environment
+      if (
+        typeof chrome !== "undefined" &&
+        chrome.storage &&
+        chrome.storage.sync
+      ) {
+        return new Promise((resolve, reject) => {
+          chrome.storage.sync.get([STORAGE_KEY], (result) => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                "[Label Explorer] Chrome storage error:",
+                chrome.runtime.lastError
+              );
+              resolve({ labels: {}, chatLabels: {} });
+            } else {
+              const data = result[STORAGE_KEY];
+              if (data && data.labels && data.chatLabels) {
+                resolve(data);
+              } else {
+                resolve({ labels: {}, chatLabels: {} });
+              }
+            }
+          });
+        });
+      } else {
+        // Fallback to localStorage for development/testing
+        console.warn(
+          "[Label Explorer] Chrome storage not available, using localStorage fallback"
+        );
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          try {
+            const data = JSON.parse(stored);
+            if (data && data.labels && data.chatLabels) {
+              return data;
+            }
+          } catch (e) {
+            console.error(
+              "[Label Explorer] Error parsing localStorage data:",
+              e
+            );
+          }
+        }
+        return { labels: {}, chatLabels: {} };
+      }
     } catch (e) {
-      console.error("[Label Explorer] Error reading from IndexedDB:", e);
+      console.error("[Label Explorer] Error reading from storage:", e);
+      return { labels: {}, chatLabels: {} };
     }
-    return { labels: {}, chatLabels: {} };
   }
 
   async function saveStoredData(data) {
     try {
-      await setToDB(DATA_KEY, data);
+      // Validate data size before saving
+      const dataSize = JSON.stringify(data).length;
+      if (dataSize > MAX_STORAGE_SIZE) {
+        console.warn(
+          `[Label Explorer] Data size (${dataSize} bytes) exceeds Chrome storage limit. Consider cleaning up old labels.`
+        );
+        // Could implement data cleanup logic here
+      }
+
+      if (
+        typeof chrome !== "undefined" &&
+        chrome.storage &&
+        chrome.storage.sync
+      ) {
+        return new Promise((resolve, reject) => {
+          chrome.storage.sync.set({ [STORAGE_KEY]: data }, () => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                "[Label Explorer] Error saving to Chrome storage:",
+                chrome.runtime.lastError
+              );
+              reject(chrome.runtime.lastError);
+            } else {
+              console.log(
+                "[Label Explorer] Data successfully synced to Chrome storage"
+              );
+              resolve();
+            }
+          });
+        });
+      } else {
+        // Fallback to localStorage
+        console.warn(
+          "[Label Explorer] Chrome storage not available, using localStorage fallback"
+        );
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        return Promise.resolve();
+      }
     } catch (e) {
-      console.error("[Label Explorer] Error saving to IndexedDB:", e);
+      console.error("[Label Explorer] Error saving to storage:", e);
+      throw e;
     }
   }
-  // --- End of Label DB Helper ---
+
+  // Listen for storage changes from other instances (tabs/devices)
+  function initializeStorageListener() {
+    if (
+      typeof chrome !== "undefined" &&
+      chrome.storage &&
+      chrome.storage.sync
+    ) {
+      chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName === "sync" && changes[STORAGE_KEY]) {
+          console.log(
+            "[Label Explorer] Storage sync detected, updating local state"
+          );
+          appState.data = changes[STORAGE_KEY].newValue || {
+            labels: {},
+            chatLabels: {},
+          };
+
+          // Refresh UI if modal is open
+          const container = document.getElementById("le-modal-container");
+          if (container && container.style.display !== "none") {
+            const searchInput = document.getElementById("le-search-input");
+            if (searchInput && searchInput.value.trim()) {
+              handleSearch();
+            } else {
+              showAvailableLabels();
+            }
+          }
+        }
+      });
+    } else {
+      // Fallback: listen for localStorage changes (same-origin only)
+      window.addEventListener("storage", (e) => {
+        if (e.key === STORAGE_KEY && e.newValue) {
+          try {
+            appState.data = JSON.parse(e.newValue);
+            console.log(
+              "[Label Explorer] localStorage change detected, updating local state"
+            );
+
+            // Refresh UI if modal is open
+            const container = document.getElementById("le-modal-container");
+            if (container && container.style.display !== "none") {
+              const searchInput = document.getElementById("le-search-input");
+              if (searchInput && searchInput.value.trim()) {
+                handleSearch();
+              } else {
+                showAvailableLabels();
+              }
+            }
+          } catch (error) {
+            console.error(
+              "[Label Explorer] Error parsing storage change:",
+              error
+            );
+          }
+        }
+      });
+    }
+  }
+
+  // --- End of Chrome Storage Sync Helper ---
 
   // --- History Manager Cache Access ---
   const historyDBManager = {
@@ -151,40 +263,6 @@
   }
 
   // --- 2. UI, STYLES, AND INJECTION ---
-  function createElement(tag, attributes = {}, children = []) {
-    const el = document.createElement(tag);
-    for (const key in attributes) {
-      if (key === "className") {
-        el.className = attributes[key];
-      } else if (key === "style") {
-        Object.assign(el.style, attributes[key]);
-      } else if (key.startsWith("data-")) {
-        el.dataset[key.substring(5)] = attributes[key];
-      } else if (key.startsWith("checked")) {
-        if (attributes[key]) {
-          el.setAttribute(key, "");
-        }
-      } else {
-        el.setAttribute(key, attributes[key]);
-      }
-    }
-    children.forEach((child) => {
-      if (typeof child === "string") {
-        el.appendChild(document.createTextNode(child));
-      } else if (child) {
-        el.appendChild(child);
-      }
-    });
-    return el;
-  }
-
-  function createSvgElement(tag, attributes = {}) {
-    const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
-    for (const key in attributes) {
-      el.setAttribute(key, attributes[key]);
-    }
-    return el;
-  }
 
   function injectStyles() {
     if (document.getElementById("le-styles")) return;
@@ -226,51 +304,38 @@
       .le-color-swatch-label { position: relative; display: flex; width: 100%; height: 20px; cursor: pointer; flex-direction: row-reverse; align-items: center; margin-left: auto; }
       .le-color-picker-input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
       .le-color-swatch { display: block; width: 25px; height: 25px; border-radius: 50%; border: 1px solid var(--border-light); pointer-events: none; }
+      .le-sync-status { font-size: 0.75rem; color: var(--text-tertiary); padding: 4px 8px; }
+      .le-sync-status.synced { color: var(--text-success); }
+      .le-sync-status.error { color: var(--text-error); }
     `;
-    const styleSheet = createElement("style", { id: "le-styles" });
+    const styleSheet = document.createElement("style");
+    styleSheet.id = "le-styles";
     styleSheet.textContent = cssTemplate;
     document.head.appendChild(styleSheet);
   }
 
   function injectModal() {
     if (appState.uiInjected) return;
-    const modal = createElement(
-      "div",
-      { id: "le-modal", className: "le-modal" },
-      [
-        createElement("div", { className: "le-header" }, [
-          createElement(
-            "div",
-            { id: "le-search-bar", className: "le-search-bar" },
-            [
-              createElement("input", {
-                type: "text",
-                id: "le-search-input",
-                placeholder: "Search by labels...",
-              }),
-            ]
-          ),
-        ]),
-        createElement("div", { id: "le-content", className: "le-content" }, [
-          createElement(
-            "p",
-            {
-              style: {
-                textAlign: "center",
-                color: "var(--text-tertiary)",
-                padding: "1rem",
-              },
-            },
-            ["Start typing to search for conversations by label."]
-          ),
-        ]),
-      ]
-    );
-    const container = createElement(
-      "div",
-      { id: "le-modal-container", className: "le-modal-container" },
-      [modal]
-    );
+
+    const container = document.createElement("div");
+    container.id = "le-modal-container";
+    container.className = "le-modal-container";
+    container.innerHTML = `
+      <div id="le-modal" class="le-modal">
+        <div class="le-header">
+          <div id="le-search-bar" class="le-search-bar">
+            <input type="text" id="le-search-input" placeholder="Search by labels...">
+            <div id="le-sync-status" class="le-sync-status">Synced ✓</div>
+          </div>
+        </div>
+        <div id="le-content" class="le-content">
+          <p style="text-align: center; color: var(--text-tertiary); padding: 1rem;">
+            Start typing to search for conversations by label.
+          </p>
+        </div>
+      </div>
+    `;
+
     document.body.appendChild(container);
     appState.uiInjected = true;
     addModalEventListeners();
@@ -283,66 +348,58 @@
     if (!titleContainer) return;
 
     const conversationId = chatElement.href.split("/").pop();
-    const svgIcon = createSvgElement("svg", {
-      width: "16",
-      height: "16",
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-    });
-    svgIcon.appendChild(
-      createSvgElement("path", {
-        d: "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z",
-      })
-    );
-    svgIcon.appendChild(
-      createSvgElement("line", { x1: "7", y1: "7", x2: "7.01", y2: "7" })
-    );
+    const labelButton = document.createElement("button");
+    labelButton.className = "le-sidebar-btn";
+    labelButton.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+        <line x1="7" y1="7" x2="7.01" y2="7"></line>
+      </svg>
+    `;
 
-    const labelButton = createElement(
-      "button",
-      { className: "le-sidebar-btn" },
-      [svgIcon]
-    );
     labelButton.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
       showLabelAssignmentPopover(conversationId);
     });
+
     titleContainer.parentElement.style.display = "flex";
     titleContainer.parentElement.appendChild(labelButton);
   }
 
   // --- 3. EVENT HANDLERS & DYNAMIC UI ---
 
+  function updateSyncStatus(status, message = "") {
+    const syncStatusEl = document.getElementById("le-sync-status");
+    if (!syncStatusEl) return;
+
+    switch (status) {
+      case "synced":
+        syncStatusEl.className = "le-sync-status synced";
+        syncStatusEl.textContent = "Synced ✓";
+        break;
+      case "syncing":
+        syncStatusEl.className = "le-sync-status";
+        syncStatusEl.textContent = "Syncing...";
+        break;
+      case "error":
+        syncStatusEl.className = "le-sync-status error";
+        syncStatusEl.textContent = message || "Sync error";
+        break;
+    }
+  }
+
   /**
    * Renders a helpful message when the local cache is empty.
    */
   function renderCacheEmptyMessage() {
     const contentArea = document.getElementById("le-content");
-    contentArea.innerHTML = "";
-    const message = createElement(
-      "div",
-      {
-        style: {
-          textAlign: "center",
-          color: "var(--text-tertiary)",
-          padding: "2rem",
-        },
-      },
-      [
-        createElement("p", { style: { marginBottom: "1rem" } }, [
-          "No conversations found in the local cache.",
-        ]),
-        createElement("p", { style: { fontSize: "0.9rem" } }, [
-          "Please open the History Manager (Ctrl+H) to sync your conversations first.",
-        ]),
-      ]
-    );
-    contentArea.appendChild(message);
+    contentArea.innerHTML = `
+      <div style="text-align: center; color: var(--text-tertiary); padding: 2rem;">
+        <p style="margin-bottom: 1rem;">No conversations found in the local cache.</p>
+        <p style="font-size: 0.9rem;">Please open the History Manager (Ctrl+H) to sync your conversations first.</p>
+      </div>
+    `;
   }
 
   /**
@@ -382,143 +439,164 @@
     closeLabelAssignmentPopover();
     const { labels, chatLabels } = appState.data;
     const assignedLabelIds = new Set(chatLabels[conversationId] || []);
-    const labelItems = Object.entries(labels).map(([id, { name, color }]) => {
-      return createElement("div", { className: "le-popover-label-item" }, [
-        createElement("input", {
-          type: "checkbox",
-          id: `le-cb-${id}`,
-          "data-labelId": id,
-          checked: assignedLabelIds.has(id),
-        }),
-        createElement("label", { for: `le-cb-${id}` }, [name]),
-        createElement(
-          "label",
-          { className: "le-color-swatch-label", title: "Change label color" },
-          [
-            createElement("input", {
-              type: "color",
-              className: "le-color-picker-input",
-              "data-labelId": id,
-              value: color,
-            }),
-            createElement("span", {
-              className: "le-color-swatch",
-              style: { backgroundColor: color },
-            }),
-          ]
-        ),
-      ]);
-    });
-    const popover = createElement(
-      "div",
-      { id: "le-popover", className: "le-popover" },
-      [
-        createElement("button", { className: "le-popover-close-btn" }, ["×"]),
-        createElement("div", { className: "le-popover-section" }, [
-          createElement("h4", {}, ["Apply Labels"]),
-          createElement(
-            "div",
-            { className: "le-popover-labels-list" },
-            labelItems.length > 0
-              ? labelItems
-              : [
-                  createElement(
-                    "p",
-                    {
-                      style: {
-                        fontSize: "0.85rem",
-                        color: "var(--text-tertiary)",
-                        textAlign: "center",
-                        padding: "1rem",
-                      },
-                    },
-                    ["No labels created yet."]
-                  ),
-                ]
-          ),
-        ]),
-        createElement("div", { className: "le-popover-section" }, [
-          createElement("h4", {}, ["Create New Label"]),
-          createElement("input", {
-            type: "text",
-            id: "le-new-label-input",
-            placeholder: "Enter label name...",
-            className: "le-popover-new-label-input",
-          }),
-        ]),
-      ]
-    );
-    const backdrop = createElement(
-      "div",
-      { id: "le-popover-backdrop", className: "le-popover-backdrop" },
-      [popover]
-    );
+
+    let labelItemsHTML = "";
+    const labelEntries = Object.entries(labels);
+
+    if (labelEntries.length > 0) {
+      labelItemsHTML = labelEntries
+        .map(
+          ([id, { name, color }]) => `
+        <div class="le-popover-label-item">
+          <input type="checkbox" id="le-cb-${id}" data-label-id="${id}" ${
+            assignedLabelIds.has(id) ? "checked" : ""
+          }>
+          <label for="le-cb-${id}">${name}</label>
+          <label class="le-color-swatch-label" title="Change label color">
+            <input type="color" class="le-color-picker-input" data-label-id="${id}" value="${color}">
+            <span class="le-color-swatch" style="background-color: ${color};"></span>
+          </label>
+        </div>
+      `
+        )
+        .join("");
+    } else {
+      labelItemsHTML = `
+        <p style="font-size: 0.85rem; color: var(--text-tertiary); text-align: center; padding: 1rem;">
+          No labels created yet.
+        </p>
+      `;
+    }
+
+    const backdrop = document.createElement("div");
+    backdrop.id = "le-popover-backdrop";
+    backdrop.className = "le-popover-backdrop";
+    backdrop.innerHTML = `
+      <div id="le-popover" class="le-popover">
+        <button class="le-popover-close-btn">×</button>
+        <div class="le-popover-section">
+          <h4>Apply Labels</h4>
+          <div class="le-popover-labels-list">
+            ${labelItemsHTML}
+          </div>
+        </div>
+        <div class="le-popover-section">
+          <h4>Create New Label</h4>
+          <input type="text" id="le-new-label-input" placeholder="Enter label name..." class="le-popover-new-label-input">
+        </div>
+      </div>
+    `;
+
     document.body.appendChild(backdrop);
     setTimeout(() => backdrop.classList.add("visible"), 10);
+
+    const popover = backdrop.querySelector("#le-popover");
+
+    // Close button
     popover
       .querySelector(".le-popover-close-btn")
       .addEventListener("click", closeLabelAssignmentPopover);
+
+    // Close on backdrop click
     backdrop.addEventListener("click", (e) => {
       if (e.target === backdrop) closeLabelAssignmentPopover();
     });
+
+    // Prevent popover clicks from closing
     popover.addEventListener("click", (e) => e.stopPropagation());
+
+    // Checkbox event listeners
     popover.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
       cb.addEventListener("change", async () => {
-        const labelId = cb.dataset.labelId;
-        const currentChatLabels =
-          appState.data.chatLabels[conversationId] || [];
-        if (cb.checked) {
-          if (!currentChatLabels.includes(labelId)) {
-            appState.data.chatLabels[conversationId] = [
-              ...currentChatLabels,
-              labelId,
-            ];
+        updateSyncStatus("syncing");
+        try {
+          const labelId = cb.dataset.labelId;
+          const currentChatLabels =
+            appState.data.chatLabels[conversationId] || [];
+
+          if (cb.checked) {
+            if (!currentChatLabels.includes(labelId)) {
+              appState.data.chatLabels[conversationId] = [
+                ...currentChatLabels,
+                labelId,
+              ];
+            }
+          } else {
+            appState.data.chatLabels[conversationId] = currentChatLabels.filter(
+              (id) => id !== labelId
+            );
           }
-        } else {
-          appState.data.chatLabels[conversationId] = currentChatLabels.filter(
-            (id) => id !== labelId
+
+          await saveStoredData(appState.data);
+          updateSyncStatus("synced");
+        } catch (error) {
+          console.error(
+            "[Label Explorer] Error saving label assignment:",
+            error
           );
+          updateSyncStatus("error");
         }
-        await saveStoredData(appState.data);
       });
     });
+
+    // Color picker event listeners
     popover.querySelectorAll(".le-color-picker-input").forEach((picker) => {
       picker.addEventListener("input", async (e) => {
-        const labelId = e.target.dataset.labelId;
-        const newColor = e.target.value;
-        const swatch = e.target.nextElementSibling;
-        if (swatch) swatch.style.backgroundColor = newColor;
-        if (appState.data.labels[labelId]) {
-          appState.data.labels[labelId].color = newColor;
-          await saveStoredData(appState.data);
+        updateSyncStatus("syncing");
+        try {
+          const labelId = e.target.dataset.labelId;
+          const newColor = e.target.value;
+          const swatch = e.target.nextElementSibling;
+
+          if (swatch) swatch.style.backgroundColor = newColor;
+          if (appState.data.labels[labelId]) {
+            appState.data.labels[labelId].color = newColor;
+            await saveStoredData(appState.data);
+            updateSyncStatus("synced");
+          }
+        } catch (error) {
+          console.error("[Label Explorer] Error saving color change:", error);
+          updateSyncStatus("error");
         }
       });
     });
-    const newLabelInput = document.getElementById("le-new-label-input");
+
+    // New label input
+    const newLabelInput = popover.querySelector("#le-new-label-input");
     newLabelInput.addEventListener("keydown", async (e) => {
-      function hslToHex(h, s, l) {
-        l /= 100;
-        const a = (s * Math.min(l, 1 - l)) / 100;
-        const f = (n) => {
-          const k = (n + h / 30) % 12;
-          const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-          return Math.round(255 * color)
-            .toString(16)
-            .padStart(2, "0");
-        };
-        return `#${f(0)}${f(8)}${f(4)}`;
-      }
       if (e.key === "Enter" && newLabelInput.value.trim()) {
-        const newName = newLabelInput.value.trim();
-        const newId = `l-${Date.now()}`;
-        const randomHue = Math.random() * 360;
-        const newColor = hslToHex(randomHue, 70, 50);
-        appState.data.labels[newId] = { name: newName, color: newColor };
-        await saveStoredData(appState.data);
-        closeLabelAssignmentPopover();
+        updateSyncStatus("syncing");
+        try {
+          const newName = newLabelInput.value.trim();
+          const newId = generateShortId();
+          const randomHue = Math.random() * 360;
+          const newColor = hslToHex(randomHue, 70, 50);
+
+          appState.data.labels[newId] = { name: newName, color: newColor };
+          await saveStoredData(appState.data);
+          updateSyncStatus("synced");
+          closeLabelAssignmentPopover();
+        } catch (error) {
+          console.error("[Label Explorer] Error creating new label:", error);
+          updateSyncStatus("error");
+        }
       }
     });
+
     setTimeout(() => newLabelInput.focus(), 100);
+  }
+
+  function hslToHex(h, s, l) {
+    l /= 100;
+    const a = (s * Math.min(l, 1 - l)) / 100;
+    const f = (n) => {
+      const k = (n + h / 30) % 12;
+      const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+      return Math.round(255 * color)
+        .toString(16)
+        .padStart(2, "0");
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
   }
 
   function closeLabelAssignmentPopover() {
@@ -534,6 +612,7 @@
       if (show) injectModal();
       else return;
     }
+
     const container = document.getElementById("le-modal-container");
     if (show) {
       container.style.display = "flex";
@@ -551,99 +630,75 @@
   function addModalEventListeners() {
     const container = document.getElementById("le-modal-container");
     const searchInput = document.getElementById("le-search-input");
+
     container.addEventListener("click", (e) => {
       if (e.target.id === "le-modal-container") toggleModalVisibility(false);
     });
+
     searchInput.addEventListener("keyup", handleSearch);
   }
 
   function showAvailableLabels() {
     const contentArea = document.getElementById("le-content");
-    contentArea.innerHTML = "";
     const { labels } = appState.data;
     const labelEntries = Object.entries(labels);
+
     if (labelEntries.length === 0) {
-      const noLabelsMessage = createElement(
-        "div",
-        {
-          style: {
-            textAlign: "center",
-            color: "var(--text-tertiary)",
-            padding: "2rem",
-          },
-        },
-        [
-          createElement("p", { style: { marginBottom: "1rem" } }, [
-            "No labels created yet.",
-          ]),
-          createElement("p", { style: { fontSize: "0.9rem" } }, [
-            "Click the tag icon next to any conversation to create your first label!",
-          ]),
-        ]
-      );
-      contentArea.appendChild(noLabelsMessage);
+      contentArea.innerHTML = `
+        <div style="text-align: center; color: var(--text-tertiary); padding: 2rem;">
+          <p style="margin-bottom: 1rem;">No labels created yet.</p>
+          <p style="font-size: 0.9rem;">Click the tag icon next to any conversation to create your first label!</p>
+          <p style="font-size: 0.8rem; margin-top: 1rem;">✨ Your labels sync across all devices and stay saved when you log out!</p>
+        </div>
+      `;
       return;
     }
-    const pills = labelEntries.map(([id, { name, color }]) => {
-      const pill = createElement(
-        "div",
-        {
-          className: "le-label-pill le-label-pill-clickable",
-          style: { backgroundColor: color },
-          "data-labelId": id,
-          "data-labelName": name,
-          title: "Single-click to search.",
-        },
-        [name]
-      );
+
+    const pillsHTML = labelEntries
+      .map(
+        ([id, { name, color }]) => `
+      <div class="le-label-pill le-label-pill-clickable" 
+           style="background-color: ${color};" 
+           data-label-id="${id}" 
+           data-label-name="${name}" 
+           title="Single-click to search.">
+        ${name}
+        <span class="le-label-count" title="Delete ${name}">×</span>
+      </div>
+    `
+      )
+      .join("");
+
+    contentArea.innerHTML = `
+      <div style="text-align: center; padding: 2rem 1rem;">
+        <h3 style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 1rem; font-weight: 500;">
+          Available Labels
+        </h3>
+        <div class="le-available-labels-grid">
+          ${pillsHTML}
+        </div>
+        <p style="color: var(--text-tertiary); font-size: 0.85rem; margin-top: 1.5rem;">
+          Click a label to search
+        </p>
+      </div>
+    `;
+
+    // Add event listeners to pills
+    contentArea.querySelectorAll(".le-label-pill-clickable").forEach((pill) => {
       pill.addEventListener("click", () => {
+        const labelName = pill.dataset.labelName;
         const searchInput = document.getElementById("le-search-input");
-        searchInput.value = name;
+        searchInput.value = labelName;
         handleSearch();
       });
-      const deleteLabelBtn = createElement(
-        "span",
-        {
-          className: "le-label-count",
-          title: `Delete ${name}`,
-        },
-        ["×"]
-      );
-      pill.appendChild(deleteLabelBtn);
-      deleteLabelBtn.addEventListener("click", () => handleDeleteLabel(id));
-      return pill;
+
+      // Delete button
+      const deleteBtn = pill.querySelector(".le-label-count");
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        handleDeleteLabel(pill.dataset.labelId);
+      });
     });
-    const availableLabelsView = createElement(
-      "div",
-      { style: { textAlign: "center", padding: "2rem 1rem" } },
-      [
-        createElement(
-          "h3",
-          {
-            style: {
-              color: "var(--text-secondary)",
-              marginBottom: "1.5rem",
-              fontSize: "1rem",
-              fontWeight: "500",
-            },
-          },
-          ["Available Labels"]
-        ),
-        createElement("div", { className: "le-available-labels-grid" }, pills),
-        createElement(
-          "p",
-          {
-            style: {
-              color: "var(--text-tertiary)",
-              fontSize: "0.85rem",
-              marginTop: "1.5rem",
-            },
-          },
-          ["Click a label to search"]
-        ),
-      ]
-    );
-    contentArea.appendChild(availableLabelsView);
   }
 
   async function handleDeleteLabel(labelIdToDelete) {
@@ -651,97 +706,105 @@
     const labelName = appState.data.labels[labelIdToDelete]?.name;
     if (
       !confirm(
-        `Are you sure you want to permanently delete the label "${labelName}"? This cannot be undone.`
+        `Are you sure you want to permanently delete the label "${labelName}"? This cannot be undone and will sync across all your devices.`
       )
     ) {
       return;
     }
-    delete appState.data.labels[labelIdToDelete];
-    for (const chatId in appState.data.chatLabels) {
-      appState.data.chatLabels[chatId] = appState.data.chatLabels[
-        chatId
-      ].filter((id) => id !== labelIdToDelete);
-      if (appState.data.chatLabels[chatId].length === 0) {
-        delete appState.data.chatLabels[chatId];
+
+    updateSyncStatus("syncing");
+    try {
+      delete appState.data.labels[labelIdToDelete];
+      for (const chatId in appState.data.chatLabels) {
+        appState.data.chatLabels[chatId] = appState.data.chatLabels[
+          chatId
+        ].filter((id) => id !== labelIdToDelete);
+        if (appState.data.chatLabels[chatId].length === 0) {
+          delete appState.data.chatLabels[chatId];
+        }
       }
+      await saveStoredData(appState.data);
+      updateSyncStatus("synced");
+      showAvailableLabels();
+    } catch (error) {
+      console.error("[Label Explorer] Error deleting label:", error);
+      updateSyncStatus("error");
     }
-    await saveStoredData(appState.data);
-    showAvailableLabels();
   }
 
   function renderSearchResults(conversations) {
     const contentArea = document.getElementById("le-content");
-    contentArea.innerHTML = "";
     const { labels, chatLabels } = appState.data;
+
     if (conversations.length === 0) {
-      contentArea.appendChild(
-        createElement(
-          "p",
-          {
-            style: {
-              textAlign: "center",
-              color: "var(--text-tertiary)",
-              padding: "1rem",
-            },
-          },
-          ["No conversations found with matching labels."]
-        )
-      );
+      contentArea.innerHTML = `
+        <p style="text-align: center; color: var(--text-tertiary); padding: 1rem;">
+          No conversations found with matching labels.
+        </p>
+      `;
       return;
     }
-    const fragment = document.createDocumentFragment();
-    conversations.forEach((convo) => {
-      const assignedLabelIds = chatLabels[convo.id] || [];
-      const pills = assignedLabelIds
-        .map((id) => {
-          const label = labels[id];
-          if (!label) return null;
-          const pill = createElement(
-            "div",
-            {
-              className: "le-label-pill",
-              "data-labelId": id,
-              "data-convoId": convo.id,
-              style: { backgroundColor: label.color },
-              title: "Double-click to remove label",
-            },
-            [label.name]
+
+    const conversationItemsHTML = conversations
+      .map((convo) => {
+        const assignedLabelIds = chatLabels[convo.id] || [];
+        const pillsHTML = assignedLabelIds
+          .map((id) => {
+            const label = labels[id];
+            if (!label) return null;
+            return `
+            <div class="le-label-pill" 
+                 data-label-id="${id}" 
+                 data-convo-id="${convo.id}" 
+                 style="background-color: ${label.color};" 
+                 title="Double-click to remove label">
+              ${label.name}
+            </div>
+          `;
+          })
+          .filter(Boolean)
+          .join("");
+
+        return `
+        <div class="le-conversation-item">
+          <a class="title" href="/c/${convo.id}" target="_blank">${convo.title}</a>
+          <div class="le-label-pills-container">
+            ${pillsHTML}
+          </div>
+        </div>
+      `;
+      })
+      .join("");
+
+    contentArea.innerHTML = conversationItemsHTML;
+
+    // Add double-click event listeners to remove labels
+    contentArea.querySelectorAll(".le-label-pill").forEach((pill) => {
+      pill.addEventListener("dblclick", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        updateSyncStatus("syncing");
+        try {
+          const labelId = pill.dataset.labelId;
+          const convoId = pill.dataset.convoId;
+          const currentLabels = appState.data.chatLabels[convoId] || [];
+
+          appState.data.chatLabels[convoId] = currentLabels.filter(
+            (id) => id !== labelId
           );
-          pill.addEventListener("dblclick", async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const currentLabels = appState.data.chatLabels[convo.id] || [];
-            appState.data.chatLabels[convo.id] = currentLabels.filter(
-              (labelId) => labelId !== id
-            );
-            if (appState.data.chatLabels[convo.id].length === 0) {
-              delete appState.data.chatLabels[convo.id];
-            }
-            await saveStoredData(appState.data);
-            pill.remove();
-          });
-          return pill;
-        })
-        .filter(Boolean);
-      const itemEl = createElement(
-        "div",
-        { className: "le-conversation-item" },
-        [
-          createElement(
-            "a",
-            { className: "title", href: `/c/${convo.id}`, target: "_blank" },
-            [convo.title]
-          ),
-          createElement(
-            "div",
-            { className: "le-label-pills-container" },
-            pills
-          ),
-        ]
-      );
-      fragment.appendChild(itemEl);
+          if (appState.data.chatLabels[convoId].length === 0) {
+            delete appState.data.chatLabels[convoId];
+          }
+
+          await saveStoredData(appState.data);
+          updateSyncStatus("synced");
+          pill.remove();
+        } catch (error) {
+          console.error("[Label Explorer] Error removing label:", error);
+          updateSyncStatus("error");
+        }
+      });
     });
-    contentArea.appendChild(fragment);
   }
 
   // --- 4. & 5. INITIALIZATION & OBSERVERS ---
@@ -749,93 +812,52 @@
     if (document.getElementById("le-sidebar-btn")) return true;
     const sidebarNav = document.querySelector("aside");
     if (!sidebarNav) return false;
+
     console.log("🚀 [Label Explorer] Injecting sidebar button...");
-    const svgIcon = createSvgElement("svg", {
-      width: "20",
-      height: "20",
-      viewBox: "0 0 24 24",
-      fill: "none",
-      stroke: "currentColor",
-      "stroke-width": "2",
-      "stroke-linecap": "round",
-      "stroke-linejoin": "round",
-      class: "icon",
-    });
-    svgIcon.appendChild(
-      createSvgElement("path", {
-        d: "M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z",
-      })
-    );
-    svgIcon.appendChild(
-      createSvgElement("line", { x1: "7", y1: "7", x2: "7.01", y2: "7" })
-    );
-    const buttonElement = createElement(
-      "div",
-      {
-        id: "le-sidebar-btn",
-        tabindex: "0",
-        className: "group __menu-item hoverable cursor-pointer",
-      },
-      [
-        createElement(
-          "div",
-          { className: "flex min-w-0 items-center gap-1.5" },
-          [
-            createElement(
-              "div",
-              { className: "flex items-center justify-center icon" },
-              [svgIcon]
-            ),
-            createElement(
-              "div",
-              { className: "flex min-w-0 grow items-center gap-2.5" },
-              [
-                createElement("div", { className: "truncate" }, [
-                  "Label Manager",
-                ]),
-              ]
-            ),
-          ]
-        ),
-        createElement(
-          "div",
-          { className: "trailing highlight text-token-text-tertiary" },
-          [
-            createElement("div", { className: "touch:hidden" }, [
-              createElement(
-                "div",
-                {
-                  className:
-                    "inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']",
-                },
-                [
-                  createElement("kbd", { "aria-label": "Control" }, [
-                    createElement("span", { className: "min-w-[1em]" }, [
-                      getModifierKeyText(),
-                    ]),
-                  ]),
-                  createElement("kbd", {}, [
-                    createElement("span", { className: "min-w-[1em]" }, ["L"]),
-                  ]),
-                ]
-              ),
-            ]),
-          ]
-        ),
-      ]
-    );
+    const buttonElement = document.createElement("div");
+    buttonElement.id = "le-sidebar-btn";
+    buttonElement.tabIndex = "0";
+    buttonElement.className = "group __menu-item hoverable cursor-pointer";
+
+    const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+    const modifierKey = isMac ? "⌘" : "Ctrl";
+
+    buttonElement.innerHTML = `
+      <div class="flex min-w-0 items-center gap-1.5">
+        <div class="flex items-center justify-center icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+            <line x1="7" y1="7" x2="7.01" y2="7"></line>
+          </svg>
+        </div>
+        <div class="flex min-w-0 grow items-center gap-2.5">
+          <div class="truncate">Label Manager</div>
+        </div>
+      </div>
+      <div class="trailing highlight text-token-text-tertiary">
+        <div class="touch:hidden">
+          <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']">
+            <kbd aria-label="Control">
+              <span class="min-w-[1em]">${modifierKey}</span>
+            </kbd>
+            <kbd>
+              <span class="min-w-[1em]">L</span>
+            </kbd>
+          </div>
+        </div>
+      </div>
+    `;
+
     buttonElement.addEventListener("click", (e) => {
       e.preventDefault();
       toggleModalVisibility(true);
     });
+
     sidebarNav.appendChild(buttonElement);
     console.log("✅ [Label Explorer] Sidebar button injected successfully.");
     return true;
   };
-  function getModifierKeyText() {
-    const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
-    return isMac ? "⌘" : "Ctrl";
-  }
+
   function injectSidebarButton() {
     const observer = new MutationObserver(injectionLogic);
     const interval = setInterval(() => {
@@ -863,6 +885,7 @@
       });
       newChatLinks.forEach(injectSidebarUI);
     });
+
     const navElement = document.querySelector("nav");
     if (navElement) {
       observer.observe(navElement, { childList: true, subtree: true });
@@ -875,25 +898,49 @@
   }
 
   async function main() {
-    appState.data = await getStoredData();
+    try {
+      // Load data from Chrome Storage Sync
+      appState.data = await getStoredData();
+
+      // Initialize ID counter based on existing data
+      await initializeIdCounter();
+
+      // Set up storage sync listener
+      initializeStorageListener();
+
+      console.log(
+        `[Label Explorer] Initialized with ${
+          Object.keys(appState.data.labels).length
+        } labels, ID counter at ${idCounter}`
+      );
+    } catch (error) {
+      console.error("[Label Explorer] Initialization error:", error);
+      appState.data = { labels: {}, chatLabels: {} };
+    }
+
     injectStyles();
+
     document.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
         e.preventDefault();
         const container = document.getElementById("le-modal-container");
         const isVisible = container && container.style.display !== "none";
+
+        // Refresh sidebar UI for new chat links
         const newChatLinks = new Set();
         document.body
           .querySelectorAll('a[href^="/c/"]')
           .forEach((link) => newChatLinks.add(link));
         newChatLinks.forEach(injectSidebarUI);
         injectionLogic();
+
         toggleModalVisibility(!isVisible);
       } else if (e.key === "Escape") {
         closeLabelAssignmentPopover();
         toggleModalVisibility(false);
       }
     });
+
     initializeSidebarObserver();
     injectSidebarButton();
   }
