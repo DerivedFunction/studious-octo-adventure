@@ -1,5 +1,68 @@
 (() => {
   // --- SHARED UTILITIES ---
+
+  // Create a status bar showing status export
+  function showStatusBar(text, percent, toPercent = null) {
+    // Remove existing status bar if present
+    const existingStatusBar = document.getElementById("export-status-bar");
+    if (existingStatusBar) {
+      existingStatusBar.remove();
+    }
+
+    // Create status bar container
+    const statusBar = document.createElement("div");
+    statusBar.id = "export-status-bar";
+    statusBar.className = "export-status-bar";
+
+    // Create content
+    statusBar.innerHTML = `
+      <div class="export-status-content">
+        <div class="export-status-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" x2="12" y1="15" y2="3"/>
+          </svg>
+        </div>
+        <div class="export-status-text">${text}</div>
+        <div class="export-status-progress">
+          <div class="export-status-progress-bar" style="width: ${percent}%"></div>
+        </div>
+        <div class="export-status-percentage">${percent}%</div>
+      </div>
+    `;
+
+    document.body.appendChild(statusBar);
+
+    // Auto-hide when progress reaches 100%
+    if (percent >= 100 || percent == 0) {
+      setTimeout(() => {
+        if (statusBar && statusBar.parentNode) {
+          statusBar.style.opacity = "0";
+          statusBar.style.transform = "translateY(100%)";
+          setTimeout(() => {
+            statusBar.remove();
+          }, 300);
+        }
+      }, 1500);
+    }
+    if (toPercent) {
+      const status = statusBar.querySelector(".export-status-progress-bar");
+      const percentage = statusBar.querySelector(".export-status-percentage");
+
+      let current = percent;
+      const step = () => {
+        if (current <= toPercent) {
+          status.style.width = `${current}%`;
+          percentage.textContent = `${current}%`;
+          current++;
+          setTimeout(step, 100); // adjust speed
+        }
+      };
+      step();
+    }
+  }
+
   // --- HTML Download ---
   // --- PRINT FUNCTIONALITY ---
   /**
@@ -12,7 +75,7 @@
     let buttonsClicked = [];
     try {
       // --- SHARED SETUP AND DOM PREPARATION ---
-
+      showStatusBar("Begin Export", 1, 20);
       // 0. Open all reasoning sections to ensure their content is in the DOM for cloning.
       document
         .querySelectorAll(
@@ -32,10 +95,13 @@
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
+      showStatusBar("Preparing content", 20, 40);
+
       // 1. Clone the main chat area. This serves as the base for both print and download.
       const mainArea = document.querySelector("article")?.parentElement;
       if (!mainArea) {
         alert("Could not find chat content to export.");
+        showStatusBar("Export Canceled", 0);
         return;
       }
       const area = mainArea.cloneNode(true);
@@ -47,6 +113,8 @@
         )
         .forEach((el) => el.remove());
 
+      showStatusBar("Fetching conversation data", 40, 60);
+
       // 2. Fetch necessary conversation data for populating the cloned content.
       const { canvasMapData, jsonCopy } = await ChatGPT.convertExport();
       const conversationTitle = jsonCopy.title;
@@ -55,6 +123,9 @@
         turnId,
         canvases,
       ]);
+
+      showStatusBar("Processing content", 60, 80);
+
       // --- SHARED DOM MANIPULATION ON THE CLONED AREA ---
       // 3a. Set attributes on reasoning buttons for offline interactivity or styling.
       area
@@ -142,6 +213,8 @@
         el.parentElement.className =
           "mx-auto flex-1 group/turn-messages focus-visible:outline-hidden relative flex w-full min-w-0 flex-col";
       });
+
+      showStatusBar("Finalizing export", 80, 90);
 
       // --- ACTION-SPECIFIC OUTPUT GENERATION ---
 
@@ -274,7 +347,7 @@
         // inline <style> blocks
         document
           .querySelectorAll(
-            "style:not(#le-styles,#export-menu-styles,#token-popup-styles,#chm-styles"
+            "style:not(#le-styles,#export-menu-styles,#token-popup-styles,#chm-styles,#export-status-styles"
           )
           .forEach((el) => {
             stylesHTML += el.outerHTML;
@@ -385,6 +458,9 @@
             });
           });
         });
+
+        showStatusBar("Preparing print", 90);
+
         // 5a. Create a hidden iframe to build the print content in isolation.
         const printFrame = document.createElement("iframe");
         printFrame.style.position = "absolute";
@@ -428,6 +504,8 @@
           el.classList.remove("dark");
         });
 
+        showStatusBar("Opening print dialog", 100);
+
         // 5e. Trigger the print dialog and clean up the iframe afterward.
         setTimeout(() => {
           printFrame.contentWindow.focus();
@@ -444,6 +522,7 @@
       alert(
         `Failed to ${action} conversation. Check the console for more details.`
       );
+      showStatusBar("Export failed", 0);
     } finally {
       // --- SHARED CLEANUP ---
       // Un-click the reasoning buttons to restore the original page state.
@@ -480,6 +559,7 @@
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
+    showStatusBar("Downloading file", 100);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
@@ -488,7 +568,7 @@
   // --- UI AND INITIALIZATION ---
 
   /**
-   * Injects CSS for the custom dropdown menu to match ChatGPT's UI.
+   * Injects CSS for the custom dropdown menu and status bar to match ChatGPT's UI.
    */
   function injectStyles() {
     if (document.getElementById("export-menu-styles")) return;
@@ -547,52 +627,135 @@
     }
   `;
     document.head.appendChild(style);
+
+    // Add status bar styles
+    const statusStyle = document.createElement("style");
+    statusStyle.id = "export-status-styles";
+    statusStyle.textContent = `
+    .export-status-bar {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--main-surface-primary);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      z-index: 10000;
+      min-width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      transform: translateY(0);
+      opacity: 1;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .export-status-content {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .export-status-icon {
+      color: var(--text-primary);
+      flex-shrink: 0;
+    }
+    
+    .export-status-icon svg {
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .export-status-text {
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 500;
+      flex-grow: 1;
+    }
+    
+    .export-status-progress {
+      width: 60px;
+      height: 4px;
+      background: var(--main-surface-tertiary);
+      border-radius: 2px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    
+    .export-status-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #10a37f, #1a7f64);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    
+    .export-status-percentage {
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 500;
+      min-width: 32px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    
+    /* Dark mode compatibility */
+    .dark .export-status-bar {
+      background: var(--gray-800);
+      border-color: var(--gray-700);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+  `;
+    document.head.appendChild(statusStyle);
   }
 
   /**
    * Creates and injects the "Export" button with a dropdown menu.
    */
+  /**
+   * Creates and injects the "Export" menu button(s) for desktop and mobile.
+   */
   function addExportMenu() {
-    // Check if we are in a conversation page
+    // Only on conversation pages
     const inConversation = window.location.pathname.startsWith("/c/");
-    const existingContainer = document.getElementById("export-menu-container");
-
-    if (!inConversation) {
-      if (existingContainer) existingContainer.style.display = "none";
-      return;
-    }
-
-    if (existingContainer) {
-      existingContainer.style.display = "";
-      return;
-    }
-
     const targetContainer = document.querySelector(
       "#conversation-header-actions"
-    );
-    if (!targetContainer) return;
+    ); // desktop
+    const smallContainer = document.querySelector(".no-draggable.end-0"); // mobile
 
-    // Main container
-    const menuContainer = document.createElement("div");
-    menuContainer.id = "export-menu-container";
-    menuContainer.className = "relative";
+    // Build menu factory
+    function buildExportMenu() {
+      const menuContainer = document.createElement("div");
+      menuContainer.className = "relative export-menu-container";
 
-    // Export Button
-    const button = document.createElement("button");
-    button.id = "export-menu-btn";
-    button.className = "btn relative btn-ghost text-token-text-primary";
-    button.innerHTML = `
+      const button = document.createElement("button");
+      button.title = "Export";
+      button.className =
+        "btn relative btn-ghost text-token-text-primary export-menu-btn";
+      button.innerHTML = `
       <div class="flex w-full items-center justify-center gap-1.5">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-        Export
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+             viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" x2="12" y1="15" y2="3"/>
+        </svg>
+        <span class="hidden md:block">Export</span>
+        <svg class="hidden md:block" xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+             viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
       </div>
     `;
 
-    // Dropdown Menu
-    const dropdown = document.createElement("div");
-    dropdown.id = "export-menu-dropdown";
-    dropdown.innerHTML = `
+      // Dropdown Menu
+      const dropdown = document.createElement("div");
+      dropdown.id = "export-menu-dropdown";
+      dropdown.innerHTML = `
   <div class="export-menu-content">
     <button class="export-menu-item" id="print-chat-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
@@ -617,77 +780,108 @@
   </div>
 `;
 
-    menuContainer.appendChild(button);
-    menuContainer.appendChild(dropdown);
+      menuContainer.appendChild(button);
+      menuContainer.appendChild(dropdown);
 
-    // Add event listeners
-    button.addEventListener("click", (e) => {
-      e.stopPropagation();
-      dropdown.classList.toggle("show");
-    });
-
-    dropdown.querySelector("#print-chat-item").addEventListener("click", () => {
-      exportOrPrintHTML("print");
-      dropdown.classList.remove("show");
-    });
-    dropdown.querySelector("#html-chat-item").addEventListener("click", () => {
-      exportOrPrintHTML("download"); // Changed this line
-      dropdown.classList.remove("show");
-    });
-
-    dropdown
-      .querySelector("#export-md-item")
-      .addEventListener("click", async () => {
-        const { markdown, metaData } = await ChatGPT.convertExport();
-        if (markdown) {
-          console.log("Markdown:", markdown, metaData);
-          downloadFile(
-            markdown,
-            `ChatGPT-${metaData.title}.md`,
-            "text/markdown"
-          );
-        }
-        dropdown.classList.remove("show");
-      });
-    dropdown
-      .querySelector("#export-json-chat-item")
-      .addEventListener("click", async () => {
-        const { jsonData, metaData } = await ChatGPT.convertExport();
-        if (jsonData) {
-          downloadFile(
-            JSON.stringify(jsonData, null, 2),
-            `ChatGPT-Output-${metaData.title}.json`,
-            "application/json"
-          );
-        }
-        dropdown.classList.remove("show");
-      });
-    dropdown
-      .querySelector("#export-json-item")
-      .addEventListener("click", async () => {
-        const { jsonAPI, metaData } = await ChatGPT.convertExport();
-        if (jsonAPI) {
-          downloadFile(
-            JSON.stringify(jsonAPI, null, 2),
-            `ChatGPT-Input-${metaData.title}.json`,
-            "application/json"
-          );
-        }
-        dropdown.classList.remove("show");
+      // Attach event listeners
+      button.addEventListener("click", (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle("show");
       });
 
-    // Hide dropdown when clicking elsewhere
-    document.addEventListener("click", () => {
-      if (dropdown.classList.contains("show")) {
-        dropdown.classList.remove("show");
-      }
-    });
+      dropdown
+        .querySelector("#print-chat-item")
+        .addEventListener("click", () => {
+          exportOrPrintHTML("print");
+          dropdown.classList.remove("show");
+        });
+      dropdown
+        .querySelector("#html-chat-item")
+        .addEventListener("click", () => {
+          exportOrPrintHTML("download");
+          dropdown.classList.remove("show");
+        });
+      dropdown
+        .querySelector("#export-md-item")
+        .addEventListener("click", async () => {
+          showStatusBar("Fetching conversation data", 1, 60);
+          const { markdown, metaData } = await ChatGPT.convertExport();
+          showStatusBar("Processing Data", 60, 95);
+          if (markdown) {
+            downloadFile(
+              markdown,
+              `ChatGPT-${metaData.title}.md`,
+              "text/markdown"
+            );
+          }
+          dropdown.classList.remove("show");
+        });
+      dropdown
+        .querySelector("#export-json-chat-item")
+        .addEventListener("click", async () => {
+          showStatusBar("Fetching conversation data", 1, 60);
+          const { jsonData, metaData } = await ChatGPT.convertExport();
+          showStatusBar("Processing Data", 60, 95);
+          if (jsonData) {
+            downloadFile(
+              JSON.stringify(jsonData, null, 2),
+              `ChatGPT-Output-${metaData.title}.json`,
+              "application/json"
+            );
+          }
+          dropdown.classList.remove("show");
+        });
+      dropdown
+        .querySelector("#export-json-item")
+        .addEventListener("click", async () => {
+          showStatusBar("Fetching conversation data", 1, 60);
+          const { jsonAPI, metaData } = await ChatGPT.convertExport();
+          showStatusBar("Processing Data", 60, 95);
+          if (jsonAPI) {
+            downloadFile(
+              JSON.stringify(jsonAPI, null, 2),
+              `ChatGPT-Input-${metaData.title}.json`,
+              "application/json"
+            );
+          }
+          dropdown.classList.remove("show");
+        });
 
-    if (targetContainer.lastChild) {
-      targetContainer.insertBefore(menuContainer, targetContainer.lastChild);
-    } else {
-      targetContainer.appendChild(menuContainer);
+      // Hide dropdown when clicking elsewhere
+      document.addEventListener("click", () => {
+        dropdown.classList.remove("show");
+      });
+
+      return menuContainer;
     }
+
+    // Helper to inject or show/hide per container
+    function ensureMenu(container) {
+      if (!container) return;
+      const existing = container.querySelector(".export-menu-container");
+
+      if (!inConversation) {
+        if (existing) existing.style.display = "none";
+        return;
+      }
+
+      if (existing) {
+        existing.style.display = "";
+        return;
+      }
+
+      // Create and insert new menu
+      const menu = buildExportMenu();
+      if (container.lastChild) {
+        container.insertBefore(menu, container.lastChild);
+      } else {
+        container.appendChild(menu);
+      }
+    }
+
+    // Handle both desktop + mobile separately
+    ensureMenu(targetContainer);
+    ensureMenu(smallContainer);
   }
 
   // Override Ctrl+P to use custom print function
