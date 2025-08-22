@@ -205,7 +205,7 @@ window.ChatGPTprompt = (() => {
       .pm-search-bar { padding: 12px 20px; border-bottom: 1px solid var(--border-light); }
       .pm-search-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-medium); border-radius: 8px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.875rem; outline: none; }
       .pm-content { flex: 1; overflow: hidden; }
-      .pm-sidebar { width: 250px; border-right: 1px solid var(--border-light); padding: 12px; overflow-y: auto; }
+      .pm-sidebar { width: 200px; border-right: 1px solid var(--border-light); padding: 12px; overflow-y: auto; }
       .pm-category-item { padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.875rem; margin-bottom: 4px; transition: background-color 0.2s; }
       .pm-category-item:hover, .pm-category-item.active { background: var(--surface-hover); }
       .pm-main-content { flex: 1; display: flex; flex-direction: column; }
@@ -339,8 +339,8 @@ window.ChatGPTprompt = (() => {
         ></input>
       </div>
       <div class="pm-content flex flex-row">
-        <div class="pm-sidebar hidden md:flex">
-          <div id="pm-categories" class="flex flex-col gap-0.5 truncate"></div>
+        <div class="pm-sidebar hidden md:block">
+          <div id="pm-categories" class="truncate"></div>
         </div>
         <div class="pm-main-content">
           <div id="pm-prompts-list" class="pm-prompts-list"></div>
@@ -538,15 +538,11 @@ window.ChatGPTprompt = (() => {
     const categories = [...new Set(appState.prompts.map((p) => p.category))];
     const categoriesContainer = document.getElementById("pm-categories");
     const categoryHTML = `
-      <div class="pm-category-item active truncate" data-category="all" title="All Prompts">All Prompts (${
-        appState.prompts.length
-      })</div>
+      <div class="pm-category-item active truncate" data-category="all" title="All Prompts">All Prompts</div>
       ${categories
         .map((cat) => {
           const category = escapeHTML(cat);
-          return `<div class="pm-category-item truncate" data-category="${category}" title="${category}">${category} (${
-            appState.prompts.filter((p) => p.category === cat).length
-          })</div>`;
+          return `<div class="pm-category-item truncate" data-category="${category}" title="${category}">${category}</div>`;
         })
         .join("")}
     `;
