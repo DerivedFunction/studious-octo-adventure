@@ -386,13 +386,11 @@ window.ChatGPTLabel = (() => {
       .le-color-swatch-label { position: relative; display: flex; width: 100%; height: 20px; cursor: pointer; flex-direction: row-reverse; align-items: center; margin-left: auto; }
       .le-color-picker-input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
       .le-color-swatch { display: block; width: 25px; height: 25px; border-radius: 50%; border: 1px solid var(--border-light); pointer-events: none; }
-      .le-sync-status { font-size: 0.75rem; color: var(--text-tertiary); padding: 4px 8px; }
+      .le-sync-status { font-size: 0.75rem; color: var(--text-tertiary); padding: 4px 8px; cursor: pointer; }
       .le-sync-status.synced { color: var(--text-success); }
       .le-sync-status.error { color: var(--text-error); }
-      .le-cleanup-btn { background: none; border: 1px solid var(--border-medium); color: var(--text-secondary); padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
-      .le-cleanup-btn:hover { background-color: var(--surface-hover); color: var(--text-primary); border-color: var(--border-heavy); }
-      .le-cleanup-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-      .le-cleanup-btn.cleaning { background-color: var(--main-surface-secondary); }
+      .le-sync-status:disabled { opacity: 0.5; cursor: not-allowed; }
+      .le-sync-status.cleaning { background-color: var(--main-surface-secondary); }
     `;
     const styleSheet = document.createElement("style");
     styleSheet.id = "le-styles";
@@ -411,10 +409,8 @@ window.ChatGPTLabel = (() => {
         <div class="le-header">
           <div id="le-search-bar" class="le-search-bar">
             <input type="text" id="le-search-input" placeholder="Search by labels...">
-            <button id="le-cleanup-btn" class="le-cleanup-btn" title="Clean up labels for deleted conversations">
-              Clean Up
-            </button>
-            <div id="le-sync-status" class="le-sync-status">Synced ✓</div>
+
+            <div id="le-sync-status" class="le-sync-status btn">Synced ✓</div>
           </div>
         </div>
         <div id="le-content" class="le-content">
@@ -459,24 +455,25 @@ window.ChatGPTLabel = (() => {
   // --- 3. EVENT HANDLERS & DYNAMIC UI ---
 
   function updateSyncStatus(status, message = "") {
-    const syncStatusEl = document.getElementById("le-sync-status");
+    const sync = "le-sync-status";
+    const syncStatusEl = document.getElementById(sync);
     if (!syncStatusEl) return;
 
     switch (status) {
       case "synced":
-        syncStatusEl.className = "le-sync-status synced";
+        syncStatusEl.className = `${sync} synced btn`;
         syncStatusEl.textContent = "Synced ✓";
         break;
       case "syncing":
-        syncStatusEl.className = "le-sync-status";
+        syncStatusEl.className = `${sync} btn`;
         syncStatusEl.textContent = "Syncing...";
         break;
       case "cleaning":
-        syncStatusEl.className = "le-sync-status";
+        syncStatusEl.className = `${sync} btn`;
         syncStatusEl.textContent = "Cleaning...";
         break;
       case "error":
-        syncStatusEl.className = "le-sync-status error";
+        syncStatusEl.className = `${sync} error btn`;
         syncStatusEl.textContent = message || "Sync error";
         break;
     }
@@ -487,7 +484,7 @@ window.ChatGPTLabel = (() => {
    * Enhanced with comprehensive safety checks and user warnings
    */
   async function handleCleanupLabels() {
-    const cleanupBtn = document.getElementById("le-cleanup-btn");
+    const cleanupBtn = document.getElementById("le-sync-status");
     if (!cleanupBtn) return;
 
     const originalText = cleanupBtn.textContent;
@@ -506,8 +503,6 @@ window.ChatGPTLabel = (() => {
     if (!shouldProceed) return;
 
     cleanupBtn.disabled = true;
-    cleanupBtn.classList.add("cleaning");
-    cleanupBtn.textContent = "Cleaning...";
     updateSyncStatus("cleaning");
 
     try {
@@ -849,7 +844,7 @@ window.ChatGPTLabel = (() => {
   function addModalEventListeners() {
     const container = document.getElementById("le-modal-container");
     const searchInput = document.getElementById("le-search-input");
-    const cleanupBtn = document.getElementById("le-cleanup-btn");
+    const cleanupBtn = document.getElementById("le-sync-status");
 
     container.addEventListener("click", (e) => {
       if (e.target.id === "le-modal-container") toggleModalVisibility(false);
@@ -903,7 +898,7 @@ window.ChatGPTLabel = (() => {
           ${pillsHTML}
         </div>
         <p style="color: var(--text-tertiary); font-size: 0.85rem; margin-top: 1.5rem;">
-          Click a label to search • Use the 🧹 Clean Up button to remove labels for deleted conversations
+          Click a label to search • Click Sync to remove labels for deleted conversations
         </p>
       </div>
     `;
