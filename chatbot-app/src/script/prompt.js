@@ -205,7 +205,7 @@ window.ChatGPTprompt = (() => {
       .pm-search-bar { padding: 12px 20px; border-bottom: 1px solid var(--border-light); }
       .pm-search-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-medium); border-radius: 8px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.875rem; outline: none; }
       .pm-content { flex: 1; overflow: hidden; }
-      .pm-sidebar { border-right: 1px solid var(--border-light); padding: 12px; overflow-y: auto; }
+      .pm-sidebar { min-height: 50px; min-width: 200px; border-right: 1px solid var(--border-light); padding: 12px; overflow-y: auto; }
       .pm-category-item { padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.875rem; margin-bottom: 4px; transition: background-color 0.2s; }
       .pm-category-item:hover, .pm-category-item.active { background: var(--surface-hover); }
       .pm-main-content { flex: 1; display: flex; flex-direction: column; }
@@ -340,7 +340,7 @@ window.ChatGPTprompt = (() => {
       </div>
       <div class="pm-content flex flex-col md:flex-row">
         <div class="pm-sidebar">
-          <div id="pm-categories"></div>
+          <div id="pm-categories" class="flex flex-row md:flex-col gap-0.5"></div>
         </div>
         <div class="pm-main-content">
           <div id="pm-prompts-list" class="pm-prompts-list"></div>
