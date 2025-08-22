@@ -598,7 +598,7 @@ window.ChatGPTprompt = (() => {
         )}</div>
         <div class="pm-prompt-meta">
           <span>${escapeHTML(prompt.category).substring(0, 100)} • ${new Date(
-          prompt.createdAt
+          prompt.createdAt || prompt.updatedAt
         ).toLocaleDateString()}</span>
           <div class="pm-prompt-actions">
             <button class="pm-action-btn pm-use-btn btn" data-prompt-id="${
