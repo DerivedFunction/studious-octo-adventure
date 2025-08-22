@@ -1,0 +1,783 @@
+window.ChatGPTprompt = (() => {
+  console.log("🚀 [Prompt Manager] Content script loaded.");
+
+  // --- Configuration & State ---
+  let appState = {
+    prompts: [],
+    uiInjected: false,
+  };
+
+  // --- IndexedDB Helper Functions ---
+  const DB_NAME = "ChatGPTPromptManager";
+  const DB_VERSION = 1;
+  const STORE_NAME = "prompts";
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          const store = db.createObjectStore(STORE_NAME, {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+          store.createIndex("title", "title", { unique: false });
+          store.createIndex("category", "category", { unique: false });
+          store.createIndex("createdAt", "createdAt", { unique: false });
+        }
+      };
+    });
+  }
+
+  // --- IndexedDB Prompt Manager ---
+  const promptManager = {
+    async getAllPrompts() {
+      try {
+        const db = await openDB();
+        const transaction = db.transaction([STORE_NAME], "readonly");
+        const store = transaction.objectStore(STORE_NAME);
+
+        return new Promise((resolve, reject) => {
+          const request = store.getAll();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      } catch (error) {
+        console.error("[Prompt Manager] Error getting prompts:", error);
+        return [];
+      }
+    },
+
+    async addPrompt(prompt) {
+      try {
+        const db = await openDB();
+        const transaction = db.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+
+        const promptData = {
+          title: prompt.title,
+          content: prompt.content,
+          category: prompt.category || "General",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        return new Promise((resolve, reject) => {
+          const request = store.add(promptData);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      } catch (error) {
+        console.error("[Prompt Manager] Error adding prompt:", error);
+        throw error;
+      }
+    },
+
+    async updatePrompt(id, prompt) {
+      try {
+        const db = await openDB();
+        const transaction = db.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+
+        const promptData = {
+          id: id,
+          title: prompt.title,
+          content: prompt.content,
+          category: prompt.category || "General",
+          updatedAt: new Date().toISOString(),
+        };
+
+        return new Promise((resolve, reject) => {
+          const request = store.put(promptData);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      } catch (error) {
+        console.error("[Prompt Manager] Error updating prompt:", error);
+        throw error;
+      }
+    },
+
+    async deletePrompt(id) {
+      try {
+        const db = await openDB();
+        const transaction = db.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+
+        return new Promise((resolve, reject) => {
+          const request = store.delete(id);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      } catch (error) {
+        console.error("[Prompt Manager] Error deleting prompt:", error);
+        throw error;
+      }
+    },
+
+    async exportPrompts() {
+      try {
+        const prompts = await this.getAllPrompts();
+        const exportData = {
+          version: "1.0",
+          exportDate: new Date().toISOString(),
+          prompts: prompts,
+        };
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `chatgpt-prompts-${
+          new Date().toISOString().split("T")[0]
+        }.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        console.log("[Prompt Manager] Prompts exported successfully");
+      } catch (error) {
+        console.error("[Prompt Manager] Error exporting prompts:", error);
+        alert("Failed to export prompts. Please try again.");
+      }
+    },
+
+    async loadPrompts(file) {
+      try {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            try {
+              const data = JSON.parse(e.target.result);
+              if (data.prompts && Array.isArray(data.prompts)) {
+                let importCount = 0;
+                for (const prompt of data.prompts) {
+                  if (prompt.title && prompt.content) {
+                    await this.addPrompt({
+                      title: prompt.title,
+                      content: prompt.content,
+                      category: prompt.category || "Imported",
+                    });
+                    importCount++;
+                  }
+                }
+                resolve(importCount);
+              } else {
+                reject(new Error("Invalid file format"));
+              }
+            } catch (error) {
+              reject(error);
+            }
+          };
+          reader.onerror = () => reject(new Error("Failed to read file"));
+          reader.readAsText(file);
+        });
+      } catch (error) {
+        console.error("[Prompt Manager] Error loading prompts:", error);
+        throw error;
+      }
+    },
+  };
+
+  // --- UI Styles ---
+  function injectStyles() {
+    if (document.getElementById("pm-styles")) return;
+
+    const cssTemplate = `
+      .pm-modal-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.6); z-index: 10000; display: flex; align-items: center; justify-content: center; font-family: inherit; opacity: 0; transition: opacity 0.2s ease-in-out; }
+      .pm-modal-container.visible { opacity: 1; }
+      .pm-modal { background-color: var(--main-surface-primary); color: var(--text-primary); border: 1px solid var(--border-medium); border-radius: 16px; width: 90vw; max-width: 900px; height: 85vh; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; transform: scale(0.95); transition: transform 0.2s ease-in-out; }
+      .pm-modal-container.visible .pm-modal { transform: scale(1); }
+      .pm-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; }
+      .pm-header h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+      .pm-header-buttons { display: flex; gap: 8px; }
+      .pm-btn { padding: 8px 12px; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--main-surface-secondary); color: var(--text-primary); cursor: pointer; font-size: 0.875rem; transition: all 0.2s; }
+      .pm-btn:hover { background: var(--surface-hover); }
+      .pm-btn-primary { background: var(--accent-primary); color: white; border-color: var(--accent-primary); }
+      .pm-btn-primary:hover { background: var(--accent-primary-hover); }
+      .pm-search-bar { padding: 12px 20px; border-bottom: 1px solid var(--border-light); }
+      .pm-search-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-medium); border-radius: 8px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.875rem; outline: none; }
+      .pm-content { flex: 1; display: flex; overflow: hidden; }
+      .pm-sidebar { width: 200px; border-right: 1px solid var(--border-light); padding: 12px; overflow-y: auto; }
+      .pm-category-item { padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.875rem; margin-bottom: 4px; transition: background-color 0.2s; }
+      .pm-category-item:hover, .pm-category-item.active { background: var(--surface-hover); }
+      .pm-main-content { flex: 1; display: flex; flex-direction: column; }
+      .pm-prompts-list { flex: 1; overflow-y: auto; padding: 12px; }
+      .pm-prompt-item { border: 1px solid var(--border-light); border-radius: 8px; padding: 16px; margin-bottom: 12px; cursor: pointer; transition: all 0.2s; }
+      .pm-prompt-item:hover { border-color: var(--border-medium); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      .pm-prompt-title { font-weight: 600; margin-bottom: 8px; font-size: 1rem; }
+      .pm-prompt-preview { color: var(--text-secondary); font-size: 0.875rem; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .pm-prompt-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 0.75rem; color: var(--text-tertiary); }
+      .pm-prompt-actions { display: flex; gap: 8px; }
+      .pm-action-btn { padding: 4px 8px; border: 1px solid var(--border-light); border-radius: 4px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.75rem; transition: all 0.2s; }
+      .pm-action-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
+      .pm-editor-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--main-surface-primary); border: 1px solid var(--border-medium); border-radius: 12px; width: 80vw; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column; z-index: 10001; box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
+      .pm-editor-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: between; align-items: center; }
+      .pm-editor-form { padding: 20px; flex: 1; overflow-y: auto; }
+      .pm-form-group { margin-bottom: 16px; }
+      .pm-form-label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.875rem; color: var(--text-primary); }
+      .pm-form-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.875rem; outline: none; box-sizing: border-box; }
+      .pm-form-textarea { width: 100%; min-height: 200px; padding: 12px; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.875rem; outline: none; resize: vertical; box-sizing: border-box; font-family: inherit; line-height: 1.5; }
+      .pm-editor-footer { padding: 16px 20px; border-top: 1px solid var(--border-light); display: flex; justify-content: flex-end; gap: 12px; }
+      .pm-file-input { display: none; }
+      .pm-empty-state { text-align: center; padding: 40px 20px; color: var(--text-tertiary); }
+      .pm-empty-state h3 { margin-bottom: 8px; color: var(--text-secondary); }
+    `;
+
+    const styleSheet = document.createElement("style");
+    styleSheet.id = "pm-styles";
+    styleSheet.textContent = cssTemplate;
+    document.head.appendChild(styleSheet);
+  }
+
+  // --- UI Components ---
+  function injectModal() {
+    if (appState.uiInjected) return;
+
+    const container = document.createElement("div");
+    container.id = "pm-modal-container";
+    container.className = "pm-modal-container";
+    container.innerHTML = `
+      <div id="pm-modal" class="pm-modal">
+        <div class="pm-header">
+          <h2>Prompt Manager</h2>
+          <div class="pm-header-buttons">
+            <input type="file" id="pm-file-input" class="pm-file-input" accept=".json">
+            <button id="pm-import-btn" class="pm-btn">Import</button>
+            <button id="pm-export-btn" class="pm-btn">Export</button>
+            <button id="pm-new-btn" class="pm-btn pm-btn-primary">New Prompt</button>
+            <button id="pm-close-btn" class="pm-btn">×</button>
+          </div>
+        </div>
+        <div class="pm-search-bar">
+          <input type="text" id="pm-search-input" class="pm-search-input" placeholder="Search prompts...">
+        </div>
+        <div class="pm-content">
+          <div class="pm-sidebar">
+            <div id="pm-categories"></div>
+          </div>
+          <div class="pm-main-content">
+            <div id="pm-prompts-list" class="pm-prompts-list"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(container);
+    appState.uiInjected = true;
+    addModalEventListeners();
+  }
+
+  function showEditor(prompt = null) {
+    const backdrop = document.createElement("div");
+    backdrop.className = "pm-modal-container visible";
+    backdrop.innerHTML = `
+      <div class="pm-editor-modal">
+        <div class="pm-editor-header">
+          <h3>${prompt ? "Edit Prompt" : "New Prompt"}</h3>
+        </div>
+        <div class="pm-editor-form">
+          <div class="pm-form-group">
+            <label class="pm-form-label">Title</label>
+            <input type="text" id="pm-editor-title" class="pm-form-input" placeholder="Enter prompt title..." value="${
+              prompt ? prompt.title : ""
+            }">
+          </div>
+          <div class="pm-form-group">
+            <label class="pm-form-label">Category</label>
+            <input type="text" id="pm-editor-category" class="pm-form-input" placeholder="Enter category..." value="${
+              prompt ? prompt.category : ""
+            }">
+          </div>
+          <div class="pm-form-group">
+            <label class="pm-form-label">Content</label>
+            <textarea id="pm-editor-content" class="pm-form-textarea" placeholder="Enter your prompt here...">${
+              prompt ? prompt.content : ""
+            }</textarea>
+          </div>
+        </div>
+        <div class="pm-editor-footer">
+          <button id="pm-editor-cancel" class="pm-btn">Cancel</button>
+          <button id="pm-editor-save" class="pm-btn pm-btn-primary">Save</button>
+          <button id="pm-editor-use" class="pm-btn pm-btn-primary">Use</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(backdrop);
+
+    // Event listeners
+    backdrop
+      .querySelector("#pm-editor-cancel")
+      .addEventListener("click", () => {
+        backdrop.remove();
+      });
+    backdrop.querySelector("#pm-editor-use").addEventListener("click", () => {
+      const content = document.getElementById("pm-editor-content").value.trim();
+      backdrop.remove();
+      toggleModalVisibility(false);
+      pasteText(content);
+    });
+
+    backdrop
+      .querySelector("#pm-editor-save")
+      .addEventListener("click", async () => {
+        const title = document.getElementById("pm-editor-title").value.trim();
+        const category =
+          document.getElementById("pm-editor-category").value.trim() ||
+          "General";
+        const content = document
+          .getElementById("pm-editor-content")
+          .value.trim();
+
+        if (!title || !content) {
+          alert("Please fill in both title and content.");
+          return;
+        }
+
+        try {
+          if (prompt) {
+            await promptManager.updatePrompt(prompt.id, {
+              title,
+              category,
+              content,
+            });
+          } else {
+            await promptManager.addPrompt({ title, category, content });
+          }
+
+          backdrop.remove();
+          await refreshPromptsList();
+        } catch (error) {
+          console.error("[Prompt Manager] Error saving prompt:", error);
+          alert("Failed to save prompt. Please try again.");
+        }
+      });
+
+    // Close on backdrop click
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) {
+        backdrop.remove();
+      }
+    });
+
+    // Focus title input
+    setTimeout(() => {
+      document.getElementById("pm-editor-title").focus();
+    }, 100);
+  }
+
+  // --- Event Handlers ---
+  function addModalEventListeners() {
+    const container = document.getElementById("pm-modal-container");
+    const searchInput = document.getElementById("pm-search-input");
+    const fileInput = document.getElementById("pm-file-input");
+
+    // Close modal
+    container.addEventListener("click", (e) => {
+      if (e.target.id === "pm-modal-container") toggleModalVisibility(false);
+    });
+
+    document.getElementById("pm-close-btn").addEventListener("click", () => {
+      toggleModalVisibility(false);
+    });
+
+    // Header buttons
+    document.getElementById("pm-new-btn").addEventListener("click", () => {
+      showEditor();
+    });
+
+    document.getElementById("pm-export-btn").addEventListener("click", () => {
+      promptManager.exportPrompts();
+    });
+
+    document.getElementById("pm-import-btn").addEventListener("click", () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        const importCount = await promptManager.loadPrompts(file);
+        alert(`Successfully imported ${importCount} prompts!`);
+        await refreshPromptsList();
+        fileInput.value = ""; // Reset file input
+      } catch (error) {
+        console.error("[Prompt Manager] Import error:", error);
+        alert("Failed to import prompts. Please check the file format.");
+      }
+    });
+
+    // Search
+    searchInput.addEventListener("input", handleSearch);
+  }
+
+  async function handleSearch() {
+    const searchInput = document.getElementById("pm-search-input");
+    const query = searchInput.value.toLowerCase().trim();
+
+    const allPrompts = await promptManager.getAllPrompts();
+    let filteredPrompts = allPrompts;
+
+    if (query) {
+      filteredPrompts = allPrompts.filter(
+        (prompt) =>
+          prompt.title.toLowerCase().includes(query) ||
+          prompt.content.toLowerCase().includes(query) ||
+          prompt.category.toLowerCase().includes(query)
+      );
+    }
+
+    renderPromptsList(filteredPrompts);
+  }
+
+  async function refreshPromptsList() {
+    appState.prompts = await promptManager.getAllPrompts();
+    renderCategories();
+    renderPromptsList(appState.prompts);
+  }
+
+  function renderCategories() {
+    const categories = [...new Set(appState.prompts.map((p) => p.category))];
+    const categoriesContainer = document.getElementById("pm-categories");
+
+    const categoryHTML = `
+      <div class="pm-category-item active" data-category="all">All Prompts (${
+        appState.prompts.length
+      })</div>
+      ${categories
+        .map(
+          (cat) =>
+            `<div class="pm-category-item" data-category="${cat}">${cat} (${
+              appState.prompts.filter((p) => p.category === cat).length
+            })</div>`
+        )
+        .join("")}
+    `;
+
+    categoriesContainer.innerHTML = categoryHTML;
+
+    // Add click handlers
+    categoriesContainer
+      .querySelectorAll(".pm-category-item")
+      .forEach((item) => {
+        item.addEventListener("click", () => {
+          // Remove active class from all items
+          categoriesContainer
+            .querySelectorAll(".pm-category-item")
+            .forEach((i) => i.classList.remove("active"));
+          // Add active class to clicked item
+          item.classList.add("active");
+
+          const category = item.dataset.category;
+          const filteredPrompts =
+            category === "all"
+              ? appState.prompts
+              : appState.prompts.filter((p) => p.category === category);
+          renderPromptsList(filteredPrompts);
+        });
+      });
+  }
+
+  function renderPromptsList(prompts) {
+    const listContainer = document.getElementById("pm-prompts-list");
+
+    if (prompts.length === 0) {
+      listContainer.innerHTML = `
+        <div class="pm-empty-state">
+          <h3>No prompts found</h3>
+          <p>Create your first prompt to get started!</p>
+        </div>
+      `;
+      return;
+    }
+
+    const promptsHTML = prompts
+      .map(
+        (prompt) => `
+      <div class="pm-prompt-item" data-prompt-id="${prompt.id}">
+        <div class="pm-prompt-title">${prompt.title}</div>
+        <div class="pm-prompt-preview">${prompt.content}</div>
+        <div class="pm-prompt-meta">
+          <span>${prompt.category} • ${new Date(
+          prompt.createdAt
+        ).toLocaleDateString()}</span>
+          <div class="pm-prompt-actions">
+            <button class="pm-action-btn pm-use-btn" data-prompt-id="${
+              prompt.id
+            }">Use</button>
+            <button class="pm-action-btn pm-edit-btn" data-prompt-id="${
+              prompt.id
+            }">Edit</button>
+            <button class="pm-action-btn pm-delete-btn" data-prompt-id="${
+              prompt.id
+            }">Delete</button>
+          </div>
+        </div>
+      </div>
+    `
+      )
+      .join("");
+
+    listContainer.innerHTML = promptsHTML;
+
+    // Add event listeners
+    listContainer.querySelectorAll(".pm-use-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const promptId = parseInt(btn.dataset.promptId);
+        const prompt = prompts.find((p) => p.id === promptId);
+        if (prompt) {
+          pasteText(prompt.content);
+          toggleModalVisibility(false);
+        }
+      });
+    });
+
+    listContainer.querySelectorAll(".pm-edit-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const promptId = parseInt(btn.dataset.promptId);
+        const prompt = prompts.find((p) => p.id === promptId);
+        if (prompt) {
+          showEditor(prompt);
+        }
+      });
+    });
+
+    listContainer.querySelectorAll(".pm-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const promptId = parseInt(btn.dataset.promptId);
+        const prompt = prompts.find((p) => p.id === promptId);
+
+        if (
+          prompt &&
+          confirm(`Are you sure you want to delete "${prompt.title}"?`)
+        ) {
+          try {
+            await promptManager.deletePrompt(promptId);
+            await refreshPromptsList();
+          } catch (error) {
+            console.error("[Prompt Manager] Error deleting prompt:", error);
+            alert("Failed to delete prompt. Please try again.");
+          }
+        }
+      });
+    });
+  }
+
+  function toggleModalVisibility(show) {
+    if (!appState.uiInjected) {
+      if (show) injectModal();
+      else return;
+    }
+
+    const container = document.getElementById("pm-modal-container");
+    if (show) {
+      container.style.display = "flex";
+      setTimeout(() => container.classList.add("visible"), 10);
+
+      // Close sidebar on mobile
+      if (window.matchMedia("(max-width: 767px)").matches) {
+        document.querySelector("[aria-label='Close sidebar']")?.click();
+      }
+
+      // Focus search input and refresh prompts
+      const searchInput = document.getElementById("pm-search-input");
+      searchInput.value = "";
+      searchInput.focus();
+      refreshPromptsList();
+    } else {
+      container.classList.remove("visible");
+      setTimeout(() => (container.style.display = "none"), 200);
+    }
+  }
+
+  // --- Main UI Integration ---
+  function buildPromptOption() {
+    let container = Array.from(
+      document.querySelectorAll("div[role='menuitem']")
+    ).filter((e) => e.textContent.includes("Add photos"))[0]?.parentElement;
+    let exist = document.querySelector("#newPromptMenuItem");
+
+    if (exist || !container) return;
+
+    const menuitem = document.createElement("div");
+    menuitem.id = "newPromptMenuItem";
+    menuitem.innerHTML = `
+      <div
+        role="menuitem"
+        tabindex="1"
+        class="group __menu-item gap-1.5 rounded-lg min-h-9 touch:min-h-10 hover:bg-token-surface-hover focus-visible:bg-token-surface-hover"
+        data-orientation="vertical"
+        data-radix-collection-item=""
+      >
+        <div class="flex items-center justify-center icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-circle-icon lucide-message-circle"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/></svg>
+        </div>
+        <div class="flex min-w-0 grow items-center gap-2.5 group-data-no-contents-gap:gap-0">
+          <div class="truncate">Add Prompts</div>
+        </div>
+      </div>
+    `;
+
+    container.appendChild(menuitem);
+    menuitem.addEventListener("click", showPromptsModal);
+  }
+
+  function showPromptsModal() {
+    toggleModalVisibility(true);
+  }
+
+  // Paste text to the chat input (placeholder for now)
+  async function pasteText(text) {
+    // This function will be implemented to paste text to ChatGPT's input
+    console.log("[Prompt Manager] Pasting text:", text);
+    // Implementation will go here
+    const maxRetries = 15;
+    let attempts = 0;
+    let success = false;
+    let currentSelectorIndex = 0;
+    let element;
+    const selectorConfigs = [
+      {
+        scriptType: "react",
+      },
+      {
+        scriptType: "contenteditable",
+      },
+    ];
+    while (attempts < maxRetries) {
+      // Try each selector configuration in turn
+      for (let i = 0; i < selectorConfigs.length; i++) {
+        const currentConfig =
+          selectorConfigs[(currentSelectorIndex + i) % selectorConfigs.length];
+        const selector =
+          currentConfig.scriptType === "contenteditable"
+            ? "div[contenteditable='true']"
+            : "textarea";
+        element = document.querySelector(selector);
+        console.log(
+          `Attempt ${attempts + 1}, Config ${
+            ((currentSelectorIndex + i) % selectorConfigs.length) + 1
+          }: Injecting Query`
+        );
+
+        if (element) {
+          switch (currentConfig.scriptType) {
+            case "react":
+              {
+                // React-specific input handling
+                let lastValue = element.value || "";
+                element.value = text;
+
+                let event = new Event("input", { bubbles: true });
+                event.simulated = true;
+
+                let tracker = element._valueTracker;
+                if (tracker) {
+                  tracker.setValue(lastValue);
+                }
+                element.dispatchEvent(event);
+                success = true;
+              }
+              break;
+
+            case "contenteditable":
+              {
+                element.focus();
+                element.textContent = text;
+                const inputEvent = new InputEvent("input", {
+                  inputType: "insertText",
+                  data: text,
+                  bubbles: true,
+                  cancelable: true,
+                });
+                element.dispatchEvent(inputEvent);
+                success = true;
+              }
+              break;
+          }
+        }
+      }
+
+      if (!success) {
+        attempts++;
+        if (attempts < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+    }
+    console.error(`Failed to find element after ${maxRetries} attempts.`);
+  }
+
+  // --- Initialization ---
+  function init() {
+    console.log("[Prompt Manager] Initializing...");
+
+    injectStyles();
+
+    // Set up mutation observer to inject the prompt option
+    const observer = new MutationObserver(() => {
+      buildPromptOption();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Initialize with some sample prompts if none exist
+    setTimeout(async () => {
+      const existingPrompts = await promptManager.getAllPrompts();
+      const complete = localStorage.getItem("InitialPrompts") == "complete";
+      if (existingPrompts.length === 0) {
+        localStorage.setItem("InitialPrompts", "complete");
+        // Add some sample prompts
+        await promptManager.addPrompt({
+          title: "Code Review",
+          content:
+            "Please review this code and provide suggestions for improvement, focusing on performance, readability, and best practices:",
+          category: "Development",
+        });
+
+        await promptManager.addPrompt({
+          title: "Explain Like I'm 5",
+          content:
+            "Explain the following concept in simple terms that a 5-year-old could understand:",
+          category: "Education",
+        });
+
+        await promptManager.addPrompt({
+          title: "Professional Email",
+          content:
+            "Help me write a professional email with the following requirements:",
+          category: "Writing",
+        });
+      }
+    }, 1000);
+
+    console.log("[Prompt Manager] Initialized successfully");
+  }
+
+  // Initialize the prompt manager
+  init();
+
+  // Return public API
+  return {
+    get promptManager() {
+      return promptManager;
+    },
+    pasteText,
+    showModal: () => toggleModalVisibility(true),
+    hideModal: () => toggleModalVisibility(false),
+  };
+})();

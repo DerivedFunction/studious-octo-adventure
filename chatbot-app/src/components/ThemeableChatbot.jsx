@@ -336,6 +336,7 @@ const ThemeableChatbot = () => {
                   "./script/history.js",
                   "./script/label.js",
                   "./script/export.js",
+                  "./script/prompt.js",
                 ],
                 runAt: "document_idle",
                 allFrames: true,
