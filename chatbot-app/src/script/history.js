@@ -1,4 +1,4 @@
-(() => {
+window.ChatGPThistory = (() => {
   let allConversations = []; // This now holds only the conversations for the *current* view
   let currentView = "history";
   let uiInjected = false; // --- IndexedDB Cache Manager --- // This object handles all interactions with the local database.
@@ -13,7 +13,8 @@
     /**
      * Opens and initializes the IndexedDB database.
      * @returns {Promise<IDBDatabase>} The database instance.
-     */ async openDB() {
+     */
+    async openDB() {
       if (this.db) return this.db;
       return new Promise((resolve, reject) => {
         const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
@@ -60,7 +61,8 @@
      * Retrieves a metadata value (e.g., last sync timestamp).
      * @param {string} key The key for the metadata entry.
      * @returns {Promise<any|null>} The metadata value or null.
-     */ async getMetadata(key) {
+     */
+    async getMetadata(key = "lastSyncTimestamp") {
       const db = await this.openDB();
       return new Promise((resolve) => {
         const transaction = db.transaction(this.METADATA_STORE, "readonly");
@@ -75,7 +77,8 @@
      * Stores a metadata value.
      * @param {string} key The key for the metadata entry.
      * @param {any} value The value to store.
-     */ async setMetadata(key, value) {
+     */
+    async setMetadata(key, value) {
       const db = await this.openDB();
       const transaction = db.transaction(this.METADATA_STORE, "readwrite");
       const store = transaction.objectStore(this.METADATA_STORE);
@@ -85,7 +88,8 @@
      * Retrieves all conversations for a specific view (history or archived).
      * @param {boolean} isArchived - True to get archived, false for history.
      * @returns {Promise<Array>} An array of conversation objects.
-     */ async getConversations(isArchived) {
+     */
+    async getConversations(isArchived = false) {
       const db = await this.openDB();
       return new Promise((resolve) => {
         const transaction = db.transaction(this.CONVERSATION_STORE, "readonly");
@@ -100,7 +104,8 @@
     /**
      * Adds or updates a batch of conversations in the database.
      * @param {Array<object>} conversations - The conversations to add/update.
-     */ async bulkAddConversations(conversations) {
+     */
+    async bulkAddConversations(conversations) {
       const db = await this.openDB();
       const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
       const store = transaction.objectStore(this.CONVERSATION_STORE);
@@ -114,7 +119,8 @@
      * Updates a single conversation in the database with new properties.
      * @param {string} id - The ID of the conversation to update.
      * @param {object} changes - An object with properties to update (e.g., { is_archive: 1 }).
-     */ async updateConversation(id, changes) {
+     */
+    async updateConversation(id, changes) {
       const db = await this.openDB();
       const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
       const store = transaction.objectStore(this.CONVERSATION_STORE);
@@ -130,7 +136,8 @@
     /**
      * Deletes multiple conversations from the database by their IDs.
      * @param {Array<string>} ids - An array of conversation IDs to delete.
-     */ async deleteConversations(ids) {
+     */
+    async deleteConversations(ids) {
       const db = await this.openDB();
       const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
       const store = transaction.objectStore(this.CONVERSATION_STORE);
@@ -138,7 +145,8 @@
     },
     /**
      * Clears all conversations from the database. Used during a full sync.
-     */ async clearConversations() {
+     */
+    async clearConversations() {
       const db = await this.openDB();
       const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
       transaction.objectStore(this.CONVERSATION_STORE).clear();
@@ -151,8 +159,9 @@
    * This is the main data fetching function called on refresh or when cache is stale.
    * Full load continues to load all for N iterations of 100 conversations
    * If is_fetching = true, it will not fetch, as another method is already fetching
+   * If force = true, it will fetch even if is_fetching = true
    */
-  async function syncAllConversationsWithServer(fullLoad = 999) {
+  async function syncAllConversationsWithServer(fullLoad = 999, force = false) {
     showLoader(
       `${
         fullLoad === 0
@@ -178,7 +187,7 @@
         let hasMore = true;
 
         let iterationCount = 0;
-        if (is_fetching) {
+        if (is_fetching && !force) {
           hasSkip = true;
           console.log(
             `[History Manager] Already fetching data elsewhere. Aborting new fetch.`
@@ -455,7 +464,6 @@
   /**
    * Toggles the main UI visibility.
    */
-
   function toggleUiVisibility(show) {
     if (!uiInjected && show) {
       injectUI();
@@ -486,7 +494,6 @@
    * @param {Array<object>} items - The conversations to group.
    * @returns {object} An object with keys as date groups and values as arrays of conversations.
    */
-
   function groupAndSortConversations(items) {
     items.sort((a, b) => new Date(b.update_time) - new Date(a.update_time));
     const groups = {
@@ -531,7 +538,6 @@
    * @param {object} groupedItems - The grouped conversation data.
    * @param {string} containerId - The ID of the list element ('historyList' or 'archivedList').
    */
-
   function renderConversations(groupedItems, containerId) {
     const container = document.getElementById(containerId);
     let hasContent = false;
@@ -588,7 +594,6 @@
   /**
    * Updates the "Last Updated" text in the UI.
    */
-
   async function updateLastUpdatedStatus() {
     const statusEl = document.getElementById("chm-last-updated");
     if (!statusEl) return;
@@ -604,7 +609,6 @@
   /**
    * Loads conversation data for the specified view from the local cache.
    */
-
   async function loadConversationsForView(view) {
     showLoader("Loading from cache...");
     try {
@@ -625,7 +629,6 @@
   /**
    * Main view-switching logic. Checks cache freshness before loading.
    */
-
   async function switchView(view) {
     currentView = view;
     document
@@ -658,7 +661,6 @@
   /**
    * Applies the time filter and re-renders the current view's conversations.
    */
-
   function applyFilterAndRender() {
     if (!uiInjected) return;
     const isArchived = currentView === "archived";
@@ -700,7 +702,6 @@
   /**
    * Handles bulk actions like archive, delete, and restore.
    */
-
   async function handleBulkAction(action) {
     const listId = currentView === "history" ? "#historyList" : "#archivedList";
     const checkedBoxes = document.querySelectorAll(
@@ -760,7 +761,6 @@
     await loadConversationsForView(currentView); // Refresh from local DB
     hideLoader();
   }
-
   function showLoader(text = "") {
     if (!uiInjected) return;
     document.getElementById("chm-loader-text").textContent = text;
@@ -865,4 +865,13 @@
   observer.observe(document, { childList: true, subtree: true });
 
   console.log("✅ [History Manager] Script loaded. Press Ctrl+H to open.");
+  return {
+    get cacheManager() {
+      return cacheManager;
+    },
+    get allConversations() {
+      return allConversations;
+    },
+    syncAllConversationsWithServer,
+  }
 })();

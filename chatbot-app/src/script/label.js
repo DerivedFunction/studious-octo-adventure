@@ -194,55 +194,6 @@
 
   // --- End of Chrome Storage Sync Helper ---
 
-  // --- History Manager Cache Access ---
-  const historyDBManager = {
-    DB_NAME: "ConversationManagerDB",
-    CONVERSATION_STORE: "conversations",
-    db: null,
-
-    async openDB() {
-      if (this.db) return this.db;
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(this.DB_NAME);
-        request.onerror = (e) =>
-          reject("History DB open error: " + e.target.errorCode);
-        request.onsuccess = (e) => {
-          this.db = e.target.result;
-          resolve(this.db);
-        };
-      });
-    },
-
-    async getAllConversations() {
-      try {
-        const db = await this.openDB();
-        return new Promise((resolve, reject) => {
-          const transaction = db.transaction(
-            this.CONVERSATION_STORE,
-            "readonly"
-          );
-          const store = transaction.objectStore(this.CONVERSATION_STORE);
-          const request = store.getAll();
-          request.onsuccess = () => resolve(request.result || []);
-          request.onerror = (e) => {
-            console.error(
-              "[Label Explorer] Failed to read from History DB:",
-              e.target.error
-            );
-            reject([]);
-          };
-        });
-      } catch (error) {
-        console.error(
-          "[Label Explorer] Could not open History Manager DB. Ensure History Manager is active.",
-          error
-        );
-        return [];
-      }
-    },
-  };
-  // --- End of History Manager Cache Access ---
-
   /**
    * Fetches ALL conversations from the History Manager's local cache.
    */
@@ -250,7 +201,7 @@
     console.log(
       "🔄 [Label Explorer] Fetching conversations from History Manager cache..."
     );
-    const conversations = await historyDBManager.getAllConversations();
+    const conversations = await ChatGPThistory.cacheManager.getConversations();
     if (conversations.length === 0) {
       console.warn(
         "[Label Explorer] History Manager cache is empty or inaccessible."
