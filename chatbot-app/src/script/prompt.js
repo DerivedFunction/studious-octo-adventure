@@ -588,10 +588,16 @@ window.ChatGPTprompt = (() => {
       .map(
         (prompt) => `
       <div class="pm-prompt-item" data-prompt-id="${prompt.id}">
-        <div class="pm-prompt-title">${escapeHTML(prompt.title)}</div>
-        <div class="pm-prompt-preview">${escapeHTML(prompt.content)}</div>
+        <div class="pm-prompt-title">${escapeHTML(prompt.title).substring(
+          0,
+          200
+        )}</div>
+        <div class="pm-prompt-preview">${escapeHTML(prompt.content).substring(
+          0,
+          400
+        )}</div>
         <div class="pm-prompt-meta">
-          <span>${escapeHTML(prompt.category)} • ${new Date(
+          <span>${escapeHTML(prompt.category).substring(0, 100)} • ${new Date(
           prompt.createdAt
         ).toLocaleDateString()}</span>
           <div class="pm-prompt-actions">
