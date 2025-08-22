@@ -1,4 +1,4 @@
-(() => {
+window.ChatGPTLabel = (() => {
   console.log(
     "🚀 [Label Explorer] Content script loaded. Press Ctrl+L to open."
   );
@@ -88,6 +88,12 @@
 
   async function saveStoredData(data) {
     try {
+      // check to make sure if there is a chatlabel with an empty array, we remove it
+      for (const chatId in data.chatLabels) {
+        if (data.chatLabels[chatId].length === 0) {
+          delete data.chatLabels[chatId];
+        }
+      }
       // Validate data size before saving
       const dataSize = JSON.stringify(data).length;
       if (dataSize > MAX_STORAGE_SIZE) {
@@ -205,7 +211,7 @@
     const history = await ChatGPThistory.cacheManager.getConversations(true);
     // archive
     const archive = await ChatGPThistory.cacheManager.getConversations(false);
-    const conversations = [...history, ...archive]
+    const conversations = [...history, ...archive];
     if (conversations.length === 0) {
       console.warn(
         "[Label Explorer] History Manager cache is empty or inaccessible."
@@ -907,4 +913,7 @@
   }
 
   main();
+  return {
+    getStoredData,
+  };
 })();

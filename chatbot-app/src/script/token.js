@@ -1,6 +1,6 @@
 import { Tiktoken } from "js-tiktoken/lite";
 import o200k_base from "js-tiktoken/ranks/o200k_base";
-(() => {
+window.tokenizer = (() => {
   const enc = new Tiktoken(o200k_base);
   console.log("✅ [Token Manager] Tokenizer initialized.");
   /**
@@ -1171,5 +1171,11 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
   }
   function getConversationId() {
     return window.location.pathname.split("/")[2];
+  }
+  return {
+    get encoder() {
+      return enc;
+    },
+    runTokenCheck,
   }
 })();

@@ -1,4 +1,4 @@
-(() => {
+window.ChatGPTExport = (() => {
   // --- SHARED UTILITIES ---
   const canceledJobs = new Set();
   function cancelJob(jobid) {
@@ -109,7 +109,7 @@
    * opens the print dialog or triggers a file download based on the specified action.
    * @param {'print' | 'download'} action - The desired action to perform.
    */
-  async function exportOrPrintHTML(action) {
+  async function exportOrPrintHTML(action = "print") {
     const jobid = Date.now();
     let buttonsClicked = [];
     try {
@@ -1028,4 +1028,7 @@
   });
 
   console.log("✅ [ChatGPT Exporter] Script loaded successfully.");
+  return {
+    exportOrPrintHTML,
+  }
 })();
