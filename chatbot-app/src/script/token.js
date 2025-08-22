@@ -174,6 +174,11 @@ window.tokenizer = (() => {
       text-align: left; 
       line-height: 1.4;
     }
+    @media (max-width: 767px) {
+      .token-popup {
+        display: none !important;
+      }
+    }
     .token-popup h4 { 
       margin: 0 0 12px 0; 
       font-weight: 600; 
