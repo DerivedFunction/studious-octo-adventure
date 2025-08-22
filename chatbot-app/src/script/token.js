@@ -1004,7 +1004,7 @@ import o200k_base from "js-tiktoken/ranks/o200k_base";
         apiData = cached.data;
       } else {
         console.log(`🌐 [Token Manager] Fetching new API data...`);
-        apiData = await ChatGPT.getApiData();
+        apiData = await ChatGPT.getApiData(null, false);
         if (apiData) {
           await setCacheInDB(conversationId, apiData);
           console.log(
