@@ -201,7 +201,11 @@
     console.log(
       "🔄 [Label Explorer] Fetching conversations from History Manager cache..."
     );
-    const conversations = await ChatGPThistory.cacheManager.getConversations();
+    // history
+    const history = await ChatGPThistory.cacheManager.getConversations(true);
+    // archive
+    const archive = await ChatGPThistory.cacheManager.getConversations(false);
+    const conversations = [...history, ...archive]
     if (conversations.length === 0) {
       console.warn(
         "[Label Explorer] History Manager cache is empty or inaccessible."
@@ -725,7 +729,11 @@
 
         return `
         <div class="le-conversation-item">
-          <a class="title" href="/c/${convo.id}" target="_blank">${convo.title}</a>
+          <a class="title" href="/c/${
+            convo.id
+          }" target="_blank" style="opacity: ${convo.is_archive ? 0.5 : 1};">${
+          convo.title
+        }</a>
           <div class="le-label-pills-container">
             ${pillsHTML}
           </div>

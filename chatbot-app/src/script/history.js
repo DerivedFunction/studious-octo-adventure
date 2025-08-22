@@ -86,16 +86,16 @@ window.ChatGPThistory = (() => {
     },
     /**
      * Retrieves all conversations for a specific view (history or archived).
-     * @param {boolean} isArchived - True to get archived, false for history.
+     * @param {boolean} isHistory - True to get history, false for archive.
      * @returns {Promise<Array>} An array of conversation objects.
      */
-    async getConversations(isArchived = false) {
+    async getConversations(isHistory = true) {
       const db = await this.openDB();
       return new Promise((resolve) => {
         const transaction = db.transaction(this.CONVERSATION_STORE, "readonly");
         const store = transaction.objectStore(this.CONVERSATION_STORE);
         const index = store.index("is_archived_idx"); // FIX: Use a number (0 or 1) as the key, which is a universally valid key type.
-        const key = isArchived ? 1 : 0;
+        const key = isHistory ? 0 : 1;
         const request = index.getAll(key);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => resolve([]);
@@ -612,8 +612,8 @@ window.ChatGPThistory = (() => {
   async function loadConversationsForView(view) {
     showLoader("Loading from cache...");
     try {
-      const isArchived = view === "archived";
-      const conversations = await cacheManager.getConversations(isArchived);
+      const isHistory = view === "history";
+      const conversations = await cacheManager.getConversations(isHistory);
       allConversations = conversations; // Update global state for the current view
       applyFilterAndRender();
       await updateLastUpdatedStatus();
