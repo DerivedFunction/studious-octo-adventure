@@ -1,5 +1,10 @@
 window.ChatGPT = (() => {
   let accessToken = null;
+
+  // Cache configuration
+  const CACHE_DURATION = 15 * 1000; // 15 seconds in milliseconds
+  const lastFetch = new Map(); // Changed from Set to Map for better data structure
+
   /**
    * Fetches the public download URL for a given file ID.
    * @param {string} fileId The ID of the file (without 'sediment://').
@@ -39,6 +44,7 @@ window.ChatGPT = (() => {
       return null;
     }
   }
+
   async function getAccessToken() {
     if (accessToken) {
       return accessToken;
@@ -58,6 +64,7 @@ window.ChatGPT = (() => {
       return null;
     }
   }
+
   let conversationId;
   /**
    * Extracts conversation ID from the current URL.
@@ -67,20 +74,132 @@ window.ChatGPT = (() => {
     conversationId = window.location.pathname.split("/")[2];
     return conversationId;
   }
+
   let apiData = null;
+
   /**
-   * Fetchs data from backend-api
-   * @param {*} id conversation id or current conversation
-   * @returns
+   * Checks if cached data is still valid
+   * @param {string} convId - Conversation ID
+   * @returns {boolean} - Whether cache is valid
    */
-  async function getApiData(id = null) {
-    apiData = null;
+  function isCacheValid(convId) {
+    const cached = lastFetch.get(convId);
+    if (!cached) return false;
+
+    const now = Date.now();
+    const cacheAge = now - cached.timestamp;
+    const isValid = cacheAge < CACHE_DURATION;
+
+    if (!isValid) {
+      console.log(
+        `[API Manager] Cache expired for conversation ${convId} (age: ${Math.round(
+          cacheAge / 1000
+        )}s)`
+      );
+    } else {
+      console.log(
+        `[API Manager] Using cached data for conversation ${convId} (age: ${Math.round(
+          cacheAge / 1000
+        )}s)`
+      );
+    }
+
+    return isValid;
+  }
+
+  /**
+   * Stores data in cache
+   * @param {string} convId - Conversation ID
+   * @param {Object} data - Data to cache
+   */
+  function setCacheData(convId, data) {
+    lastFetch.set(convId, {
+      timestamp: Date.now(),
+      data: data,
+    });
+    console.log(`[API Manager] Cached data for conversation ${convId}`);
+  }
+
+  /**
+   * Gets data from cache
+   * @param {string} convId - Conversation ID
+   * @returns {Object|null} - Cached data or null
+   */
+  function getCacheData(convId) {
+    const cached = lastFetch.get(convId);
+    return cached ? cached.data : null;
+  }
+
+  /**
+   * Clears expired cache entries
+   */
+  function clearExpiredCache() {
+    const now = Date.now();
+    const toDelete = [];
+
+    for (const [convId, cached] of lastFetch.entries()) {
+      const cacheAge = now - cached.timestamp;
+      if (cacheAge >= CACHE_DURATION) {
+        toDelete.push(convId);
+      }
+    }
+
+    toDelete.forEach((convId) => {
+      lastFetch.delete(convId);
+      console.log(
+        `[API Manager] Removed expired cache for conversation ${convId}`
+      );
+    });
+
+    if (toDelete.length > 0) {
+      console.log(
+        `[API Manager] Cleared ${toDelete.length} expired cache entries`
+      );
+    }
+  }
+
+  /**
+   * Fetchs data from backend-api with caching support
+   * @param {string} id conversation id or current conversation
+   * @param {boolean} useCache whether to use cached data
+   * @param {boolean} forceRefresh whether to force refresh even if cache is valid
+   * @returns {Promise<Object>} API data
+   */
+  async function getApiData(id = null, useCache = true, forceRefresh = false) {
+    const convId = id || getConversationId();
+    if (!convId) {
+      console.error("[API Manager] No conversation ID available");
+      return null;
+    }
+
+    // Clear expired cache entries periodically
+    clearExpiredCache();
+
+    // Check cache first if enabled and not forcing refresh
+    if (useCache && !forceRefresh && isCacheValid(convId)) {
+      const cachedData = getCacheData(convId);
+      if (cachedData) {
+        apiData = cachedData;
+        return apiData;
+      }
+    }
+
+    if (forceRefresh) {
+      console.log(
+        `[API Manager] Force refreshing data for conversation ${convId}`
+      );
+    } else {
+      console.log(
+        `[API Manager] Fetching fresh data for conversation ${convId}`
+      );
+    }
+
     const signal = AbortController ? new AbortController().signal : undefined;
     await getAccessToken();
-    const convId = id || getConversationId();
-    if (!conversationId) return;
+
     if (!accessToken) throw new Error("Access token not available.");
-    console.log("[API Manager] Fetching API data.");
+
+    console.log("[API Manager] Fetching API data from server...");
     const response = await fetch(
       `https://chatgpt.com/backend-api/conversation/${convId}`,
       {
@@ -567,23 +686,21 @@ window.ChatGPT = (() => {
       reasoningMapData,
       fileMapData,
     };
-    // Make sure we stil have the same match, if not, it is out of date
-    const curConvId = getConversationId();
-    if (curConvId !== convId) apiData = null;
-    return {
-      metaData,
-      userProfile,
-      turnMapData,
-      toolMapData,
-      messageMapData,
-      imageMapData,
-      canvasMapData,
-      reasoningMapData,
-      fileMapData,
-    };
+
+    // Cache the processed data if caching is enabled
+    if (useCache) {
+      setCacheData(convId, apiData);
+    }
+
+    return apiData;
   }
+
   let exportData;
-  async function convertExport(id = null) {
+  async function convertExport(
+    id = null,
+    useCache = true,
+    forceRefresh = false
+  ) {
     function formatCanvasContent(canvases) {
       if (!canvases || canvases.length === 0) return "";
       let canvasMarkdown = "";
@@ -601,7 +718,11 @@ window.ChatGPT = (() => {
     }
 
     try {
-      const { metaData, turnMapData, canvasMapData } = await getApiData(id);
+      const { metaData, turnMapData, canvasMapData } = await getApiData(
+        id,
+        useCache,
+        forceRefresh
+      );
       const turns = Array.from(turnMapData, ([turnId, data]) => ({
         turnId,
         ...data,
@@ -807,6 +928,75 @@ window.ChatGPT = (() => {
       });
     }
   }, 500);
+
+  // Cache management methods
+  const cacheManager = {
+    /**
+     * Get cache statistics
+     * @returns {Object} Cache statistics
+     */
+    getStats() {
+      const now = Date.now();
+      let validEntries = 0;
+      let expiredEntries = 0;
+      let totalSize = 0;
+
+      for (const [convId, cached] of lastFetch.entries()) {
+        const cacheAge = now - cached.timestamp;
+        if (cacheAge < CACHE_DURATION) {
+          validEntries++;
+        } else {
+          expiredEntries++;
+        }
+        totalSize += JSON.stringify(cached.data).length;
+      }
+
+      return {
+        totalEntries: lastFetch.size,
+        validEntries,
+        expiredEntries,
+        totalSizeBytes: totalSize,
+        cacheDurationMs: CACHE_DURATION,
+      };
+    },
+
+    /**
+     * Clear all cached data
+     */
+    clearAll() {
+      const count = lastFetch.size;
+      lastFetch.clear();
+      console.log(`[API Manager] Cleared all ${count} cache entries`);
+    },
+
+    /**
+     * Clear cache for specific conversation
+     * @param {string} convId - Conversation ID
+     */
+    clearConversation(convId) {
+      if (lastFetch.delete(convId)) {
+        console.log(`[API Manager] Cleared cache for conversation ${convId}`);
+        return true;
+      }
+      return false;
+    },
+
+    /**
+     * Get all cached conversation IDs
+     * @returns {Array<string>} Array of conversation IDs
+     */
+    getCachedConversations() {
+      return Array.from(lastFetch.keys());
+    },
+
+    /**
+     * Force clear expired entries
+     */
+    clearExpired() {
+      clearExpiredCache();
+    },
+  };
+
   return {
     getApiData,
     convertExport,
@@ -814,6 +1004,7 @@ window.ChatGPT = (() => {
     getImageDownloadUrl,
     getConversationId,
     getUserMemory,
+    cacheManager,
     get userMemory() {
       return userMemory;
     },
@@ -828,6 +1019,13 @@ window.ChatGPT = (() => {
     },
     get exportData() {
       return exportData;
+    },
+    // Expose cache configuration for external modification if needed
+    get cacheConfig() {
+      return {
+        CACHE_DURATION,
+        cacheSize: lastFetch.size,
+      };
     },
   };
 })();
