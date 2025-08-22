@@ -162,6 +162,7 @@ window.ChatGPThistory = (() => {
    * If force = true, it will fetch even if is_fetching = true
    */
   async function syncAllConversationsWithServer(fullLoad = 999, force = false) {
+    let status; // returns true when sucessful
     showLoader(
       `${
         fullLoad === 0
@@ -176,7 +177,7 @@ window.ChatGPThistory = (() => {
     const token = await ChatGPT.getAccessToken();
     if (!token) {
       hideLoader();
-      return;
+      return false;
     }
 
     try {
@@ -189,6 +190,7 @@ window.ChatGPThistory = (() => {
         let iterationCount = 0;
         if (is_fetching && !force) {
           hasSkip = true;
+          status = false;
           console.log(
             `[History Manager] Already fetching data elsewhere. Aborting new fetch.`
           );
@@ -202,6 +204,7 @@ window.ChatGPThistory = (() => {
           );
           is_fetching = false;
           if (!response.ok) {
+            status = false;
             throw new Error(
               `API request failed with status ${response.status}`
             );
@@ -231,7 +234,9 @@ window.ChatGPThistory = (() => {
       await cacheManager.bulkAddConversations(allItems);
       await loadConversationsForView(currentView);
       console.log("✅ [History Manager] Cache sync complete.");
+      status = true;
     } catch (error) {
+      status = false;
       console.error(
         "❌ [History Manager] Failed to sync conversations:",
         error
@@ -239,6 +244,7 @@ window.ChatGPThistory = (() => {
     } finally {
       hideLoader();
     }
+    return status;
   }
   /**
    * Updates a single conversation's properties on the server.
@@ -705,7 +711,7 @@ window.ChatGPThistory = (() => {
   async function handleBulkAction(action) {
     const listId = currentView === "history" ? "#historyList" : "#archivedList";
     const checkedBoxes = document.querySelectorAll(
-      `${listId} input[type="checkbox"]:checked`
+      `${listId} .chm-conversation-item input[type="checkbox"]:checked`
     );
     const targetIds = Array.from(checkedBoxes).map((cb) => cb.dataset.id);
 

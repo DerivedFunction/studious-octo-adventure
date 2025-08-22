@@ -90,7 +90,10 @@ window.ChatGPTLabel = (() => {
     try {
       // check to make sure if there is a chatlabel with an empty array, we remove it
       for (const chatId in data.chatLabels) {
-        if (data.chatLabels[chatId].length === 0) {
+        if (
+          data.chatLabels[chatId].length === 0 ||
+          data.chatLabels[chatId][0] == null
+        ) {
           delete data.chatLabels[chatId];
         }
       }
@@ -223,6 +226,124 @@ window.ChatGPTLabel = (() => {
     return conversations;
   }
 
+  /**
+   * Validates all chatlabels against history cache, to check for deleted conversations
+   * SAFETY: Multiple validation checks to prevent accidental data loss
+   */
+  async function validateChatlabels() {
+    console.log("[Label Explorer] Starting safe label validation...");
+
+    // Step 1: Get current state before any server operations
+    const beforeData = await getStoredData();
+    const beforeCount = Object.keys(beforeData.chatLabels).length;
+
+    console.log(
+      `[Label Explorer] Current state: ${
+        Object.keys(beforeData.labels).length
+      } labels, ${beforeCount} chat label assignments`
+    );
+
+    // Step 2: Attempt server sync with safety checks
+    console.log("[Label Explorer] Syncing with server...");
+    const success = await ChatGPThistory.syncAllConversationsWithServer(
+      999,
+      true
+    );
+
+    if (!success) {
+      console.warn(
+        "[Label Explorer] Server sync failed - aborting cleanup to prevent data loss"
+      );
+      return false;
+    }
+
+    // Step 3: Get conversations with safety validation
+    const allConversations = await fetchAllConversations();
+
+    // SAFETY CHECK 1: Ensure we actually got conversation data
+    if (!allConversations || allConversations.length === 0) {
+      console.warn(
+        "[Label Explorer] SAFETY ABORT: No conversations returned from cache. This could indicate:"
+      );
+      console.warn("  - Server returned empty response");
+      console.warn("  - Cache was cleared due to sync error");
+      console.warn("  - Network/API issues occurred");
+      console.warn("  - Aborting cleanup to prevent accidental label deletion");
+      return false;
+    }
+
+    // SAFETY CHECK 2: Sanity check - ensure conversation count is reasonable
+    // If we had labels before, we should have at least some conversations
+    if (beforeCount > 0 && allConversations.length < 5) {
+      console.warn(
+        `[Label Explorer] SAFETY ABORT: Suspiciously low conversation count (${allConversations.length})`
+      );
+      console.warn(
+        "  - Previously had chat labels, but now very few conversations"
+      );
+      console.warn("  - This suggests partial/incomplete server sync");
+      console.warn("  - Aborting cleanup to prevent accidental label deletion");
+      return false;
+    }
+
+    console.log(
+      `[Label Explorer] Validation passed: Found ${allConversations.length} conversations`
+    );
+
+    // Step 4: Perform safe comparison and cleanup
+    const { chatLabels, labels } = await getStoredData();
+    const orphanedLabels = [];
+    let cleanupCount = 0;
+
+    // Identify orphaned labels without deleting yet
+    for (const convoId in chatLabels) {
+      const convo = allConversations.find((c) => c.id === convoId);
+      if (!convo) {
+        orphanedLabels.push(convoId);
+      }
+    }
+
+    // SAFETY CHECK 3: Prevent mass deletion
+    const orphanPercentage =
+      (orphanedLabels.length / Object.keys(chatLabels).length) * 100;
+    if (orphanedLabels.length > 10 && orphanPercentage > 50) {
+      console.warn(
+        `[Label Explorer] SAFETY ABORT: Would delete ${
+          orphanedLabels.length
+        } labels (${orphanPercentage.toFixed(1)}%)`
+      );
+      console.warn("  - This is unusually high and suggests data sync issues");
+      console.warn("  - Aborting cleanup to prevent accidental mass deletion");
+      console.warn("  - Consider running History Manager sync manually first");
+      return false;
+    }
+
+    // Safe to proceed with cleanup
+    if (orphanedLabels.length > 0) {
+      console.log(
+        `[Label Explorer] Cleaning up ${orphanedLabels.length} orphaned label assignments:`
+      );
+      orphanedLabels.forEach((convoId) => {
+        console.log(`  - Removing labels for conversation: ${convoId}`);
+        delete chatLabels[convoId];
+        cleanupCount++;
+      });
+
+      // Save the cleaned data
+      const cleanedData = { labels, chatLabels };
+      await saveStoredData(cleanedData);
+      appState.data = await getStoredData();
+
+      console.log(
+        `✅ [Label Explorer] Successfully cleaned up ${cleanupCount} orphaned label assignments`
+      );
+    } else {
+      console.log("✅ [Label Explorer] No orphaned labels found - all clean!");
+    }
+
+    return true;
+  }
+
   // --- 2. UI, STYLES, AND INJECTION ---
 
   function injectStyles() {
@@ -268,6 +389,10 @@ window.ChatGPTLabel = (() => {
       .le-sync-status { font-size: 0.75rem; color: var(--text-tertiary); padding: 4px 8px; }
       .le-sync-status.synced { color: var(--text-success); }
       .le-sync-status.error { color: var(--text-error); }
+      .le-cleanup-btn { background: none; border: 1px solid var(--border-medium); color: var(--text-secondary); padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+      .le-cleanup-btn:hover { background-color: var(--surface-hover); color: var(--text-primary); border-color: var(--border-heavy); }
+      .le-cleanup-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .le-cleanup-btn.cleaning { background-color: var(--main-surface-secondary); }
     `;
     const styleSheet = document.createElement("style");
     styleSheet.id = "le-styles";
@@ -286,6 +411,9 @@ window.ChatGPTLabel = (() => {
         <div class="le-header">
           <div id="le-search-bar" class="le-search-bar">
             <input type="text" id="le-search-input" placeholder="Search by labels...">
+            <button id="le-cleanup-btn" class="le-cleanup-btn" title="Clean up labels for deleted conversations">
+              Clean Up
+            </button>
             <div id="le-sync-status" class="le-sync-status">Synced ✓</div>
           </div>
         </div>
@@ -343,10 +471,133 @@ window.ChatGPTLabel = (() => {
         syncStatusEl.className = "le-sync-status";
         syncStatusEl.textContent = "Syncing...";
         break;
+      case "cleaning":
+        syncStatusEl.className = "le-sync-status";
+        syncStatusEl.textContent = "Cleaning...";
+        break;
       case "error":
         syncStatusEl.className = "le-sync-status error";
         syncStatusEl.textContent = message || "Sync error";
         break;
+    }
+  }
+
+  /**
+   * Handles the cleanup button click - validates and cleans up orphaned labels
+   * Enhanced with comprehensive safety checks and user warnings
+   */
+  async function handleCleanupLabels() {
+    const cleanupBtn = document.getElementById("le-cleanup-btn");
+    if (!cleanupBtn) return;
+
+    const originalText = cleanupBtn.textContent;
+
+    // Show safety warning to user
+    const shouldProceed = confirm(
+      "🧹 Label Cleanup Safety Check\n\n" +
+        "This will:\n" +
+        "• Sync with ChatGPT servers to get latest conversation data\n" +
+        "• Remove labels for conversations that no longer exist\n" +
+        "• Multiple safety checks prevent accidental data loss\n\n" +
+        "The process will abort if any issues are detected.\n\n" +
+        "Continue with cleanup?"
+    );
+
+    if (!shouldProceed) return;
+
+    cleanupBtn.disabled = true;
+    cleanupBtn.classList.add("cleaning");
+    cleanupBtn.textContent = "Cleaning...";
+    updateSyncStatus("cleaning");
+
+    try {
+      console.log(
+        "[Label Explorer] Starting enhanced label cleanup with safety checks..."
+      );
+
+      // Get counts before cleanup for reporting
+      const beforeCounts = {
+        labels: Object.keys(appState.data.labels).length,
+        chatLabels: Object.keys(appState.data.chatLabels).length,
+      };
+
+      const success = await validateChatlabels();
+
+      if (success) {
+        // Get counts after cleanup
+        const afterCounts = {
+          labels: Object.keys(appState.data.labels).length,
+          chatLabels: Object.keys(appState.data.chatLabels).length,
+        };
+
+        const removedCount = beforeCounts.chatLabels - afterCounts.chatLabels;
+
+        console.log(
+          `[Label Explorer] Cleanup complete. Removed ${removedCount} orphaned label assignments.`
+        );
+
+        // Show success message
+        updateSyncStatus("synced");
+
+        if (removedCount > 0) {
+          cleanupBtn.textContent = `Cleaned ${removedCount} items`;
+
+          // Show success notification
+          setTimeout(() => {
+            alert(
+              `✅ Cleanup Complete!\n\nRemoved ${removedCount} orphaned label assignments.\nYour labels are now synchronized with your actual conversations.`
+            );
+          }, 500);
+        } else {
+          cleanupBtn.textContent = "Already Clean ✓";
+        }
+
+        // Refresh the current view
+        const searchInput = document.getElementById("le-search-input");
+        if (searchInput && searchInput.value.trim()) {
+          handleSearch();
+        } else {
+          showAvailableLabels();
+        }
+
+        // Reset button after 3 seconds
+        setTimeout(() => {
+          cleanupBtn.textContent = originalText;
+        }, 3000);
+      } else {
+        throw new Error(
+          "Cleanup aborted due to safety checks - see console for details"
+        );
+      }
+    } catch (error) {
+      console.error("[Label Explorer] Cleanup failed:", error);
+      updateSyncStatus("error", "Cleanup failed");
+      cleanupBtn.textContent = "❌ Safety Abort";
+
+      // Show detailed error to user
+      setTimeout(() => {
+        alert(
+          "🛡️ Cleanup Safely Aborted\n\n" +
+            "The cleanup was stopped due to safety checks to prevent accidental data loss.\n\n" +
+            "Common reasons:\n" +
+            "• Server sync failed or returned incomplete data\n" +
+            "• Network connectivity issues\n" +
+            "• Unusually high number of orphaned labels detected\n\n" +
+            "Try:\n" +
+            "1. Check your internet connection\n" +
+            "2. Open History Manager (Ctrl+H) and refresh manually\n" +
+            "3. Try cleanup again after successful sync\n\n" +
+            "Check browser console for detailed information."
+        );
+      }, 500);
+
+      // Reset button after 5 seconds
+      setTimeout(() => {
+        cleanupBtn.textContent = originalText;
+      }, 5000);
+    } finally {
+      cleanupBtn.disabled = false;
+      cleanupBtn.classList.remove("cleaning");
     }
   }
 
@@ -598,12 +849,18 @@ window.ChatGPTLabel = (() => {
   function addModalEventListeners() {
     const container = document.getElementById("le-modal-container");
     const searchInput = document.getElementById("le-search-input");
+    const cleanupBtn = document.getElementById("le-cleanup-btn");
 
     container.addEventListener("click", (e) => {
       if (e.target.id === "le-modal-container") toggleModalVisibility(false);
     });
 
     searchInput.addEventListener("keyup", handleSearch);
+
+    // Add cleanup button event listener
+    if (cleanupBtn) {
+      cleanupBtn.addEventListener("click", handleCleanupLabels);
+    }
   }
 
   function showAvailableLabels() {
@@ -646,7 +903,7 @@ window.ChatGPTLabel = (() => {
           ${pillsHTML}
         </div>
         <p style="color: var(--text-tertiary); font-size: 0.85rem; margin-top: 1.5rem;">
-          Click a label to search
+          Click a label to search • Use the 🧹 Clean Up button to remove labels for deleted conversations
         </p>
       </div>
     `;
@@ -915,5 +1172,6 @@ window.ChatGPTLabel = (() => {
   main();
   return {
     getStoredData,
+    validateChatlabels,
   };
 })();
