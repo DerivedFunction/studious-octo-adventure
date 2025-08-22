@@ -200,10 +200,8 @@ window.ChatGPTprompt = (() => {
       .pm-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; }
       .pm-header h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
       .pm-header-buttons { display: flex; gap: 8px; }
-      .pm-btn { padding: 8px 12px; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--main-surface-secondary); color: var(--text-primary); cursor: pointer; font-size: 0.875rem; transition: all 0.2s; }
+      .pm-btn { padding: 8px 12px; background: var(--main-surface-secondary); color: var(--text-primary); cursor: pointer; font-size: 0.875rem; transition: all 0.2s; }
       .pm-btn:hover { background: var(--surface-hover); }
-      .pm-btn-primary { background: var(--accent-primary); color: white; border-color: var(--accent-primary); }
-      .pm-btn-primary:hover { background: var(--accent-primary-hover); }
       .pm-search-bar { padding: 12px 20px; border-bottom: 1px solid var(--border-light); }
       .pm-search-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-medium); border-radius: 8px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.875rem; outline: none; }
       .pm-content { flex: 1; display: flex; overflow: hidden; }
@@ -218,7 +216,7 @@ window.ChatGPTprompt = (() => {
       .pm-prompt-preview { color: var(--text-secondary); font-size: 0.875rem; line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
       .pm-prompt-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 0.75rem; color: var(--text-tertiary); }
       .pm-prompt-actions { display: flex; gap: 8px; }
-      .pm-action-btn { padding: 4px 8px; border: 1px solid var(--border-light); border-radius: 4px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.75rem; transition: all 0.2s; }
+      .pm-action-btn { border: 1px solid var(--border-light); background: transparent; color: var(--text-secondary); cursor: pointer; }
       .pm-action-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
       .pm-editor-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--main-surface-primary); border: 1px solid var(--border-medium); border-radius: 12px; width: 80vw; max-width: 700px; max-height: 80vh; display: flex; flex-direction: column; z-index: 10001; box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
       .pm-editor-header { padding: 16px 20px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: between; align-items: center; }
@@ -231,6 +229,7 @@ window.ChatGPTprompt = (() => {
       .pm-file-input { display: none; }
       .pm-empty-state { text-align: center; padding: 40px 20px; color: var(--text-tertiary); }
       .pm-empty-state h3 { margin-bottom: 8px; color: var(--text-secondary); }
+      #pm-close-btn {background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-tertiary); transition: color 0.2s;}
     `;
 
     const styleSheet = document.createElement("style");
@@ -248,28 +247,106 @@ window.ChatGPTprompt = (() => {
     container.className = "pm-modal-container";
     container.innerHTML = `
       <div id="pm-modal" class="pm-modal">
-        <div class="pm-header">
-          <h2>Prompt Manager</h2>
-          <div class="pm-header-buttons">
-            <input type="file" id="pm-file-input" class="pm-file-input" accept=".json">
-            <button id="pm-import-btn" class="pm-btn">Import</button>
-            <button id="pm-export-btn" class="pm-btn">Export</button>
-            <button id="pm-new-btn" class="pm-btn pm-btn-primary">New Prompt</button>
-            <button id="pm-close-btn" class="pm-btn">×</button>
-          </div>
-        </div>
-        <div class="pm-search-bar">
-          <input type="text" id="pm-search-input" class="pm-search-input" placeholder="Search prompts...">
-        </div>
-        <div class="pm-content">
-          <div class="pm-sidebar">
-            <div id="pm-categories"></div>
-          </div>
-          <div class="pm-main-content">
-            <div id="pm-prompts-list" class="pm-prompts-list"></div>
-          </div>
+      <div class="pm-header">
+        <h2>Prompts</h2>
+        <div class="pm-header-buttons">
+          <input
+            type="file"
+            id="pm-file-input"
+            class="pm-file-input"
+            accept=".json"
+          >
+            <button id="pm-import-btn" class="flex gap-1.5 btn pm-btn" title="Import">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="lucide lucide-upload-icon lucide-upload"
+              >
+                <path d="M12 3v12" />
+                <path d="m17 8-5-5-5 5" />
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              </svg>
+              <span class="hidden md:block">Import</span>
+            </button>
+          </input>
+          <button id="pm-export-btn" class="flex gap-1.5 btn pm-btn" title="Export">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" x2="12" y1="15" y2="3" />
+            </svg>
+            <span class="hidden md:block">Export</span>
+          </button>
+          <button id="pm-new-btn" class="flex gap-1.5 btn pm-btn" title="Create new">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="lucide lucide-plus-icon lucide-plus"
+            >
+              <path d="M5 12h14" />
+              <path d="M12 5v14" />
+            </svg>
+            <span class="hidden md:block">Create New</span>
+          </button>
+          <button id="pm-close-btn">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="lucide lucide-x-icon lucide-x"
+            >
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
         </div>
       </div>
+      <div class="pm-search-bar">
+        <input
+          type="text"
+          id="pm-search-input"
+          class="pm-search-input"
+          placeholder="Search prompts..."
+        ></input>
+      </div>
+      <div class="pm-content">
+        <div class="pm-sidebar">
+          <div id="pm-categories"></div>
+        </div>
+        <div class="pm-main-content">
+          <div id="pm-prompts-list" class="pm-prompts-list"></div>
+        </div>
+      </div>
+    </div>
     `;
 
     document.body.appendChild(container);
@@ -306,9 +383,9 @@ window.ChatGPTprompt = (() => {
           </div>
         </div>
         <div class="pm-editor-footer">
-          <button id="pm-editor-cancel" class="pm-btn">Cancel</button>
-          <button id="pm-editor-save" class="pm-btn pm-btn-primary">Save</button>
-          <button id="pm-editor-use" class="pm-btn pm-btn-primary">Use</button>
+          <button id="pm-editor-cancel" class="pm-btn btn">Cancel</button>
+          <button id="pm-editor-save" class="pm-btn btn">Save</button>
+          <button id="pm-editor-use" class="pm-btn btn">Use</button>
         </div>
       </div>
     `;
@@ -514,13 +591,13 @@ window.ChatGPTprompt = (() => {
           prompt.createdAt
         ).toLocaleDateString()}</span>
           <div class="pm-prompt-actions">
-            <button class="pm-action-btn pm-use-btn" data-prompt-id="${
+            <button class="pm-action-btn pm-use-btn btn" data-prompt-id="${
               prompt.id
             }">Use</button>
-            <button class="pm-action-btn pm-edit-btn" data-prompt-id="${
+            <button class="pm-action-btn pm-edit-btn btn" data-prompt-id="${
               prompt.id
             }">Edit</button>
-            <button class="pm-action-btn pm-delete-btn" data-prompt-id="${
+            <button class="pm-action-btn pm-delete-btn btn" data-prompt-id="${
               prompt.id
             }">Delete</button>
           </div>
