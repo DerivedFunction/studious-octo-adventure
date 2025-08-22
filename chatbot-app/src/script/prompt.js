@@ -205,7 +205,7 @@ window.ChatGPTprompt = (() => {
       .pm-search-bar { padding: 12px 20px; border-bottom: 1px solid var(--border-light); }
       .pm-search-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-medium); border-radius: 8px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.875rem; outline: none; }
       .pm-content { flex: 1; overflow: hidden; }
-      .pm-sidebar { min-height: 50px; min-width: 200px; border-right: 1px solid var(--border-light); padding: 12px; overflow-y: auto; }
+      .pm-sidebar { width: 250px; border-right: 1px solid var(--border-light); padding: 12px; overflow-y: auto; }
       .pm-category-item { padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.875rem; margin-bottom: 4px; transition: background-color 0.2s; }
       .pm-category-item:hover, .pm-category-item.active { background: var(--surface-hover); }
       .pm-main-content { flex: 1; display: flex; flex-direction: column; }
@@ -338,9 +338,9 @@ window.ChatGPTprompt = (() => {
           placeholder="Search prompts..."
         ></input>
       </div>
-      <div class="pm-content flex flex-col md:flex-row">
-        <div class="pm-sidebar">
-          <div id="pm-categories" class="flex flex-row md:flex-col gap-0.5"></div>
+      <div class="pm-content flex flex-row">
+        <div class="pm-sidebar hidden md:flex">
+          <div id="pm-categories" class="flex flex-col gap-0.5 truncate"></div>
         </div>
         <div class="pm-main-content">
           <div id="pm-prompts-list" class="pm-prompts-list"></div>
@@ -366,19 +366,19 @@ window.ChatGPTprompt = (() => {
           <div class="pm-form-group">
             <label class="pm-form-label">Title</label>
             <input type="text" id="pm-editor-title" class="pm-form-input" placeholder="Enter prompt title..." value="${
-              prompt ? prompt.title : ""
+              prompt ? escapeHTML(prompt.title) : ""
             }">
           </div>
           <div class="pm-form-group">
             <label class="pm-form-label">Category</label>
             <input type="text" id="pm-editor-category" class="pm-form-input" placeholder="Enter category..." value="${
-              prompt ? prompt.category : ""
+              prompt ? escapeHTML(prompt.category) : ""
             }">
           </div>
           <div class="pm-form-group">
             <label class="pm-form-label">Content</label>
             <textarea id="pm-editor-content" class="pm-form-textarea" placeholder="Enter your prompt here...">${
-              prompt ? prompt.content : ""
+              prompt ? escapeHTML(prompt.content) : ""
             }</textarea>
           </div>
         </div>
@@ -525,21 +525,29 @@ window.ChatGPTprompt = (() => {
     renderPromptsList(appState.prompts);
   }
 
+  function escapeHTML(str) {
+    if (!str) return "";
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
   function renderCategories() {
     const categories = [...new Set(appState.prompts.map((p) => p.category))];
     const categoriesContainer = document.getElementById("pm-categories");
-
     const categoryHTML = `
-      <div class="pm-category-item active" data-category="all">All Prompts (${
+      <div class="pm-category-item active truncate" data-category="all" title="All Prompts">All Prompts (${
         appState.prompts.length
       })</div>
       ${categories
-        .map(
-          (cat) =>
-            `<div class="pm-category-item" data-category="${cat}">${cat} (${
-              appState.prompts.filter((p) => p.category === cat).length
-            })</div>`
-        )
+        .map((cat) => {
+          const category = escapeHTML(cat);
+          return `<div class="pm-category-item truncate" data-category="${category}" title="${category}">${category} (${
+            appState.prompts.filter((p) => p.category === cat).length
+          })</div>`;
+        })
         .join("")}
     `;
 
@@ -584,10 +592,10 @@ window.ChatGPTprompt = (() => {
       .map(
         (prompt) => `
       <div class="pm-prompt-item" data-prompt-id="${prompt.id}">
-        <div class="pm-prompt-title">${prompt.title}</div>
-        <div class="pm-prompt-preview">${prompt.content}</div>
+        <div class="pm-prompt-title">${escapeHTML(prompt.title)}</div>
+        <div class="pm-prompt-preview">${escapeHTML(prompt.content)}</div>
         <div class="pm-prompt-meta">
-          <span>${prompt.category} • ${new Date(
+          <span>${escapeHTML(prompt.category)} • ${new Date(
           prompt.createdAt
         ).toLocaleDateString()}</span>
           <div class="pm-prompt-actions">
