@@ -429,14 +429,14 @@ window.ChatGPTLabel = (() => {
   async function injectSidebarUI(chatElement) {
     if (chatElement.dataset.leInjected) return;
     chatElement.dataset.leInjected = "true";
-    const titleContainer = chatElement.querySelector("div.truncate");
+    const titleContainer = chatElement.querySelector("div.trailing.highlight");
     if (!titleContainer) return;
 
     const conversationId = chatElement.href.split("/").pop();
     const labelButton = document.createElement("button");
     labelButton.className = "le-sidebar-btn";
     labelButton.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
         <line x1="7" y1="7" x2="7.01" y2="7"></line>
       </svg>
@@ -449,7 +449,7 @@ window.ChatGPTLabel = (() => {
     });
 
     titleContainer.parentElement.style.display = "flex";
-    titleContainer.parentElement.appendChild(labelButton);
+    titleContainer.insertBefore(labelButton, titleContainer.firstChild);
   }
 
   // --- 3. EVENT HANDLERS & DYNAMIC UI ---
