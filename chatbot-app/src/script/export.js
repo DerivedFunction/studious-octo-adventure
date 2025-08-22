@@ -814,7 +814,11 @@ window.ChatGPTExport = (() => {
     const targetContainer = document.querySelector(
       "#conversation-header-actions"
     ); // desktop
-    const smallContainer = document.querySelector(".no-draggable.end-0"); // mobile
+    const mobileMenu = document.querySelector(
+      "div.no-draggable a[aria-label='New chat']"
+    );
+    let smallContainer;
+    if (mobileMenu) smallContainer = mobileMenu.closest("div.no-draggable"); // mobile
 
     // Build menu factory
     function buildExportMenu() {
@@ -848,23 +852,23 @@ window.ChatGPTExport = (() => {
       dropdown.id = "export-menu-dropdown";
       dropdown.innerHTML = `
   <div class="export-menu-content">
-    <button class="export-menu-item" id="print-chat-item">
+    <button class="export-menu-item btn" id="print-chat-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
       <span>Print Chat</span>
     </button>
-    <button class="export-menu-item" id="html-chat-item">
+    <button class="export-menu-item btn" id="html-chat-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code-icon lucide-code"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
       <span>Offline HTML</span>
     </button>
-    <button class="export-menu-item" id="export-md-item">
+    <button class="export-menu-item btn" id="export-md-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>
       <span>Markdown</span>
     </button>
-    <button class="export-menu-item" id="export-json-item">
+    <button class="export-menu-item btn" id="export-json-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-braces-icon lucide-braces"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
       <span>Input JSON</span>
     </button>
-    <button class="export-menu-item" id="export-json-chat-item">
+    <button class="export-menu-item btn" id="export-json-chat-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-braces-icon lucide-braces"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>
       <span>Output JSON</span>
     </button>
@@ -1030,5 +1034,5 @@ window.ChatGPTExport = (() => {
   console.log("✅ [ChatGPT Exporter] Script loaded successfully.");
   return {
     exportOrPrintHTML,
-  }
+  };
 })();

@@ -204,8 +204,8 @@ window.ChatGPTprompt = (() => {
       .pm-btn:hover { background: var(--surface-hover); }
       .pm-search-bar { padding: 12px 20px; border-bottom: 1px solid var(--border-light); }
       .pm-search-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-medium); border-radius: 8px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.875rem; outline: none; }
-      .pm-content { flex: 1; display: flex; overflow: hidden; }
-      .pm-sidebar { width: 200px; border-right: 1px solid var(--border-light); padding: 12px; overflow-y: auto; }
+      .pm-content { flex: 1; overflow: hidden; }
+      .pm-sidebar { border-right: 1px solid var(--border-light); padding: 12px; overflow-y: auto; }
       .pm-category-item { padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 0.875rem; margin-bottom: 4px; transition: background-color 0.2s; }
       .pm-category-item:hover, .pm-category-item.active { background: var(--surface-hover); }
       .pm-main-content { flex: 1; display: flex; flex-direction: column; }
@@ -338,7 +338,7 @@ window.ChatGPTprompt = (() => {
           placeholder="Search prompts..."
         ></input>
       </div>
-      <div class="pm-content">
+      <div class="pm-content flex flex-col md:flex-row">
         <div class="pm-sidebar">
           <div id="pm-categories"></div>
         </div>
@@ -775,7 +775,7 @@ window.ChatGPTprompt = (() => {
     setTimeout(async () => {
       const existingPrompts = await promptManager.getAllPrompts();
       const complete = localStorage.getItem("InitialPrompts") == "complete";
-      if (existingPrompts.length === 0) {
+      if (existingPrompts.length === 0 && !complete) {
         localStorage.setItem("InitialPrompts", "complete");
         // Add some sample prompts
         await promptManager.addPrompt({
@@ -797,6 +797,12 @@ window.ChatGPTprompt = (() => {
           content:
             "Help me write a professional email with the following requirements:",
           category: "Writing",
+        });
+        await promptManager.addPrompt({
+          title: "Summarize",
+          content:
+            "Summarize briefly and concisely, with bullet points on key terms: ",
+          category: "Education",
         });
       }
     }, 1000);
