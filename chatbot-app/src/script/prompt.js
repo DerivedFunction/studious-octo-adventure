@@ -642,85 +642,44 @@ window.ChatGPTprompt = (() => {
   }
 
   // Paste text to the chat input (placeholder for now)
+  // Paste text to the chat input (placeholder for now)
   async function pasteText(text) {
-    // This function will be implemented to paste text to ChatGPT's input
-    console.log("[Prompt Manager] Pasting text:", text);
-    // Implementation will go here
-    const maxRetries = 15;
-    let attempts = 0;
-    let success = false;
-    let currentSelectorIndex = 0;
-    let element;
-    const selectorConfigs = [
-      {
-        scriptType: "react",
-      },
-      {
-        scriptType: "contenteditable",
-      },
-    ];
-    while (attempts < maxRetries) {
-      // Try each selector configuration in turn
-      for (let i = 0; i < selectorConfigs.length; i++) {
-        const currentConfig =
-          selectorConfigs[(currentSelectorIndex + i) % selectorConfigs.length];
-        const selector =
-          currentConfig.scriptType === "contenteditable"
-            ? "div[contenteditable='true']"
-            : "textarea";
-        element = document.querySelector(selector);
-        console.log(
-          `Attempt ${attempts + 1}, Config ${
-            ((currentSelectorIndex + i) % selectorConfigs.length) + 1
-          }: Injecting Query`
-        );
+    console.log("[Debugger] Pasting text:", text);
 
-        if (element) {
-          switch (currentConfig.scriptType) {
-            case "react":
-              {
-                // React-specific input handling
-                let lastValue = element.value || "";
-                element.value = text;
-
-                let event = new Event("input", { bubbles: true });
-                event.simulated = true;
-
-                let tracker = element._valueTracker;
-                if (tracker) {
-                  tracker.setValue(lastValue);
-                }
-                element.dispatchEvent(event);
-                success = true;
-              }
-              break;
-
-            case "contenteditable":
-              {
-                element.focus();
-                element.textContent = text;
-                const inputEvent = new InputEvent("input", {
-                  inputType: "insertText",
-                  data: text,
-                  bubbles: true,
-                  cancelable: true,
-                });
-                element.dispatchEvent(inputEvent);
-                success = true;
-              }
-              break;
-          }
-        }
-      }
-
-      if (!success) {
-        attempts++;
-        if (attempts < maxRetries) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
+    // Case 1: contenteditable div
+    const editableDiv = document.body.querySelector(
+      "div[contenteditable='true']"
+    );
+    if (editableDiv) {
+      editableDiv.textContent = text;
+      const inputEvent = new InputEvent("input", {
+        inputType: "insertText",
+        data: text,
+        bubbles: true,
+        cancelable: true,
+      });
+      editableDiv.dispatchEvent(inputEvent);
+      return;
     }
-    console.error(`Failed to find element after ${maxRetries} attempts.`);
+
+    // Case 2: textarea
+    const textarea = document.body.querySelector("textarea");
+    if (textarea) {
+      let lastValue = textarea.value || "";
+      textarea.value = text;
+      let event = new Event("input", { bubbles: true });
+      event.simulated = true;
+      let tracker = textarea._valueTracker;
+      if (tracker) {
+        tracker.setValue(lastValue);
+      }
+      textarea.dispatchEvent(event);
+      return;
+    }
+
+    // Fallback: copy to clipboard
+    window.alert("Prompt copied to clipboard");
+    await navigator.clipboard.writeText(text);
   }
 
   // --- Initialization ---
