@@ -63,7 +63,6 @@
   // Attach listener for Ctrl + /
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "/") {
-      e.preventDefault();
       let shortcuts = document.body.querySelector("dl");
       if (!shortcuts) {
         return;
