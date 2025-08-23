@@ -1,16 +1,11 @@
 (() => {
-  function getModifierKey() {
-    const ua = navigator.userAgent.toLowerCase();
-    const isMac = /mac|ipod|iphone|ipad/.test(ua);
-    return isMac ? "⌘" : "Ctrl";
-  }
-
   function createEnhancedToolsSection() {
     const container = document.createDocumentFragment();
     const exist = document.querySelector("#enhanced-tool-shortcuts");
     if (exist) return;
-
-    const modifier = getModifierKey();
+    const ua = navigator.userAgent.toLowerCase();
+    const isMac = /mac|ipod|iphone|ipad/.test(ua);
+    const modifier = isMac ? "⌘" : "Ctrl";
 
     // Section Header
     const header = document.createElement("dt");
@@ -37,9 +32,9 @@
       dd.className = "text-token-text-secondary justify-self-end";
 
       const div = document.createElement("div");
-      div.className =
-        `inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 ${modifier === "⌘" ? "":
-          "*:not-last:after:content-['+']"}`;
+      div.className = `inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['${
+        isMac ? " " : "+"
+      }']`;
 
       // Modifier key (Ctrl/Cmd)
       const kbdMod = document.createElement("kbd");

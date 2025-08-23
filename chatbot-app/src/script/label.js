@@ -1063,9 +1063,8 @@ window.ChatGPTLabel = (() => {
       </div>
       <div class="trailing highlight text-token-text-tertiary">
         <div class="touch:hidden">
-          <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 ${
-            isMac ? "" : "*:not-last:after:content-['+']"
-          }">
+          <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['${isMac ? ' ' : '+'}']"
+          ">
             <kbd aria-label="Control">
               <span class="min-w-[1em]">${modifierKey}</span>
             </kbd>
