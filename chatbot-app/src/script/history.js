@@ -788,7 +788,8 @@ window.ChatGPThistory = (() => {
     mainButton.id = "chm-sidebar-btn";
     mainButton.tabIndex = "0";
     mainButton.className = "group __menu-item hoverable cursor-pointer";
-    const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+    const ua = navigator.userAgent.toLowerCase();
+    const isMac = /mac|ipod|iphone|ipad/.test(ua);
     const modifierKey = isMac ? "⌘" : "Ctrl";
     mainButton.innerHTML = `
       <div class="flex min-w-0 items-center gap-1.5">
@@ -804,7 +805,7 @@ window.ChatGPThistory = (() => {
       </div>
       <div class="trailing highlight text-token-text-tertiary">
         <div class="touch:hidden">
-          <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']">
+          <div class=inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 ${isMac ? "": "*:not-last:after:content-['+']"}">
             <kbd aria-label="Control">
               <span class="min-w-[1em]">${modifierKey}</span>
             </kbd>

@@ -874,10 +874,9 @@ window.ChatGPTLabel = (() => {
     }
 
     const pillsHTML = labelEntries
-      .map(
-        ([id, { name, color }]) => {
-          const escapedName = escapeHTML(name);
-          return `
+      .map(([id, { name, color }]) => {
+        const escapedName = escapeHTML(name);
+        return `
       <div class="le-label-pill le-label-pill-clickable" 
            style="background-color: ${color};" 
            data-label-id="${id}" 
@@ -886,8 +885,8 @@ window.ChatGPTLabel = (() => {
         ${escapedName}
         <span class="le-label-count" title="Delete ${escapedName}">×</span>
       </div>
-    `;}
-      )
+    `;
+      })
       .join("");
 
     contentArea.innerHTML = `
@@ -1046,7 +1045,8 @@ window.ChatGPTLabel = (() => {
     mainButton.tabIndex = "0";
     mainButton.className = "group __menu-item hoverable cursor-pointer";
 
-    const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+    const ua = navigator.userAgent.toLowerCase();
+    const isMac = /mac|ipod|iphone|ipad/.test(ua);
     const modifierKey = isMac ? "⌘" : "Ctrl";
 
     mainButton.innerHTML = `
@@ -1063,7 +1063,9 @@ window.ChatGPTLabel = (() => {
       </div>
       <div class="trailing highlight text-token-text-tertiary">
         <div class="touch:hidden">
-          <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 *:not-last:after:content-['+']">
+          <div class="inline-flex whitespace-pre *:inline-flex *:font-sans *:not-last:after:px-0.5 ${
+            isMac ? "" : "*:not-last:after:content-['+']"
+          }">
             <kbd aria-label="Control">
               <span class="min-w-[1em]">${modifierKey}</span>
             </kbd>
@@ -1119,15 +1121,15 @@ window.ChatGPTLabel = (() => {
     observer.observe(document, { childList: true, subtree: true });
   }
 
-    function escapeHTML(str) {
-      if (!str) return "";
-      return str
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    }
+  function escapeHTML(str) {
+    if (!str) return "";
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
 
   async function main() {
     try {
