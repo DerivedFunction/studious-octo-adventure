@@ -1030,6 +1030,7 @@ window.tokenizer = (() => {
         const articles = document.querySelectorAll("[data-message-id]");
         // article has [data-turn-id] We will use textContent on it.
         const messageMapData = new Map();
+        clearTokenUI();
         articles.forEach((article) => {
           const messageId = article.getAttribute("data-message-id");
           const text = article.textContent;
