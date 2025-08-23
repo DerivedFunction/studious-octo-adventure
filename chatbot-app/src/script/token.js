@@ -1163,7 +1163,7 @@ window.tokenizer = (() => {
   });
   document.addEventListener("keydown", async (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "b") {
-      e.preventDefasult();
+      e.preventDefault();
       lastCheckState = {};
       await deleteCacheFromDB(getConversationId());
       await chrome.storage.local.remove("memory");
