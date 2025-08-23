@@ -45,7 +45,6 @@ const ThemeableChatbot = () => {
   const [themeColor, setThemeColor] = useState("#B3B3B3");
   const [themeObject, setThemeObject] = useState(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [isScriptingEnabled, setIsScriptingEnabled] = useState(false);
   const [isThemeActive, setIsThemeActive] = useState(false);
@@ -54,7 +53,9 @@ const ThemeableChatbot = () => {
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const [tempPrompt, setTempPrompt] = useState("");
   const chatContainerRef = useRef(null);
-  const textareaRef = useRef(null); // --- PERMISSIONS CONFIG ---
+  const textareaRef = useRef(null);
+  const [ua, setuA] = useState("chrome");
+  // --- PERMISSIONS CONFIG ---
 
   const scriptingPermissions = {
     permissions: ["scripting"],
@@ -234,6 +235,13 @@ const ThemeableChatbot = () => {
           console.log("No script found", e);
           setIsScriptingEnabled(false);
         }
+        // Check if it is firefox with browser namespace
+        try {
+          browser.runtime;
+          setuA("firefox");
+        } catch {
+          setuA("chrome");
+        }
       }
     } catch (error) {
       console.error("Error reading from chrome.storage on init:", error);
@@ -289,7 +297,7 @@ const ThemeableChatbot = () => {
       chatContainerRef.current.scrollTop =
         chatContainerRef.current.scrollHeight;
     }
-  }, [messages, isTyping]);
+  }, [messages]);
 
   useEffect(() => {
     // Adjust textarea for multi-line input
@@ -389,7 +397,6 @@ const ThemeableChatbot = () => {
     setMessages((prev) => [...prev, newMessage]);
     setInputMessage("");
     setTimeout(() => setIsMultiLine(false), 0);
-    setIsTyping(true);
     setTimeout(() => {
       const aiMessage = {
         id: Date.now() + 1,
@@ -397,7 +404,6 @@ const ThemeableChatbot = () => {
         content: "Sample response. Try selecting text.",
       };
       setMessages((prev) => [...prev, aiMessage]);
-      setIsTyping(false);
     }, 1500);
   };
 
@@ -563,32 +569,6 @@ const ThemeableChatbot = () => {
                 </div>
               </>
             ))}
-
-            {isTyping && (
-              <div className="flex gap-3 items-start">
-                <div
-                  className="inline-block max-w-xl p-4 rounded-[28px]"
-                  style={{ backgroundColor: "var(--ai-msg-bg)" }}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce-dot"
-                      style={{ animationDelay: "0s" }}
-                    ></span>
-
-                    <span
-                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce-dot"
-                      style={{ animationDelay: "0.2s" }}
-                    ></span>
-
-                    <span
-                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce-dot"
-                      style={{ animationDelay: "0.4s" }}
-                    ></span>
-                  </div>
-                </div>
-              </div>
-            )}
           </main>
 
           <footer className="p-4">
@@ -679,6 +659,23 @@ const ThemeableChatbot = () => {
             >
               {`Click to set Context Window: ${contextWindow} tokens`}
             </div>
+            {ua === "firefox" && (
+              <div
+                onClick={() => {
+                  browser.tabs.create({
+                    url: "./index.html",
+                  });
+                }}
+                className="token-count-display inline-block w-full text-center"
+                style={{
+                  fontSize: "10px",
+                  color: "var(--text-secondary)",
+                  fontWeight: "normal",
+                }}
+              >
+                {`Firefox Users: Click to open this in a new tab to set the theme color.`}
+              </div>
+            )}
           </footer>
           {isPromptModalOpen && (
             <div className="fixed flex p-4 z-50 w-full">
