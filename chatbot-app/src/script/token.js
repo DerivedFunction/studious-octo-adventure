@@ -77,6 +77,7 @@ window.tokenizer = (() => {
 
   // --- IndexedDB Helper Functions for API Cache ---
   async function getCacheFromDB(id) {
+    if (!id) return null;
     const db = await openDB();
     return new Promise((resolve) => {
       const transaction = db.transaction(API_STORE_NAME, "readonly");
@@ -88,6 +89,7 @@ window.tokenizer = (() => {
   }
 
   async function setCacheInDB(id, data) {
+    if (!id || !data) return;
     const db = await openDB();
     const transaction = db.transaction(API_STORE_NAME, "readwrite");
     const store = transaction.objectStore(API_STORE_NAME);
@@ -95,6 +97,7 @@ window.tokenizer = (() => {
   }
 
   async function deleteCacheFromDB(id) {
+    if (!id) return;
     const db = await openDB();
     const transaction = db.transaction(API_STORE_NAME, "readwrite");
     const store = transaction.objectStore(API_STORE_NAME);
@@ -108,6 +111,7 @@ window.tokenizer = (() => {
    * @returns {Promise<Set<string>>} A promise that resolves with the set of checked item IDs.
    */
   async function getCheckedItemsFromDB(id) {
+    if (!id) return new Set();
     const db = await openDB();
     return new Promise((resolve) => {
       const transaction = db.transaction(CHECKED_ITEMS_STORE_NAME, "readonly");
@@ -929,7 +933,8 @@ window.tokenizer = (() => {
       if (e.target.id === "refreshData") {
         e.target.textContent = "Refreshing...";
         lastCheckState = {};
-        await deleteCacheFromDB(getConversationId());
+        const id = getConversationId();
+        if (id) await deleteCacheFromDB(id);
         await chrome.storage.local.remove("memory");
         runTokenCheck();
       }
@@ -967,7 +972,9 @@ window.tokenizer = (() => {
     }
 
     const conversationId = getConversationId();
-    if (!conversationId) {
+    // check if temporary-chat=true
+    const temporaryChat = window.location.href.includes("temporary-chat=true");
+    if (!conversationId && !temporaryChat) {
       clearTokenUI();
       return;
     }
@@ -1019,7 +1026,32 @@ window.tokenizer = (() => {
       }
 
       if (!apiData) {
-        throw new Error("Failed to fetch or retrieve API data.");
+        console.error("Failed to fetch or retrieve API data. Using fallback");
+        const articles = document.querySelectorAll("[data-message-id]");
+        // article has [data-turn-id] We will use textContent on it.
+        const messageMapData = new Map();
+        articles.forEach((article) => {
+          const messageId = article.getAttribute("data-message-id");
+          const text = article.textContent;
+          const messageData = {
+            messageId,
+            role: "",
+            text,
+            references: [],
+          };
+          messageMapData.set(messageId, messageData);
+        });
+        apiData = {
+          turnMapData: new Map(),
+          messageMapData,
+          fileMapData: new Map(),
+          canvasMapData: new Map(),
+          userProfile: {
+            user_profile: "",
+            user_instructions: "",
+          },
+          toolMapData: new Map(),
+        };
       }
 
       const memoryTokens = await getMemory();
@@ -1165,7 +1197,8 @@ window.tokenizer = (() => {
     if ((e.ctrlKey || e.metaKey) && e.key === "b") {
       e.preventDefault();
       lastCheckState = {};
-      await deleteCacheFromDB(getConversationId());
+      const id = getConversationId();
+      if (id) await deleteCacheFromDB(id);
       await chrome.storage.local.remove("memory");
       debouncedRunTokenCheck();
     }
