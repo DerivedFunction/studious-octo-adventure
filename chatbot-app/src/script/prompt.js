@@ -579,8 +579,19 @@ window.ChatGPTprompt = (() => {
         <div class="pm-empty-state">
           <h3>No prompts found</h3>
           <p>Create your first prompt to get started!</p>
+          <p>Prompts are saved locally until you logout.</p>
+          <p>Please export to save your data.</p>
+          <button class="btn">Generate Sample Prompts</button>
         </div>
       `;
+      listContainer
+        .querySelector("button")
+        .addEventListener("click", async () => {
+          for (const e of samplePrompts) {
+            await promptManager.addPrompt(e);
+          }
+          refreshPromptsList();
+        });
       return;
     }
 
@@ -780,48 +791,54 @@ window.ChatGPTprompt = (() => {
       buildPromptOption();
     });
     observer.observe(document.body, { childList: true, subtree: true });
-
-    // Initialize with some sample prompts if none exist
-    setTimeout(async () => {
-      const existingPrompts = await promptManager.getAllPrompts();
-      const complete = localStorage.getItem("InitialPrompts") == "complete";
-      if (existingPrompts.length === 0 && !complete) {
-        localStorage.setItem("InitialPrompts", "complete");
-        // Add some sample prompts
-        await promptManager.addPrompt({
-          title: "Code Review",
-          content:
-            "Please review this code and provide suggestions for improvement, focusing on performance, readability, and best practices:",
-          category: "Development",
-        });
-
-        await promptManager.addPrompt({
-          title: "Explain Like I'm 5",
-          content:
-            "Explain the following concept in simple terms that a 5-year-old could understand:",
-          category: "Education",
-        });
-
-        await promptManager.addPrompt({
-          title: "Professional Email",
-          content:
-            "Help me write a professional email with the following requirements:",
-          category: "Writing",
-        });
-        await promptManager.addPrompt({
-          title: "Summarize",
-          content:
-            "Summarize briefly and concisely, with bullet points on key terms: ",
-          category: "Education",
-        });
-      }
-    }, 1000);
-
     console.log("[Prompt Manager] Initialized successfully");
   }
 
   // Initialize the prompt manager
   init();
+
+  const samplePrompts = [
+    {
+      title: "Solve",
+      content: `Solve the following problem. Provide clear reasoning for each step, briefly verify the final answer:\n`,
+      category: "Education",
+    },
+    {
+      title: "Summarize",
+      content: `Summarize the following content. Include: brief overview, key points as bullets, important terms:\n`,
+      category: "Education",
+    },
+    {
+      title: "Explain",
+      content: `Explain this concept clearly with step-by-step logic and examples:\n`,
+      category: "Education",
+    },
+    {
+      title: "Write",
+      content: `Write based on these requirements:\n`,
+      category: "Writing",
+    },
+    {
+      title: "Analyze",
+      content: `Analyze this topic systematically. Include overview, key findings, supporting evidence, implications, and conclusion:\n`,
+      category: "Writing",
+    },
+    {
+      title: "Code Features",
+      content: `Implement these features in the existing code. Preserve existing functionality, explain changes and show code snippets, and provide the top-level functions added/modified to copy/paste.\n<features>\n</features>\n\n<code>\n</code>`,
+      category: "Development",
+    },
+    {
+      title: "Code Review",
+      content: `Review this code and provide improvement suggestions. Focus on: readability, performance, best practices, potential issues. Provide specific suggestions with examples:\n<code>\n</code>`,
+      category: "Development",
+    },
+    {
+      title: "Debug Code",
+      content: `Fix the errors in this code. Explain changes, show code snippets, and provide the top-level functions added/modified to copy/paste:\n<error>\n</error>\n\n<code>\n</code>`,
+      category: "Development",
+    },
+  ];
 
   // Return public API
   return {
