@@ -61,13 +61,15 @@
   }
 
   // Attach listener for Ctrl + /
-  document.addEventListener("keydown", (e) => {
+  document.addEventListener("keydown", async (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "/") {
-      let shortcuts = document.body.querySelector("dl");
-      if (!shortcuts) {
-        return;
-      }
-      shortcuts.appendChild(createEnhancedToolsSection());
+      setTimeout(() => {
+        let shortcuts = document.body.querySelector("dl");
+        if (!shortcuts) {
+          return;
+        }
+        shortcuts.appendChild(createEnhancedToolsSection());
+      }, 100);
     }
   });
 })();
