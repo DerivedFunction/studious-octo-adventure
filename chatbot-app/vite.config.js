@@ -18,13 +18,22 @@ export default defineConfig({
         label: resolve(__dirname, "src/script/label.js"), // your separate file
         export: resolve(__dirname, "src/script/export.js"), // your separate file
         api: resolve(__dirname, "src/script/api.js"),
+        prompt: resolve(__dirname, "src/script/prompt.js"),
+        shortcut: resolve(__dirname, "src/script/shortcut.js"),
       },
       output: {
         entryFileNames: (assetInfo) => {
           if (
-            ["theme", "token", "history", "label", "export", "api"].find(
-              (e) => e === assetInfo.name
-            )
+            [
+              "theme",
+              "token",
+              "history",
+              "label",
+              "export",
+              "api",
+              "prompt",
+              "shortcut",
+            ].find((e) => e === assetInfo.name)
           ) {
             return "script/[name].js"; // output to dist/script/content.js
           }

@@ -263,27 +263,24 @@ window.ChatGPTLabel = (() => {
     // SAFETY CHECK 1: Ensure we actually got conversation data
     if (!allConversations || allConversations.length === 0) {
       console.warn(
-        "[Label Explorer] SAFETY ABORT: No conversations returned from cache. This could indicate:"
+        "[Label Explorer] SAFETY CHECK: No conversations returned from cache"
       );
-      console.warn("  - Server returned empty response");
-      console.warn("  - Cache was cleared due to sync error");
-      console.warn("  - Network/API issues occurred");
-      console.warn("  - Aborting cleanup to prevent accidental label deletion");
-      return false;
+      const response = confirm(
+        `No conversations are found. All labels will be removed. Continue?`
+      );
+      if (!response) return false;
     }
 
     // SAFETY CHECK 2: Sanity check - ensure conversation count is reasonable
     // If we had labels before, we should have at least some conversations
     if (beforeCount > 0 && allConversations.length < 5) {
       console.warn(
-        `[Label Explorer] SAFETY ABORT: Suspiciously low conversation count (${allConversations.length})`
+        `[Label Explorer] SAFETY CHECK: Suspiciously low conversation count (${allConversations.length})`
       );
-      console.warn(
-        "  - Previously had chat labels, but now very few conversations"
+      const response = confirm(
+        `${allConversations.length} active/archived conversations found. Rest are scheduled for deletion. Continue cleanup?`
       );
-      console.warn("  - This suggests partial/incomplete server sync");
-      console.warn("  - Aborting cleanup to prevent accidental label deletion");
-      return false;
+      if (!response) return false;
     }
 
     console.log(
@@ -308,14 +305,16 @@ window.ChatGPTLabel = (() => {
       (orphanedLabels.length / Object.keys(chatLabels).length) * 100;
     if (orphanedLabels.length > 10 && orphanPercentage > 50) {
       console.warn(
-        `[Label Explorer] SAFETY ABORT: Would delete ${
+        `[Label Explorer] SAFETY CHECK: Would delete ${
           orphanedLabels.length
         } labels (${orphanPercentage.toFixed(1)}%)`
       );
-      console.warn("  - This is unusually high and suggests data sync issues");
-      console.warn("  - Aborting cleanup to prevent accidental mass deletion");
-      console.warn("  - Consider running History Manager sync manually first");
-      return false;
+      const response = confirm(
+        `WARNING: This would delete ${
+          orphanedLabels.length
+        } labels (${orphanPercentage.toFixed(1)}%). Continue?`
+      );
+      if (!response) return false;
     }
 
     // Safe to proceed with cleanup
@@ -1036,7 +1035,9 @@ window.ChatGPTLabel = (() => {
   // --- 4. & 5. INITIALIZATION & OBSERVERS ---
   const injectionLogic = () => {
     if (document.getElementById("le-sidebar-btn")) return true;
-    const sidebarNav = document.querySelector("aside");
+    const sidebarNav = document.querySelector(
+      "nav[aria-label='Chat history'] aside"
+    );
     if (!sidebarNav) return false;
 
     console.log("🚀 [Label Explorer] Injecting sidebar button...");

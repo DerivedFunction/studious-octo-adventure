@@ -1161,7 +1161,15 @@ window.tokenizer = (() => {
     subtree: true,
     characterData: true,
   });
-
+  document.addEventListener("keydown", async (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+      e.preventDefault();
+      lastCheckState = {};
+      await deleteCacheFromDB(getConversationId());
+      await chrome.storage.local.remove("memory");
+      debouncedRunTokenCheck();
+    }
+  });
   // --- UTILITY FUNCTIONS ---
   function debounce(func, wait) {
     let timeout;
@@ -1182,5 +1190,5 @@ window.tokenizer = (() => {
       return enc;
     },
     runTokenCheck,
-  }
+  };
 })();

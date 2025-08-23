@@ -814,7 +814,11 @@ window.ChatGPTExport = (() => {
     const targetContainer = document.querySelector(
       "#conversation-header-actions"
     ); // desktop
-    const smallContainer = document.querySelector(".no-draggable.end-0"); // mobile
+    const mobileMenu = document.querySelector(
+      "div.no-draggable a[aria-label='New chat']"
+    );
+    let smallContainer;
+    if (mobileMenu) smallContainer = mobileMenu.closest("div.no-draggable"); // mobile
 
     // Build menu factory
     function buildExportMenu() {
@@ -1030,5 +1034,5 @@ window.ChatGPTExport = (() => {
   console.log("✅ [ChatGPT Exporter] Script loaded successfully.");
   return {
     exportOrPrintHTML,
-  }
+  };
 })();
