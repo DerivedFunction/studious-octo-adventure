@@ -718,11 +718,47 @@ window.ChatGPT = (() => {
     }
 
     try {
-      const { metaData, turnMapData, canvasMapData } = await getApiData(
+      const { metaData, turnMapData, canvasMapData } = (await getApiData(
         id,
         useCache,
         forceRefresh
-      );
+      )) || {
+        metaData: {
+          title: document.title + " (Fallback version)",
+          create_time: new Date().toISOString(),
+          update_time: new Date().toISOString(),
+          link: window.location.href,
+        },
+        turnMapData: new Map(),
+        canvasMapData: new Map(),
+      };
+      
+      if (turnMapData.size === 0) {
+        console.warn("Using fallback data")
+        const articles = document.querySelectorAll("article [data-message-id]");
+        const messageMapData = new Map();
+        tokenizer.clearTokenUI();
+        articles.forEach((article) => {
+          const turnId = article.closest("article").getAttribute("data-turn-id");
+          const messageId = article.getAttribute("data-message-id");
+          const role = article.getAttribute("data-message-author-role");
+          const text = article.textContent;
+          const messageData = {
+            messageId,
+            role,
+            text,
+            references: [],
+          };
+          messageMapData.set(messageId, [messageData]);
+          turnMapData.set(turnId, {
+            messages: [messageData],
+            images: [],
+            canvases: [],
+            reasoning: [],
+          });
+        });
+      }
+
       const turns = Array.from(turnMapData, ([turnId, data]) => ({
         turnId,
         ...data,

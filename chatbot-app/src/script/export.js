@@ -193,7 +193,7 @@ window.ChatGPTExport = (() => {
         if (copyBtn) {
           const messageData = data.find((e) => e.id === id);
           const text = messageData?.content;
-          copyBtn.setAttribute("data-copy-content", text);
+          if (text) copyBtn.setAttribute("data-copy-content", text);
         }
       });
 
@@ -810,7 +810,7 @@ window.ChatGPTExport = (() => {
    */
   function addExportMenu() {
     // Only on conversation pages
-    const inConversation = window.location.pathname.startsWith("/c/");
+    const inConversation = window.location.pathname.startsWith("/c/") || window.location.href.includes("temporary-chat=true");
     const targetContainer = document.querySelector(
       "#conversation-header-actions"
     ); // desktop

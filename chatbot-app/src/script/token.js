@@ -1224,5 +1224,6 @@ window.tokenizer = (() => {
       return enc;
     },
     runTokenCheck,
+    clearTokenUI,
   };
 })();
