@@ -791,6 +791,12 @@ window.ChatGPTprompt = (() => {
       buildPromptOption();
     });
     observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "m") {
+        e.preventDefasult();
+        toggleModalVisibility(true);
+      }
+    });
     console.log("[Prompt Manager] Initialized successfully");
   }
 
