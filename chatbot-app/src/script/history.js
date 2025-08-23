@@ -782,7 +782,7 @@ window.ChatGPThistory = (() => {
   }
   function injectSidebarButton() {
     if (document.getElementById("chm-sidebar-btn")) return true;
-    const sidebarNav = document.querySelector("aside");
+    const sidebarNav = document.querySelector("nav[aria-label='Chat history'] aside");
     if (!sidebarNav) return false;
     const mainButton = document.createElement("div");
     mainButton.id = "chm-sidebar-btn";

@@ -1033,7 +1033,9 @@ window.ChatGPTLabel = (() => {
   // --- 4. & 5. INITIALIZATION & OBSERVERS ---
   const injectionLogic = () => {
     if (document.getElementById("le-sidebar-btn")) return true;
-    const sidebarNav = document.querySelector("aside");
+    const sidebarNav = document.querySelector(
+      "nav[aria-label='Chat history'] aside"
+    );
     if (!sidebarNav) return false;
 
     console.log("🚀 [Label Explorer] Injecting sidebar button...");
