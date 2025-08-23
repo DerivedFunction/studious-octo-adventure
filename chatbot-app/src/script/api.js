@@ -724,7 +724,7 @@ window.ChatGPT = (() => {
         forceRefresh
       )) || {
         metaData: {
-          title: document.title + " (Fallback version)",
+          title: document.title + `${window.location.href.includes("temporary-chat=true")? ` (Temporary Chat)`:` (Fallback)`}`,
           create_time: new Date().toISOString(),
           update_time: new Date().toISOString(),
           link: window.location.href,
