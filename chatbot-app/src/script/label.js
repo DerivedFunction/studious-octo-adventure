@@ -658,7 +658,7 @@ window.ChatGPTLabel = (() => {
           <input type="checkbox" id="le-cb-${id}" data-label-id="${id}" ${
             assignedLabelIds.has(id) ? "checked" : ""
           }>
-          <label for="le-cb-${id}">${name}</label>
+          <label for="le-cb-${id}">${escapeHTML(name)}</label>
           <label class="le-color-swatch-label" title="Change label color">
             <input type="color" class="le-color-picker-input" data-label-id="${id}" value="${color}">
             <span class="le-color-swatch" style="background-color: ${color};"></span>
@@ -876,16 +876,18 @@ window.ChatGPTLabel = (() => {
 
     const pillsHTML = labelEntries
       .map(
-        ([id, { name, color }]) => `
+        ([id, { name, color }]) => {
+          const escapedName = escapeHTML(name);
+          return `
       <div class="le-label-pill le-label-pill-clickable" 
            style="background-color: ${color};" 
            data-label-id="${id}" 
-           data-label-name="${name}" 
+           data-label-name="${escapedName}" 
            title="Single-click to search.">
-        ${name}
-        <span class="le-label-count" title="Delete ${name}">×</span>
+        ${escapedName}
+        <span class="le-label-count" title="Delete ${escapedName}">×</span>
       </div>
-    `
+    `;}
       )
       .join("");
 
@@ -1115,6 +1117,16 @@ window.ChatGPTLabel = (() => {
     });
     observer.observe(document, { childList: true, subtree: true });
   }
+
+    function escapeHTML(str) {
+      if (!str) return "";
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
 
   async function main() {
     try {
