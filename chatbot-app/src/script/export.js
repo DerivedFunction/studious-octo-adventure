@@ -969,7 +969,10 @@ window.ChatGPTExport = (() => {
       if (!container) return;
       const existing = container.querySelector(".export-menu-container");
 
-      if (!inConversation) {
+      if (
+        !inConversation &&
+        !guestMode()
+      ) {
         if (existing) existing.style.display = "none";
         return;
       }
@@ -1036,3 +1039,7 @@ window.ChatGPTExport = (() => {
     exportOrPrintHTML,
   };
 })();
+function guestMode() {
+  return document.querySelector("[data-testid='login-button']") || document.querySelector("[data-testid='mobile-login-button']");
+}
+

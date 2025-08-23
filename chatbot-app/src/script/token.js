@@ -708,9 +708,11 @@ window.tokenizer = (() => {
 
     // --- Status Div with Hover Popup ---
     let statusContainer = document.querySelector(".token-status-container");
-    const parent = document.querySelector(
-      "#thread-bottom-container > div.text-token-text-secondary"
-    );
+    const parent = guestMode()
+      ? document.querySelector("#thread-bottom div div")
+      : document.querySelector(
+          "#thread-bottom-container > div.text-token-text-secondary"
+        );
 
     if (!statusContainer && parent) {
       statusContainer = document.createElement("div");
@@ -974,7 +976,7 @@ window.tokenizer = (() => {
     const conversationId = getConversationId();
     // check if temporary-chat=true
     const temporaryChat = window.location.href.includes("temporary-chat=true");
-    if (!conversationId && !temporaryChat) {
+    if (!conversationId && !temporaryChat && !guestMode()) {
       clearTokenUI();
       return;
     }
@@ -1227,3 +1229,10 @@ window.tokenizer = (() => {
     clearTokenUI,
   };
 })();
+function guestMode() {
+  return (
+    document.querySelector("[data-testid='login-button']") ||
+    document.querySelector("[data-testid='mobile-login-button']")
+  );
+}
+
