@@ -33,9 +33,8 @@ window.ChatGPTCode = (() => {
       parent.appendChild(collapseBtn);
 
       const code = el.closest("pre").querySelector("code");
-      const totalLines = code.textContent.split("\n").length;
-
       function updateLabel() {
+        const totalLines = code.textContent.split("\n").length;
         collapseBtn.querySelector("span").textContent =
           code.style.display === "none"
             ? `Expand (${totalLines} lines hidden)`
