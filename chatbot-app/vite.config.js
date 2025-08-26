@@ -20,6 +20,7 @@ export default defineConfig({
         api: resolve(__dirname, "src/script/api.js"),
         prompt: resolve(__dirname, "src/script/prompt.js"),
         shortcut: resolve(__dirname, "src/script/shortcut.js"),
+        code: resolve(__dirname, "src/script/code.js"),
       },
       output: {
         entryFileNames: (assetInfo) => {
@@ -33,6 +34,7 @@ export default defineConfig({
               "api",
               "prompt",
               "shortcut",
+              "code"
             ].find((e) => e === assetInfo.name)
           ) {
             return "script/[name].js"; // output to dist/script/content.js

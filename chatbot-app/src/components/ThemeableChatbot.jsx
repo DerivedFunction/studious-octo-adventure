@@ -346,6 +346,7 @@ const ThemeableChatbot = () => {
                   "./script/export.js",
                   "./script/prompt.js",
                   "./script/shortcut.js",
+                  "./script/code.js"
                 ],
                 runAt: "document_idle",
                 allFrames: true,

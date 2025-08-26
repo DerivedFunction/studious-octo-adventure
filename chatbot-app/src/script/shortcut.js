@@ -22,6 +22,7 @@
       { name: "Save webpage", key: "S" },
       { name: "Open saved prompts", key: "M" },
       { name: "Run token check", key: "B" },
+      { name: "Toggle Code Blocks", shift: true, key: "C" },
     ];
 
     tools.forEach((tool) => {
@@ -43,6 +44,17 @@
       spanMod.className = "min-w-[1em]";
       spanMod.textContent = modifier;
       kbdMod.appendChild(spanMod);
+      div.appendChild(kbdMod);
+
+      // Shift Key if present
+      if (tool.shift) {
+        const kbdShift = document.createElement("kbd");
+        const spanShift = document.createElement("span");
+        spanShift.className = "min-w-[1em]";
+        spanShift.textContent = "Shift";
+        kbdShift.appendChild(spanShift);
+        div.appendChild(kbdShift);
+      }
 
       // Shortcut key
       const kbdKey = document.createElement("kbd");
@@ -50,9 +62,8 @@
       spanKey.className = "min-w-[1em]";
       spanKey.textContent = tool.key;
       kbdKey.appendChild(spanKey);
-
-      div.appendChild(kbdMod);
       div.appendChild(kbdKey);
+      
       dd.appendChild(div);
 
       container.appendChild(dt);
