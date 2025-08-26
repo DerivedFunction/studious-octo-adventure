@@ -291,7 +291,7 @@ window.ChatGPTExport = (() => {
       }
 
       // --- ACTION-SPECIFIC OUTPUT GENERATION ---
-      if (action === "Download HTML") {
+      if (action === "Save Webpage") {
         if (canceledJobs.has(jobid)) return;
         showStatusBar(jobid, `${action}: Building HTML page`, 50, 60);
         // 4a. Create the interactive script for the offline HTML file.
@@ -1094,7 +1094,7 @@ window.ChatGPTExport = (() => {
     <div id="print-options-container">
       <div id="print-options-modal">
         <div id="print-options-header">
-          <h2 id="print-options-title">Print Options</h2>
+          <h2 id="print-options-title">${option} Options</h2>
           <button id="print-options-close-btn" aria-label="Close">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -1156,7 +1156,7 @@ window.ChatGPTExport = (() => {
             </div>
           </div>
           <div class="print-option-group" style="${
-            option === "Download HTML" ? "" : "display: none;"
+            option === "Save Webpage" ? "" : "display: none;"
           }">
             <label class="print-option-label">Styles and Images</label>
             <div class="print-option-description">
@@ -1323,7 +1323,7 @@ window.ChatGPTExport = (() => {
     </button>
     <button class="export-menu-item" id="html-chat-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code-icon lucide-code"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
-      <span>Offline HTML</span>
+      <span>Save Webpage</span>
     </button>
     <button class="export-menu-item" id="export-md-item">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></svg>
@@ -1358,7 +1358,7 @@ window.ChatGPTExport = (() => {
       dropdown
         .querySelector("#html-chat-item")
         .addEventListener("click", () => {
-          showPrintOptionsDialog("Download HTML");
+          showPrintOptionsDialog("Save Webpage");
           dropdown.classList.remove("show");
         });
       dropdown
@@ -1469,7 +1469,7 @@ window.ChatGPTExport = (() => {
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === "s") {
       event.preventDefault();
-      showPrintOptionsDialog("Download HTML");
+      showPrintOptionsDialog("Save Webpage");
     }
   });
 
