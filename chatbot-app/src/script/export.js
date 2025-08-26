@@ -920,17 +920,14 @@ window.ChatGPTExport = (() => {
       height: 28px;
     }
     
-    #print-options-close-btn:hover { 
-      color: var(--text-secondary); 
-      background-color: var(--surface-hover);
-    }
-    
     #print-options-content { 
       padding: 20px 24px; 
       overflow-y: auto;
       flex-grow: 1;
+      overscroll-behavior: contain;
+      contain: layout style;
     }
-    
+
     .print-option-group {
       margin-bottom: 24px;
     }
@@ -1040,39 +1037,15 @@ window.ChatGPTExport = (() => {
       padding: 16px 24px; 
       border-top: 1px solid var(--border-light); 
     }
-    
-    .print-btn { 
-      padding: 10px 20px; 
-      border-radius: 8px; 
-      font-size: 0.875rem; 
-      font-weight: 500; 
-      cursor: pointer; 
-      border: 1px solid; 
-      transition: background-color 0.2s, border-color 0.2s, color 0.2s;
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    #print-options-footer .btn {
+      border-color: var(--border-light);
+      background-color: var(--main-surface-secondary);
+    }
+
+    #print-options-footer .btn:hover {
+      background-color: var(--main-surface-tertiary);
     }
     
-    .print-btn.secondary { 
-      background-color: var(--main-surface-secondary); 
-      color: var(--text-primary); 
-      border-color: var(--border-medium); 
-    }
-    
-    .print-btn.secondary:hover { 
-      background-color: var(--surface-hover); 
-    }
-    
-    .print-btn.primary { 
-      background-color: var(--accent-primary, #10a37f); 
-      color: #fff; 
-      border-color: var(--accent-primary, #10a37f); 
-    }
-    
-    .print-btn.primary:hover { 
-      background-color: var(--accent-secondary, #0f9671); 
-    }
   `;
 
     document.head.appendChild(style);
@@ -1186,8 +1159,8 @@ window.ChatGPTExport = (() => {
         </div>
         
         <div id="print-options-footer">
-          <button class="print-btn secondary" id="print-options-cancel">Cancel</button>
-          <button class="print-btn primary" id="print-options-confirm">
+          <button class="btn" id="print-options-cancel">Cancel</button>
+          <button class="btn" id="print-options-confirm">
             ${option}
           </button>
         </div>
