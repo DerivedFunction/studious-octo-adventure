@@ -37,6 +37,9 @@
         isMac ? " " : "+"
       }']`;
 
+      // Windows ctrl shift key
+      // Mac: shift cmd key
+
       // Modifier key (Ctrl/Cmd)
       const kbdMod = document.createElement("kbd");
       kbdMod.setAttribute("aria-label", modifier);
@@ -44,16 +47,24 @@
       spanMod.className = "min-w-[1em]";
       spanMod.textContent = modifier;
       kbdMod.appendChild(spanMod);
-      div.appendChild(kbdMod);
 
       // Shift Key if present
       if (tool.shift) {
         const kbdShift = document.createElement("kbd");
         const spanShift = document.createElement("span");
         spanShift.className = "min-w-[1em]";
-        spanShift.textContent = "Shift";
+        spanShift.textContent = isMac ? "⇧" : "Shift";
         kbdShift.appendChild(spanShift);
-        div.appendChild(kbdShift);
+        
+        if (isMac) {
+          div.appendChild(kbdShift);
+          div.appendChild(kbdMod);
+        } else {
+          div.appendChild(kbdMod);
+          div.appendChild(kbdShift);
+        }
+      } else {
+        div.appendChild(kbdMod);
       }
 
       // Shortcut key
