@@ -195,7 +195,7 @@ window.ChatGPTCode = (() => {
           type = utils.getLanguageFromExtension(extension);
         }
 
-        const unescapedContent = utils.unescapeHTML(codeContent);
+        const unescapedContent = utils.unescapeHTML(codeContent).trim();
         const { codeEl } = renderCodeBlock(
           type,
           { content: unescapedContent },
