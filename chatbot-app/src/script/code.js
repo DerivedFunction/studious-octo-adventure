@@ -79,10 +79,11 @@
 
   function setupGlobalShortcut() {
     document.addEventListener("keydown", (e) => {
-      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-      const modKey = isMac ? e.metaKey : e.ctrlKey;
-
-      if (modKey && e.shiftKey && e.key.toLowerCase() === "c") {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "c"
+      ) {
         e.preventDefault();
 
         const buttons = document.querySelectorAll(
