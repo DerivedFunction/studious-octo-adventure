@@ -840,6 +840,11 @@ window.ChatGPTprompt = (() => {
       category: "Development",
     },
     {
+      title: "Code Explain",
+      content: `Provide a detailed, step-by-step explanation of the following code snippet. Structure your response with sections:\n1. Overview (purpose and high-level logic).\n2. Imports/Libraries (list each, explain purpose and usage).\n3. Key Functions/Methods (describe each, including parameters, return values, and role in the code).\n4. Main Logic Flow (break down execution line by line or block by block).\n5. Arguments and Context (how inputs fit and affect behavior).\n6. Potential Improvements or Edge Cases (if applicable):\n\n<code>\n</code>`,
+      category: "Development",
+    },
+    {
       title: "Debug Code",
       content: `Fix the errors in this code. Explain changes, show code snippets, and provide the top-level functions added/modified to copy/paste:\n<error>\n</error>\n\n<code>\n</code>`,
       category: "Development",
