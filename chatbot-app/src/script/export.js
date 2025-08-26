@@ -560,7 +560,7 @@ window.ChatGPTExport = (() => {
           jobid,
           action
         );
-      } else if (action === "Printing") {
+      } else if (action === "Print Chat") {
         if (canceledJobs.has(jobid)) return;
         showStatusBar(jobid, `${action}: Preparing print`, 60, 90);
         // 5a.1 Fix code blocks inside articles and add user message borders.
@@ -1079,7 +1079,7 @@ window.ChatGPTExport = (() => {
   }
 
   // Create and show the print options dialog
-  function showPrintOptionsDialog(option = "Printing") {
+  function showPrintOptionsDialog(option = "Print Chat") {
     // Inject styles if not already present
     injectPrintOptionsStyles();
 
@@ -1188,12 +1188,7 @@ window.ChatGPTExport = (() => {
         <div id="print-options-footer">
           <button class="print-btn secondary" id="print-options-cancel">Cancel</button>
           <button class="print-btn primary" id="print-options-confirm">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-              <path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/>
-              <rect x="6" y="14" width="12" height="8" rx="1"/>
-            </svg>
-            Print Chat
+            ${option}
           </button>
         </div>
       </div>
@@ -1352,7 +1347,7 @@ window.ChatGPTExport = (() => {
       dropdown
         .querySelector("#print-chat-item")
         .addEventListener("click", () => {
-          showPrintOptionsDialog("Printing");
+          showPrintOptionsDialog("Print Chat");
           dropdown.classList.remove("show");
         });
       dropdown
@@ -1462,7 +1457,7 @@ window.ChatGPTExport = (() => {
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === "p") {
       event.preventDefault();
-      showPrintOptionsDialog("Printing");
+      showPrintOptionsDialog("Print Chat");
     }
   });
   // Override Ctrl+S to use custom html function
