@@ -612,12 +612,9 @@ window.ChatGPTprompt = (() => {
           prompt.createdAt || prompt.updatedAt
         ).toLocaleDateString()}</span>
           <div class="pm-prompt-actions">
-            <button class="pm-action-btn pm-use-btn btn" data-prompt-id="${
-              prompt.id
-            }">Use</button>
             <button class="pm-action-btn pm-edit-btn btn" data-prompt-id="${
               prompt.id
-            }">Edit</button>
+            }">Edit and Use</button>
             <button class="pm-action-btn pm-delete-btn btn" data-prompt-id="${
               prompt.id
             }">Delete</button>
@@ -629,19 +626,6 @@ window.ChatGPTprompt = (() => {
       .join("");
 
     listContainer.innerHTML = promptsHTML;
-
-    // Add event listeners
-    listContainer.querySelectorAll(".pm-use-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const promptId = parseInt(btn.dataset.promptId);
-        const prompt = prompts.find((p) => p.id === promptId);
-        if (prompt) {
-          pasteText(prompt.content);
-          toggleModalVisibility(false);
-        }
-      });
-    });
 
     listContainer.querySelectorAll(".pm-edit-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
