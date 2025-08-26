@@ -441,7 +441,7 @@ window.ChatGPTExport = (() => {
               currentPercent,
               currentPercent + delta
             );
-            if (printOptions.saveStyles) {
+            if (!printOptions.saveStyles) {
               stylesHTML += link.outerHTML;
             } else {
               const resp = await fetch(href);
