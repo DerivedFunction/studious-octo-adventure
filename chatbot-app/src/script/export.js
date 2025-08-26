@@ -422,7 +422,7 @@ window.ChatGPTExport = (() => {
         // inline <style> blocks
         document
           .querySelectorAll(
-            "style:not(#le-styles,#export-menu-styles,#token-popup-styles,#chm-styles,#export-status-styles"
+            "style:not(#le-styles,#export-menu-styles,#token-popup-styles,#chm-styles,#export-status-styles,#print-options-styles"
           )
           .forEach((el) => {
             stylesHTML += el.outerHTML;
@@ -1091,7 +1091,7 @@ window.ChatGPTExport = (() => {
 
     // Create dialog HTML
     const dialogHTML = `
-    <div id="print-options-container">
+    <div id="print-options-container" class="ignore-this">
       <div id="print-options-modal">
         <div id="print-options-header">
           <h2 id="print-options-title">${option} Options</h2>
