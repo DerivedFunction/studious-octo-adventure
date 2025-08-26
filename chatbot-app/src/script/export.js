@@ -351,6 +351,49 @@ window.ChatGPTExport = (() => {
               document.querySelector("#printChat").click();
             }
           });
+
+          document.querySelectorAll("button[data-collapse-added]").forEach(
+            (btn) => {
+              btn.addEventListener("click", () => {
+                const code = btn.closest("pre").querySelector("code");
+                code.style.display = code.style.display === "none" ? "block" : "none";
+                btn.querySelector("span").textContent =
+                code.style.display === "none"
+                  ? "Expand"
+                  : "Collapse";
+              })
+          })
+          // Override Ctrl + Shift + C to use custom collapse code function
+          document.addEventListener("keydown", (e) => {
+            if (
+              (e.metaKey || e.ctrlKey) &&
+              e.shiftKey &&
+              e.key.toLowerCase() === "c"
+            ) {
+              e.preventDefault();
+
+              const buttons = document.querySelectorAll(
+                "button[data-collapse-added]"
+              );
+              if (!buttons.length) return;
+
+              // Detect if we should collapse or expand
+              const shouldCollapse = Array.from(buttons).some(
+                (btn) =>
+                  btn.closest("pre").querySelector("code").style.display !== "none"
+              );
+
+              buttons.forEach((btn) => {
+                const code = btn.closest("pre").querySelector("code");
+                code.style.display = shouldCollapse ? "none" : "block";
+                btn.querySelector("span").textContent =
+                  code.style.display === "none"
+                    ? "Expand"
+                    : "Collapse";
+              });
+            }
+          });
+
           document.querySelector("#printChat").addEventListener("click", async () => {
             // 1. Clone the main chat area. This serves as the base for both print and download.
             const mainArea = document.querySelector("article")?.parentElement;
@@ -461,7 +504,7 @@ window.ChatGPTExport = (() => {
         }
 
         const customStyles = `
-        form, button:not([aria-label="Copy"], [show="true"]),
+        form, button:not([aria-label="Copy"], [show="true"], [aria-label="Collapse Or Expand"]),
         nav, header, footer, [role="banner"], [role="navigation"], [role="complementary"] {
             display: none !important;
         }

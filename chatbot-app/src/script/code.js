@@ -1,4 +1,4 @@
-(() => {
+window.ChatGPTCode = (() => {
   function addCollapse() {
     const codeBlocks = document.querySelectorAll(
       "article pre button[aria-label='Copy']"
@@ -118,4 +118,7 @@
   observeCodeBlocks();
   // Enable keyboard shortcut
   setupGlobalShortcut();
+  return {
+    addCollapse,
+  };
 })();
