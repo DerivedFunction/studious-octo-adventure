@@ -740,21 +740,28 @@ window.ChatGPTprompt = (() => {
   }
 
   /**
-   * Pastes text into contenteditable, textarea, or clipboard
-   * @param {string} text
+   * Pastes text
+   * @param {*} text
+   * @returns
    */
   async function pasteText(text) {
-    console.log("[Debugger] Pasting text:", text);
+    console.log("[Prompt Debugger] Pasting text:", text);
 
     // Case 1: contenteditable div
     const editableDiv = document.body.querySelector(
       "div[contenteditable='true']"
     );
     if (editableDiv) {
-      // Convert newlines into <br> so they render properly
-      const htmlText = text.replace(/\n/g, "<br>");
-      editableDiv.innerHTML = htmlText;
-
+      // Issue: Need to replace new lines with br tag, but keep other tags and text as is
+      // Convert newlines to <p> while preserving other HTML
+      const lines = text.split("\n");
+      console.log("[Prompt Debugger] Lines:", lines);
+      const htmlContent = lines
+        .map((line) => `<p>${escapeHTML(line) || ""}</p>`)
+        .join("");
+      console.log("[Prompt Debugger] HTML Content:", htmlContent);
+      // Insert HTML content (sanitize if necessary)
+      editableDiv.innerHTML = htmlContent;
       const inputEvent = new InputEvent("input", {
         inputType: "insertText",
         data: text,
@@ -770,10 +777,9 @@ window.ChatGPTprompt = (() => {
     if (textarea) {
       let lastValue = textarea.value || "";
       textarea.value = text;
-
-      const event = new Event("input", { bubbles: true });
+      let event = new Event("input", { bubbles: true });
       event.simulated = true;
-      const tracker = textarea._valueTracker;
+      let tracker = textarea._valueTracker;
       if (tracker) {
         tracker.setValue(lastValue);
       }
