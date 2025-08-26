@@ -739,8 +739,10 @@ window.ChatGPTprompt = (() => {
     toggleModalVisibility(true);
   }
 
-  // Paste text to the chat input (placeholder for now)
-  // Paste text to the chat input (placeholder for now)
+  /**
+   * Pastes text into contenteditable, textarea, or clipboard
+   * @param {string} text
+   */
   async function pasteText(text) {
     console.log("[Debugger] Pasting text:", text);
 
@@ -749,7 +751,10 @@ window.ChatGPTprompt = (() => {
       "div[contenteditable='true']"
     );
     if (editableDiv) {
-      editableDiv.textContent = text;
+      // Convert newlines into <br> so they render properly
+      const htmlText = text.replace(/\n/g, "<br>");
+      editableDiv.innerHTML = htmlText;
+
       const inputEvent = new InputEvent("input", {
         inputType: "insertText",
         data: text,
@@ -765,9 +770,10 @@ window.ChatGPTprompt = (() => {
     if (textarea) {
       let lastValue = textarea.value || "";
       textarea.value = text;
-      let event = new Event("input", { bubbles: true });
+
+      const event = new Event("input", { bubbles: true });
       event.simulated = true;
-      let tracker = textarea._valueTracker;
+      const tracker = textarea._valueTracker;
       if (tracker) {
         tracker.setValue(lastValue);
       }
