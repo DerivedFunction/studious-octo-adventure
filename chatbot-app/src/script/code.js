@@ -30,7 +30,7 @@ window.ChatGPTCode = (() => {
         </svg>
         <span></span>
       `;
-      parent.appendChild(collapseBtn);
+      parent.insertBefore(collapseBtn, parent.firstChild);
 
       const code = el.closest("pre").querySelector("code");
       function updateLabel() {
