@@ -1123,7 +1123,7 @@ window.ChatGPTExport = (() => {
           <div class="print-option-group">
             <label class="print-option-label">Include Content</label>
             <div class="print-option-description">
-              Choose which parts of the conversation to include in the print output.
+              Choose which parts of the conversation to include.
             </div>
             <div class="print-checkbox-group">
               <label class="print-checkbox-label">
