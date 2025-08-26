@@ -827,7 +827,7 @@ window.ChatGPTprompt = (() => {
     {
       title: "Analyze",
       content: `Analyze this topic systematically. Include overview, key findings, supporting evidence, implications, and conclusion:\n`,
-      category: "Writing",
+      category: "Education",
     },
     {
       title: "Code Features",
