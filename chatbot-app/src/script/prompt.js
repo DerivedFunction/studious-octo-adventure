@@ -831,6 +831,26 @@ window.ChatGPTprompt = (() => {
       category: "Productivity",
     },
     {
+      title: "Translate",
+      content: `Translate the following text into the target language. Ensure accuracy, preserve tone, and explain cultural nuances if relevant:\n`,
+      category: "Education",
+    },
+    {
+      title: "Improve Writing",
+      content: `Improve the clarity, grammar, and tone of the following text. Suggest improvements without changing the meaning:\n`,
+      category: "Writing",
+    },
+    {
+      title: "Email Draft",
+      content: `Draft a professional email based on this context. Include subject, greeting, body, and sign-off. Keep it concise:\n`,
+      category: "Productivity",
+    },
+    {
+      title: "Q&A",
+      content: `Answer the following question directly. Provide a clear, concise answer with supporting reasoning if needed:\n`,
+      category: "Education",
+    },
+    {
       title: "Code Features",
       content: `Implement these features in the existing code. Preserve existing functionality, explain changes and show code snippets, and provide the top-level functions added/modified to copy/paste.\n<features>\n</features>\n\n<code-content name="">\n</code-content>`,
       category: "Development",
