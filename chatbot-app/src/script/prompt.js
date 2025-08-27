@@ -688,16 +688,18 @@ window.ChatGPTprompt = (() => {
   }
 
   // --- Main UI Integration ---
-  function buildPromptOption() {
-    let container = Array.from(
-      document.querySelectorAll("div[role='menuitem']")
-    ).filter((e) => e.textContent.includes("Add photos"))[0]?.parentElement;
-    let exist = document.querySelector("#newPromptMenuItem");
+  function buildPromptOption(selector) {
+    const fileBtn = Array.from(
+      document.querySelectorAll(selector)
+    ).filter((e) => e.textContent.includes("Add photos"))[0];
+    if (!fileBtn) return;
+    const container = fileBtn.parentElement;
+    let exist = document.querySelector(".newPromptMenuItem");
 
     if (exist || !container) return;
 
     const menuitem = document.createElement("div");
-    menuitem.id = "newPromptMenuItem";
+    menuitem.classList.add("newPromptMenuItem");
     menuitem.innerHTML = `
       <div
         role="menuitem"
@@ -715,7 +717,7 @@ window.ChatGPTprompt = (() => {
       </div>
     `;
 
-    container.appendChild(menuitem);
+    container.insertBefore(menuitem, fileBtn);
     menuitem.addEventListener("click", showPromptsModal);
   }
 
@@ -784,7 +786,8 @@ window.ChatGPTprompt = (() => {
 
     // Set up mutation observer to inject the prompt option
     const observer = new MutationObserver(() => {
-      buildPromptOption();
+      buildPromptOption("div[role='menuitem']");
+      buildPromptOption(".popover .group.__menu-item[data-highlighted]");
     });
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("keydown", (e) => {
