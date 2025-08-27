@@ -739,7 +739,6 @@ window.ChatGPTExport = (() => {
     #export-menu-dropdown {
       position: absolute;
       top: 100%;
-      right: 0;
       margin-top: 6px;
       background-color: var(--main-surface-secondary);
       border: 1px solid var(--border-light);
