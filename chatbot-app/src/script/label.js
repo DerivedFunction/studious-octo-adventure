@@ -377,7 +377,7 @@ window.ChatGPTLabel = (() => {
       .le-popover-labels-list { max-height: 200px; overflow-y: auto; overscroll-behavior: contain; contain: layout style; }
       .le-popover-label-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-light); }
       .le-popover-label-item:last-child { border-bottom: none; }
-      .le-popover-label-item label { flex-grow: 1; cursor: pointer; font-size: 0.9rem; }
+      .le-popover-label-item label { flex-grow: 1; cursor: pointer; font-size: 0.9rem; width: 100%;}
       .le-popover-label-item input[type="checkbox"] { margin-right: 8px; cursor: pointer; }
       .le-popover-new-label-input { width: 100%; padding: 10px; border: 1px solid var(--border-medium); border-radius: 6px; background: var(--main-surface-secondary); color: var(--text-primary); font-size: 0.9rem; box-sizing: border-box; outline: none; box-shadow: none; }
       .le-popover-close-btn { position: absolute; top: 8px; right: 12px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-tertiary); transition: color 0.2s; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }

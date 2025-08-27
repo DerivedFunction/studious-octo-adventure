@@ -876,6 +876,7 @@ window.ChatGPThistory = (() => {
   observer.observe(document, { childList: true, subtree: true });
 
   console.log("✅ [History Manager] Script loaded. Press Ctrl+H to open.");
+  document.addEventListener("DOMContentLoaded", syncAllConversationsWithServer(1, true));
   return {
     get cacheManager() {
       return cacheManager;
