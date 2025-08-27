@@ -564,9 +564,9 @@ const ThemeableChatbot = () => {
                       onClick={() => {
                         if (msg.type === "user") {
                           document.querySelector("input[type='color']").click();
-                        } else {
+                        } /*else {
                           openPromptModal();
-                        }
+                        }*/
                       }}
                     >
                       <p className="m-0 whitespace-pre-wrap">{msg.content}</p>
