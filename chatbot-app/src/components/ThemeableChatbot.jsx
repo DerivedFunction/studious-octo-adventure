@@ -48,7 +48,7 @@ const ThemeableChatbot = () => {
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [isScriptingEnabled, setIsScriptingEnabled] = useState(false);
   const [isThemeActive, setIsThemeActive] = useState(false);
-  const [contextWindow, setContextWindow] = useState(0); //  tokens
+//  const [contextWindow, setContextWindow] = useState(0); //  tokens
   const [globalSystemPrompt, setGlobalSystemPrompt] = useState("");
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const [tempPrompt, setTempPrompt] = useState("");
@@ -213,13 +213,13 @@ const ThemeableChatbot = () => {
           [
             "themeColor",
             "isThemeActive",
-            "contextWindow",
+       //     "contextWindow",
             "globalSystemPrompt",
           ],
           (result) => {
             if (result.themeColor) setThemeColor(result.themeColor);
             if (result.isThemeActive) setIsThemeActive(result.isThemeActive);
-            if (result.contextWindow) setContextWindow(result.contextWindow);
+       //     if (result.contextWindow) setContextWindow(result.contextWindow);
             if (result.globalSystemPrompt)
               setGlobalSystemPrompt(result.globalSystemPrompt);
           }
@@ -307,11 +307,12 @@ const ThemeableChatbot = () => {
     }
   }, [inputMessage]);
 
-  useEffect(() => {
+/*  useEffect(() => {
     if (chrome?.storage?.local) {
       chrome.storage.local.set({ contextWindow });
     }
   }, [contextWindow]);
+  */
 
   useEffect(() => {
     if (chrome?.storage?.local) {
@@ -340,7 +341,7 @@ const ThemeableChatbot = () => {
                   "./script/api.js",
                   "./script/highlight.min.js",
                   "./script/theme.js",
-                  "./script/token.js",
+                 // "./script/token.js",
                   "./script/history.js",
                   "./script/label.js",
                   "./script/export.js",
@@ -637,7 +638,7 @@ const ThemeableChatbot = () => {
               </div>
             </div>
 
-            <div
+            {/*(<div
               className={`token-count-display inline-block w-full text-center`}
               style={{
                 fontSize: "12px",
@@ -660,6 +661,7 @@ const ThemeableChatbot = () => {
             >
               {`Click to set Context Window: ${contextWindow} tokens`}
             </div>
+        */}
             {ua === "firefox" && (
               <div
                 onClick={() => {

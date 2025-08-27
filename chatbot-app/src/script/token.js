@@ -1235,4 +1235,3 @@ function guestMode() {
     document.querySelector("[data-testid='mobile-login-button']")
   );
 }
-

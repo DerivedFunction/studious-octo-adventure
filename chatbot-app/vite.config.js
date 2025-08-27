@@ -13,7 +13,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"), // your main app entry
         theme: resolve(__dirname, "src/script/theme.js"), // your separate file
-        token: resolve(__dirname, "src/script/token.js"), // your separate file
+    //    token: resolve(__dirname, "src/script/token.js"), // your separate file
         history: resolve(__dirname, "src/script/history.js"), // your separate file
         label: resolve(__dirname, "src/script/label.js"), // your separate file
         export: resolve(__dirname, "src/script/export.js"), // your separate file

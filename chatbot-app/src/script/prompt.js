@@ -826,6 +826,11 @@ window.ChatGPTprompt = (() => {
       category: "Education",
     },
     {
+      title: "Plan",
+      content: `Draft a practical plan with phases, milestones, risks, and success metrics. Include a 1–2 week quick-start plan:\n`,
+      category: "Productivity",
+    },
+    {
       title: "Code Features",
       content: `Implement these features in the existing code. Preserve existing functionality, explain changes and show code snippets, and provide the top-level functions added/modified to copy/paste.\n<features>\n</features>\n\n<code-content name="">\n</code-content>`,
       category: "Development",
@@ -833,6 +838,21 @@ window.ChatGPTprompt = (() => {
     {
       title: "Code Review",
       content: `Review this code and provide improvement suggestions. Focus on: readability, performance, best practices, potential issues. Provide specific suggestions with examples:\n<code-content name="">\n</code-content>`,
+      category: "Development",
+    },
+    {
+      title: "Code Document",
+      content: `Add inline comments and generate documentation for this code. Focus on: readability, purpose of functions, parameters, and return values. Provide a documented version of the code:\n<code-content name="">\n</code-content>`,
+      category: "Development",
+    },
+    {
+      title: "Code Test",
+      content: `Write test cases for this code. Focus on correctness, edge cases, and performance. Show example unit tests or integration tests where applicable:\n<code-content name="">\n</code-content>`,
+      category: "Development",
+    },
+    {
+      title: "Code Run",
+      content: `Explain how to run this code. Include environment setup, dependencies, build steps, and example commands. Provide sample input/output if helpful:\n<code-content name="">\n</code-content>`,
       category: "Development",
     },
     {
@@ -844,6 +864,26 @@ window.ChatGPTprompt = (() => {
       title: "Debug Code",
       content: `Fix the errors in this code. Explain changes, show code snippets, and provide the top-level functions added/modified to copy/paste:\n<error>\n</error>\n\n<code-content name="">\n</code-content>`,
       category: "Development",
+    },
+    {
+      title: "Outline",
+      content: `Create a clear outline. Include: working title, sections with 1–2 bullets each, suggested visuals/examples:\n`,
+      category: "Writing",
+    },
+    {
+      title: "Brainstorm",
+      content: `List 15–30 ideas. Group by theme, mark top 3 with reasons, note quick next steps:\n`,
+      category: "Writing",
+    },
+    {
+      title: "Compare",
+      content: `Compare the following items. Provide a concise table, key differences, pros/cons, and a recommendation:\n`,
+      category: "Education",
+    },
+    {
+      title: "Critique",
+      content: `Provide a candid critique. Cover clarity, logic, evidence, tone, and gaps. Include a prioritized fix list:\n`,
+      category: "Education",
     },
   ];
 
