@@ -21,7 +21,7 @@
       { name: "Print", key: "P" },
       { name: "Save webpage", key: "S" },
       { name: "Open saved prompts", key: "M" },
-      { name: "Run token check", key: "B" },
+     // { name: "Run token check", key: "B" },
       { name: "Toggle Code Blocks", shift: true, key: "C" },
     ];
 
