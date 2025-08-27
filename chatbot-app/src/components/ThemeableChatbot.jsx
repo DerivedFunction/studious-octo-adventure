@@ -51,7 +51,7 @@ const ThemeableChatbot = () => {
 //  const [contextWindow, setContextWindow] = useState(0); //  tokens
 //  const [globalSystemPrompt, setGlobalSystemPrompt] = useState("");
 //  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
-  const [tempPrompt, setTempPrompt] = useState("");
+//  const [tempPrompt, setTempPrompt] = useState("");
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const [ua, setuA] = useState("chrome");
