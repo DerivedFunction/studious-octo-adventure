@@ -38,7 +38,7 @@ const ThemeableChatbot = () => {
       id: 2,
       type: "ai",
       content:
-        "This is an AI response. Click me to set a global system prompt.",
+        "This is an AI response.",
     },
   ]);
   const [inputMessage, setInputMessage] = useState("");
@@ -49,8 +49,8 @@ const ThemeableChatbot = () => {
   const [isScriptingEnabled, setIsScriptingEnabled] = useState(false);
   const [isThemeActive, setIsThemeActive] = useState(false);
 //  const [contextWindow, setContextWindow] = useState(0); //  tokens
-  const [globalSystemPrompt, setGlobalSystemPrompt] = useState("");
-  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
+//  const [globalSystemPrompt, setGlobalSystemPrompt] = useState("");
+//  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false);
   const [tempPrompt, setTempPrompt] = useState("");
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
@@ -214,14 +214,14 @@ const ThemeableChatbot = () => {
             "themeColor",
             "isThemeActive",
        //     "contextWindow",
-            "globalSystemPrompt",
+        //    "globalSystemPrompt",
           ],
           (result) => {
             if (result.themeColor) setThemeColor(result.themeColor);
             if (result.isThemeActive) setIsThemeActive(result.isThemeActive);
        //     if (result.contextWindow) setContextWindow(result.contextWindow);
-            if (result.globalSystemPrompt)
-              setGlobalSystemPrompt(result.globalSystemPrompt);
+          //  if (result.globalSystemPrompt)
+         //     setGlobalSystemPrompt(result.globalSystemPrompt);
           }
         ); // Check to see if script exists
         try {
@@ -314,11 +314,13 @@ const ThemeableChatbot = () => {
   }, [contextWindow]);
   */
 
-  useEffect(() => {
+/*  useEffect(() => {
     if (chrome?.storage?.local) {
       chrome.storage.local.set({ globalSystemPrompt });
     }
-  }, [globalSystemPrompt]); // --- EVENT HANDLERS ---
+  }, [globalSystemPrompt]); */
+  
+  // --- EVENT HANDLERS ---
 
   const handleScriptingToggle = async () => {
     const newIsEnabled = !isScriptingEnabled;
@@ -429,7 +431,7 @@ const ThemeableChatbot = () => {
     }
   };
 
-  const openPromptModal = () => {
+/*  const openPromptModal = () => {
     setTempPrompt(globalSystemPrompt);
     setIsPromptModalOpen(true);
   };
@@ -441,7 +443,9 @@ const ThemeableChatbot = () => {
 
   const handleCancelPrompt = () => {
     setIsPromptModalOpen(false);
-  }; // --- RENDER LOGIC ---
+  }; 
+  */
+  // --- RENDER LOGIC ---
 
   if (!themeObject) {
     return (
@@ -680,7 +684,7 @@ const ThemeableChatbot = () => {
               </div>
             )}
           </footer>
-          {isPromptModalOpen && (
+          {/*isPromptModalOpen && (
             <div className="fixed flex p-4 z-50 w-full">
               <div
                 className="rounded-lg shadow-xl p-6 w-full max-w-md flex flex-col gap-4 border"
@@ -732,7 +736,8 @@ const ThemeableChatbot = () => {
                 </div>
               </div>
             </div>
-          )}
+          )
+            */}
         </div>
       </div>
     </>
