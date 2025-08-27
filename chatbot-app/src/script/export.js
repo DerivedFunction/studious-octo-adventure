@@ -1309,6 +1309,7 @@ window.ChatGPTExport = (() => {
       // Dropdown Menu
       const dropdown = document.createElement("div");
       dropdown.id = "export-menu-dropdown";
+      dropdown.className = guestMode() ? "" : "right-0";
       dropdown.innerHTML = `
   <div class="export-menu-content">
     <button class="export-menu-item" id="print-chat-item">
