@@ -837,22 +837,22 @@ window.ChatGPTprompt = (() => {
     },
     {
       title: "Code Review",
-      content: `Review this code and provide improvement suggestions. Focus on: readability, performance, best practices, potential issues. Provide specific suggestions with examples:\n<code-content name="">\n</code-content>`,
+      content: `Review this code and provide improvement suggestions. Focus on: readability, performance, best practices, potential issues. Provide specific suggestions with examples:\n\n<code-content name="">\n</code-content>`,
       category: "Development",
     },
     {
       title: "Code Document",
-      content: `Add inline comments and generate documentation for this code. Focus on: readability, purpose of functions, parameters, and return values. Provide a documented version of the code:\n<code-content name="">\n</code-content>`,
+      content: `Add inline comments and generate documentation for this code. Focus on: readability, purpose of functions, parameters, and return values. Provide a documented version of the code:\n\n<code-content name="">\n</code-content>`,
       category: "Development",
     },
     {
       title: "Code Test",
-      content: `Write test cases for this code. Focus on correctness, edge cases, and performance. Show example unit tests or integration tests where applicable:\n<code-content name="">\n</code-content>`,
+      content: `Write test cases for this code. Focus on correctness, edge cases, and performance. Show example unit tests or integration tests where applicable:\n\n<code-content name="">\n</code-content>`,
       category: "Development",
     },
     {
       title: "Code Run",
-      content: `Explain how to run this code. Include environment setup, dependencies, build steps, and example commands. Provide sample input/output if helpful:\n<code-content name="">\n</code-content>`,
+      content: `Explain how to run this code. Include environment setup, dependencies, build steps, and example commands. Provide sample input/output if helpful:\n\n<code-content name="">\n</code-content>`,
       category: "Development",
     },
     {
@@ -872,7 +872,7 @@ window.ChatGPTprompt = (() => {
     },
     {
       title: "Brainstorm",
-      content: `List 15–30 ideas. Group by theme, mark top 3 with reasons, note quick next steps:\n`,
+      content: `List at least 5 ideas. Group by theme, mark top 3 with reasons, note quick next steps:\n`,
       category: "Writing",
     },
     {
