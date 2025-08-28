@@ -449,7 +449,7 @@ window.ChatGPTExport = (() => {
         // inline <style> blocks
         document
           .querySelectorAll(
-            "style:not(#le-styles,#export-menu-styles,#token-popup-styles,#chm-styles,#export-status-styles,#print-options-styles"
+            "style:not(#le-styles,#export-menu-styles,#token-popup-styles,#chm-styles,#export-status-styles,#print-options-styles,#pm-styles)"
           )
           .forEach((el) => {
             stylesHTML += el.outerHTML;
