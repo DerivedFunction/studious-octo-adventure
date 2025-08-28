@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Enhanced ChatGPT Tools",
-  "version": "2025.8.28",
+  "version": "2025.8.29",
   "description": "Accent colors, history manager, label manager, print/export, prompts, and other tools for ChatGPT Web UI.",
   "action": {
     "default_popup": "index.html",

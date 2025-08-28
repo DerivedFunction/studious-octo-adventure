@@ -582,12 +582,19 @@ window.ChatGPThistory = (() => {
             item.title || "Untitled"
           }</a>
               </span>
-              <span class="time">${new Date(
-                item.update_time
-              ).toLocaleTimeString([], {
-                hour: "numeric",
-                minute: "2-digit",
-              })}</span>
+              <span class="time">${
+                ["Today", "Yesterday"].find((e) => e === groupName)
+                  ? new Date(item.update_time).toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })
+                  : new Date(item.update_time).toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      month: "short",
+                      day: "numeric",
+                    })
+              }</span>
             </div>
           `;
         });
@@ -782,7 +789,9 @@ window.ChatGPThistory = (() => {
   }
   function injectSidebarButton() {
     if (document.getElementById("chm-sidebar-btn")) return true;
-    const sidebarNav = document.querySelector("nav[aria-label='Chat history'] aside");
+    const sidebarNav = document.querySelector(
+      "nav[aria-label='Chat history'] aside"
+    );
     if (!sidebarNav) return false;
     const mainButton = document.createElement("div");
     mainButton.id = "chm-sidebar-btn";
@@ -876,7 +885,10 @@ window.ChatGPThistory = (() => {
   observer.observe(document, { childList: true, subtree: true });
 
   console.log("✅ [History Manager] Script loaded. Press Ctrl+H to open.");
-  document.addEventListener("DOMContentLoaded", syncAllConversationsWithServer(1, true));
+  document.addEventListener(
+    "DOMContentLoaded",
+    syncAllConversationsWithServer(1, true)
+  );
   return {
     get cacheManager() {
       return cacheManager;
