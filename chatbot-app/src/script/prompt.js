@@ -716,8 +716,7 @@ window.ChatGPTprompt = (() => {
         </div>
       </div>
     `;
-
-    container.insertBefore(menuitem, fileBtn);
+    container.appendChild(menuitem, fileBtn);
     menuitem.addEventListener("click", showPromptsModal);
   }
 
