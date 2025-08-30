@@ -306,7 +306,7 @@ window.ChatGPTCode = (() => {
     });
     document.addEventListener("keydown", (e) => {
       if (
-        e.altKey &&
+        (e.ctrlKey || e.metaKey) &&
         e.key.toLowerCase() == CONFIG.shortcuts.insert
       ) {
         ChatGPTprompt.pasteText("<code-content>\n\n</code-content>");
