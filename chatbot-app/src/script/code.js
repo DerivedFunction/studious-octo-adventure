@@ -13,6 +13,7 @@ window.ChatGPTCode = (() => {
     },
     shortcuts: {
       collapse: "c", // Ctrl/Cmd + Shift + C
+      insert: "/"
     },
   };
 
@@ -302,6 +303,14 @@ window.ChatGPTCode = (() => {
           utils.updateCollapseLabel(btn, code);
         }
       });
+    });
+    document.addEventListener("keydown", (e) => {
+      if (
+        e.altKey ||
+        e.key.toLowerCase() == CONFIG.shortcuts.insert
+      ) {
+        ChatGPTprompt.pasteText("\n<code-content>\n\n</code-content>");
+      }
     });
   }
 
