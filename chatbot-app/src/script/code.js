@@ -13,7 +13,7 @@ window.ChatGPTCode = (() => {
     },
     shortcuts: {
       collapse: "c", // Ctrl/Cmd + Shift + C
-      insert: "/"
+      insert: "."
     },
   };
 

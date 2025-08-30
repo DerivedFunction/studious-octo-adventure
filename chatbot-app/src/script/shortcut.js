@@ -21,8 +21,9 @@
       { name: "Print", key: "P" },
       { name: "Save webpage", key: "S" },
       { name: "Open saved prompts", key: "M" },
-     // { name: "Run token check", key: "B" },
-      { name: "Toggle Code Blocks", shift: true, key: "C" },
+      // { name: "Run token check", key: "B" },
+      { name: "Toggle code blocks", shift: true, key: "C" },
+      { name: "Add code block", key: "." },
     ];
 
     tools.forEach((tool) => {
@@ -55,7 +56,7 @@
         spanShift.className = "min-w-[1em]";
         spanShift.textContent = isMac ? "⇧" : "Shift";
         kbdShift.appendChild(spanShift);
-        
+
         if (isMac) {
           div.appendChild(kbdShift);
           div.appendChild(kbdMod);
@@ -74,7 +75,7 @@
       spanKey.textContent = tool.key;
       kbdKey.appendChild(spanKey);
       div.appendChild(kbdKey);
-      
+
       dd.appendChild(div);
 
       container.appendChild(dt);
