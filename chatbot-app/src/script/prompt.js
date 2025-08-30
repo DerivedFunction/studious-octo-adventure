@@ -804,7 +804,6 @@ window.ChatGPTprompt = (() => {
     // Set up mutation observer to inject the prompt option
     const observer = new MutationObserver(() => {
       buildPromptOption("div[role='menuitem']");
-      buildPromptOption(".popover .group.__menu-item[data-highlighted]");
     });
     observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("keydown", (e) => {
