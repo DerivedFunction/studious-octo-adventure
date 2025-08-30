@@ -725,10 +725,13 @@ window.ChatGPTprompt = (() => {
     toggleModalVisibility(true);
   }
 
+
   /**
    * Pastes text into a contenteditable div (replace or append).
-   * @param {string} text
-   * @param {boolean} replace If true, replaces existing content. If false, appends.
+   * Always moves the cursor to the end afterwards.
+   *
+   * @param {string} text - Text to paste
+   * @param {boolean} replace - If true, replaces existing content. If false, appends.
    */
   async function pasteText(text, replace = false) {
     console.log("[Prompt Debugger] Pasting text:", text, "replace:", replace);
@@ -738,23 +741,20 @@ window.ChatGPTprompt = (() => {
       "div[contenteditable='true']"
     );
     if (editableDiv) {
-      // Convert newlines to <p> while preserving HTML safety
+      // Convert newlines to <p>
       const lines = text.split("\n");
       const htmlContent = lines
         .map((line) => `<p>${escapeHTML(line) || ""}</p>`)
         .join("");
 
-      console.log("[Prompt Debugger] HTML Content:", htmlContent);
-
-      if (replace) {
-        // Replace content
+      // Replace or is empty
+      if (replace || editableDiv.textContent == "") {
         editableDiv.innerHTML = htmlContent;
       } else {
-        // Append content (preserve existing innerHTML)
         editableDiv.innerHTML += htmlContent;
       }
 
-      // Dispatch an input event so app reacts
+      // Dispatch input event
       const inputEvent = new InputEvent("input", {
         inputType: replace ? "insertReplacementText" : "insertText",
         data: text,
@@ -763,29 +763,36 @@ window.ChatGPTprompt = (() => {
       });
       editableDiv.dispatchEvent(inputEvent);
 
+      // Move cursor to end
+      editableDiv.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(editableDiv);
+      range.collapse(false); // false = end
+      selection.removeAllRanges();
+      selection.addRange(range);
+
       return;
     }
 
-    console.warn("[Prompt Debugger] No contenteditable div found.");
-
-    // Case 2: textarea
-    const textarea = document.body.querySelector("textarea");
+    // Case 2: textarea or input
+    const textarea = document.querySelector("textarea, input[type='text']");
     if (textarea) {
-      let lastValue = textarea.value || "";
-      textarea.value = text;
-      let event = new Event("input", { bubbles: true });
-      event.simulated = true;
-      let tracker = textarea._valueTracker;
-      if (tracker) {
-        tracker.setValue(lastValue);
+      if (replace) {
+        textarea.value = text;
+      } else {
+        textarea.value += text;
       }
-      textarea.dispatchEvent(event);
+
+      // Move cursor to end
+      textarea.focus();
+      const pos = textarea.value.length;
+      textarea.setSelectionRange(pos, pos);
+
       return;
     }
 
-    // Fallback: copy to clipboard
-    window.alert("Prompt copied to clipboard");
-    await navigator.clipboard.writeText(text);
+    console.warn("[Prompt Debugger] No editable field found.");
   }
 
   // --- Initialization ---

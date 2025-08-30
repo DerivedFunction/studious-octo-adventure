@@ -306,10 +306,10 @@ window.ChatGPTCode = (() => {
     });
     document.addEventListener("keydown", (e) => {
       if (
-        e.altKey ||
+        e.altKey &&
         e.key.toLowerCase() == CONFIG.shortcuts.insert
       ) {
-        ChatGPTprompt.pasteText("\n<code-content>\n\n</code-content>");
+        ChatGPTprompt.pasteText("<code-content>\n\n</code-content>");
       }
     });
   }
@@ -343,7 +343,7 @@ window.ChatGPTCode = (() => {
 
     container.insertBefore(menuitem, fileBtn);
     menuitem.addEventListener("click", () => {
-      ChatGPTprompt.pasteText("\n<code-content>\n\n</code-content>");
+      ChatGPTprompt.pasteText("<code-content>\n\n</code-content>");
     })
   }
   const observer = new MutationObserver(() => {
