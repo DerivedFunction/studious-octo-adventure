@@ -726,37 +726,47 @@ window.ChatGPTprompt = (() => {
   }
 
   /**
-   * Pastes text
-   * @param {*} text
-   * @returns
+   * Pastes text into a contenteditable div (replace or append).
+   * @param {string} text
+   * @param {boolean} replace If true, replaces existing content. If false, appends.
    */
-  async function pasteText(text) {
-    console.log("[Prompt Debugger] Pasting text:", text);
+  async function pasteText(text, replace = false) {
+    console.log("[Prompt Debugger] Pasting text:", text, "replace:", replace);
 
     // Case 1: contenteditable div
     const editableDiv = document.body.querySelector(
       "div[contenteditable='true']"
     );
     if (editableDiv) {
-      // Issue: Need to replace new lines with br tag, but keep other tags and text as is
-      // Convert newlines to <p> while preserving other HTML
+      // Convert newlines to <p> while preserving HTML safety
       const lines = text.split("\n");
-      console.log("[Prompt Debugger] Lines:", lines);
       const htmlContent = lines
         .map((line) => `<p>${escapeHTML(line) || ""}</p>`)
         .join("");
+
       console.log("[Prompt Debugger] HTML Content:", htmlContent);
-      // Insert HTML content (sanitize if necessary)
-      editableDiv.innerHTML = htmlContent;
+
+      if (replace) {
+        // Replace content
+        editableDiv.innerHTML = htmlContent;
+      } else {
+        // Append content (preserve existing innerHTML)
+        editableDiv.innerHTML += htmlContent;
+      }
+
+      // Dispatch an input event so app reacts
       const inputEvent = new InputEvent("input", {
-        inputType: "insertText",
+        inputType: replace ? "insertReplacementText" : "insertText",
         data: text,
         bubbles: true,
         cancelable: true,
       });
       editableDiv.dispatchEvent(inputEvent);
+
       return;
     }
+
+    console.warn("[Prompt Debugger] No contenteditable div found.");
 
     // Case 2: textarea
     const textarea = document.body.querySelector("textarea");
@@ -861,37 +871,37 @@ window.ChatGPTprompt = (() => {
     },
     {
       title: "Code Features",
-      content: `Implement these features in the existing code. Preserve existing functionality, explain changes and show code snippets, and provide the top-level functions added/modified to copy/paste.\n<features>\n</features>\n\n<code-content name="">\n</code-content>`,
+      content: `Implement these features in the existing code. Preserve existing functionality, explain changes and show code snippets, and provide the top-level functions added/modified to copy/paste.\n<features>\n</features>\n\n<code-content name="">\n\n</code-content>`,
       category: "Development",
     },
     {
       title: "Code Review",
-      content: `Review this code and provide improvement suggestions. Focus on: readability, performance, best practices, potential issues. Provide specific suggestions with examples:\n\n<code-content name="">\n</code-content>`,
+      content: `Review this code and provide improvement suggestions. Focus on: readability, performance, best practices, potential issues. Provide specific suggestions with examples:\n\n<code-content name="">\n\n</code-content>`,
       category: "Development",
     },
     {
       title: "Code Document",
-      content: `Add inline comments and generate documentation for this code. Focus on: readability, purpose of functions, parameters, and return values. Provide a documented version of the code:\n\n<code-content name="">\n</code-content>`,
+      content: `Add inline comments and generate documentation for this code. Focus on: readability, purpose of functions, parameters, and return values. Provide a documented version of the code:\n\n<code-content name="">\n\n</code-content>`,
       category: "Development",
     },
     {
       title: "Code Test",
-      content: `Write test cases for this code. Focus on correctness, edge cases, and performance. Show example unit tests or integration tests where applicable:\n\n<code-content name="">\n</code-content>`,
+      content: `Write test cases for this code. Focus on correctness, edge cases, and performance. Show example unit tests or integration tests where applicable:\n\n<code-content name="">\n\n</code-content>`,
       category: "Development",
     },
     {
       title: "Code Run",
-      content: `Explain how to run this code. Include environment setup, dependencies, build steps, and example commands. Provide sample input/output if helpful:\n\n<code-content name="">\n</code-content>`,
+      content: `Explain how to run this code. Include environment setup, dependencies, build steps, and example commands. Provide sample input/output if helpful:\n\n<code-content name="">\n\n</code-content>`,
       category: "Development",
     },
     {
       title: "Code Explain",
-      content: `Provide a detailed, step-by-step explanation of the following code snippet. Structure your response with sections:\n1. Overview (purpose and high-level logic).\n2. Imports/Libraries (list each, explain purpose and usage).\n3. Key Functions/Methods (describe each, including parameters, return values, and role in the code).\n4. Main Logic Flow (break down execution line by line or block by block).\n5. Arguments and Context (how inputs fit and affect behavior).\n6. Potential Improvements or Edge Cases (if applicable):\n\n<code-content name="">\n</code-content>`,
+      content: `Provide a detailed, step-by-step explanation of the following code snippet. Structure your response with sections:\n1. Overview (purpose and high-level logic).\n2. Imports/Libraries (list each, explain purpose and usage).\n3. Key Functions/Methods (describe each, including parameters, return values, and role in the code).\n4. Main Logic Flow (break down execution line by line or block by block).\n5. Arguments and Context (how inputs fit and affect behavior).\n6. Potential Improvements or Edge Cases (if applicable):\n\n<code-content name="">\n\n</code-content>`,
       category: "Development",
     },
     {
       title: "Debug Code",
-      content: `Fix the errors in this code. Explain changes, show code snippets, and provide the top-level functions added/modified to copy/paste:\n<error>\n</error>\n\n<code-content name="">\n</code-content>`,
+      content: `Fix the errors in this code. Explain changes, show code snippets, and provide the top-level functions added/modified to copy/paste:\n<error>\n</error>\n\n<code-content name="">\n\n</code-content>`,
       category: "Development",
     },
     {
