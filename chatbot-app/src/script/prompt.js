@@ -689,9 +689,9 @@ window.ChatGPTprompt = (() => {
 
   // --- Main UI Integration ---
   function buildPromptOption(selector) {
-    const fileBtn = Array.from(
-      document.querySelectorAll(selector)
-    ).filter((e) => e.textContent.includes("Add photos"))[0];
+    const fileBtn = Array.from(document.querySelectorAll(selector)).filter(
+      (e) => e.textContent.includes("Add photos")
+    )[0];
     if (!fileBtn) return;
     const container = fileBtn.parentElement;
     let exist = document.querySelector(".newPromptMenuItem");
@@ -826,6 +826,12 @@ window.ChatGPTprompt = (() => {
     {
       title: "Analyze",
       content: `Analyze this topic systematically. Include overview, key findings, supporting evidence, implications, and conclusion:\n`,
+      category: "Education",
+    },
+    {
+      title: "Learn",
+      content:
+        "Generate sample problems on the topic. Do not solve them yet. Wait for me to request hints or guidance before providing explanations:\n\n<topic>\n</topic>",
       category: "Education",
     },
     {
