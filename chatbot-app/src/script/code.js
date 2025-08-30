@@ -21,6 +21,8 @@ window.ChatGPTCode = (() => {
     unescapeHTML(str) {
       if (!str) return "";
       const htmlEntities = {
+        "<code>": "`", // Original text has ``, but ChatGPT renders it as <code></code>
+        "</code>": "`",
         "&lt;": "<",
         "&gt;": ">",
         "&quot;": '"',
@@ -35,7 +37,7 @@ window.ChatGPTCode = (() => {
     },
 
     getLanguageFromExtension(ext) {
-      return  ext || "auto";
+      return ext || "auto";
     },
 
     createCollapseButton() {
@@ -88,9 +90,6 @@ window.ChatGPTCode = (() => {
           await navigator.clipboard.writeText(originalContent);
 
           // Visual feedback
-          const originalText = newButton.querySelector("svg")
-            ? ""
-            : newButton.textContent;
           const originalHTML = newButton.innerHTML;
 
           newButton.innerHTML = "✓ Copied";
@@ -203,8 +202,9 @@ window.ChatGPTCode = (() => {
         );
 
         // Create unique placeholder
-        const placeholderId = `code-block-replacement-${Date.now()}-${Math.random()
-          .toString(36)}`;
+        const placeholderId = `code-block-replacement-${Date.now()}-${Math.random().toString(
+          36
+        )}`;
         const placeholderHtml = `<div class="${placeholderId}">${codeEl.innerHTML}</div>`;
         processedContent = processedContent.replace(fullMatch, placeholderHtml);
       }
@@ -213,8 +213,9 @@ window.ChatGPTCode = (() => {
         messageContent.innerHTML = processedContent;
         userMessage.setAttribute(CONFIG.attributes.codeRendered, "true");
         // now let's attach the copy button and the collapse button
-        userMessage.querySelectorAll(CONFIG.selectors.codeBlocks).forEach(
-          (copyButton) => {
+        userMessage
+          .querySelectorAll(CONFIG.selectors.codeBlocks)
+          .forEach((copyButton) => {
             const code = copyButton.closest("pre").querySelector("code");
             if (code) {
               const originalContent = code.textContent;
@@ -222,14 +223,10 @@ window.ChatGPTCode = (() => {
               const collapseBtn = copyButton.parentElement.querySelector(
                 "button[aria-label='Collapse Or Expand']"
               );
-              utils.attachCollapseHandler(
-                collapseBtn,
-                code
-              );
-      
+              utils.attachCollapseHandler(collapseBtn, code);
             }
-          })
-          // Force width to be at least 80%
+          });
+        // Force width to be at least 80%
         userMessage
           .querySelector(".user-message-bubble-color")
           .classList.add("w-[80%]");
@@ -307,6 +304,43 @@ window.ChatGPTCode = (() => {
       });
     });
   }
+
+  function buildCodeOption() {
+    const fileBtn = document.querySelector(".newPromptMenuItem")
+    if (!fileBtn) return;
+    const container = fileBtn.parentElement;
+    let exist = document.querySelector(".newCodeMenuItem");
+
+    if (exist || !container) return;
+
+    const menuitem = document.createElement("div");
+    menuitem.classList.add("newCodeMenuItem");
+    menuitem.innerHTML = `
+      <div
+        role="menuitem"
+        tabindex="1"
+        class="group __menu-item gap-1.5 rounded-lg min-h-9 touch:min-h-10 hover:bg-token-surface-hover focus-visible:bg-token-surface-hover"
+        data-orientation="vertical"
+        data-radix-collection-item=""
+      >
+        <div class="flex items-center justify-center icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-code-icon lucide-code"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
+        </div>
+        <div class="flex min-w-0 grow items-center gap-2.5 group-data-no-contents-gap:gap-0">
+          <div class="truncate">Add Code Block</div>
+        </div>
+      </div>
+    `;
+
+    container.insertBefore(menuitem, fileBtn);
+    menuitem.addEventListener("click", () => {
+      ChatGPTprompt.pasteText("\n<code-content>\n\n</code-content>");
+    })
+  }
+  const observer = new MutationObserver(() => {
+    buildCodeOption();
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
 
   // Initialize
   function init() {
