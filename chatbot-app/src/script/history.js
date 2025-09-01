@@ -527,7 +527,7 @@ window.ChatGPThistory = (() => {
         groups["Yesterday"].push(item);
       } else if (itemDate >= sevenDaysAgo) {
         groups["Previous 7 Days"].push(item);
-      } else if (itemDate >= thisMonth) {
+      } else if (itemDate.getMonth() == thisMonth) {
         groups["This Month"].push(item);
       } else {
         const monthYear = itemDate.toLocaleString("default", {
