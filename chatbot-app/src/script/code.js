@@ -22,10 +22,10 @@ window.ChatGPTCode = (() => {
     unescapeHTML(str) {
       if (!str) return "";
       const htmlEntities = {
+        '<pre class="overflow-x-auto"><code>': "```", // Original text has ```, but ChatGPT renders it as <pre></pre>
+        "</code></pre>": "\n```",
         "<code>": "`", // Original text has ``, but ChatGPT renders it as <code></code>
         "</code>": "`",
-        "<pre class=\"x-overflow-auto\">": "``", // Original text has ```, but ChatGPT renders it as <pre></pre>
-        "</pre>": "``",
         "&lt;": "<",
         "&gt;": ">",
         "&quot;": '"',
