@@ -24,6 +24,8 @@ window.ChatGPTCode = (() => {
       const htmlEntities = {
         "<code>": "`", // Original text has ``, but ChatGPT renders it as <code></code>
         "</code>": "`",
+        "<pre class=\"x-overflow-auto\">": "``", // Original text has ```, but ChatGPT renders it as <pre></pre>
+        "</pre>": "``",
         "&lt;": "<",
         "&gt;": ">",
         "&quot;": '"',
