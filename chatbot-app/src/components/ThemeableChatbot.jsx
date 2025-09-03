@@ -345,7 +345,7 @@ const ThemeableChatbot = () => {
                   "./script/theme.js",
                  // "./script/token.js",
                   "./script/history.js",
-                  "./script/label.js",
+               //   "./script/label.js",
                   "./script/export.js",
                   "./script/prompt.js",
                   "./script/shortcut.js",
