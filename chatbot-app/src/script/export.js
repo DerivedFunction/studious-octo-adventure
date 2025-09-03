@@ -1268,7 +1268,7 @@ window.ChatGPTExport = (() => {
   function addExportMenu() {
     // Only on conversation pages
     const inConversation =
-      window.location.pathname.startsWith("/c/") ||
+      window.location.href.includes("/c/") ||
       window.location.href.includes("temporary-chat=true");
     const targetContainer = document.querySelector(
       "#conversation-header-actions"

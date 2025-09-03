@@ -71,7 +71,7 @@ window.ChatGPT = (() => {
    * @returns {string|null} The conversation ID or null if not found.
    */
   function getConversationId() {
-    conversationId = window.location.pathname.split("/")[2];
+    conversationId = window.location.href.split("/c/")[1];
     return conversationId;
   }
 
