@@ -42,11 +42,11 @@ window.ChatGPThistory = (() => {
             );
           } // Defensively check for and create the index. This is the key fix.
 
-          if (!conversationStore.indexNames.contains("is_archived_idx")) {
-            conversationStore.createIndex("is_archived_idx", "is_archive", {
+          if (!conversationStore.indexNames.contains("is_archived")) {
+            conversationStore.createIndex("is_archived", "is_archived", {
               unique: false,
             });
-            console.log("[History Manager] Created 'is_archived_idx' index.");
+            console.log("[History Manager] Created 'is_archived' index.");
           } // --- Metadata Store Setup ---
 
           if (!dbInstance.objectStoreNames.contains(this.METADATA_STORE)) {
@@ -94,7 +94,7 @@ window.ChatGPThistory = (() => {
       return new Promise((resolve) => {
         const transaction = db.transaction(this.CONVERSATION_STORE, "readonly");
         const store = transaction.objectStore(this.CONVERSATION_STORE);
-        const index = store.index("is_archived_idx"); // FIX: Use a number (0 or 1) as the key, which is a universally valid key type.
+        const index = store.index("is_archived"); // FIX: Use a number (0 or 1) as the key, which is a universally valid key type.
         const key = isHistory ? 0 : 1;
         const request = index.getAll(key);
         request.onsuccess = () => resolve(request.result);
@@ -109,7 +109,11 @@ window.ChatGPThistory = (() => {
       const db = await this.openDB();
       const transaction = db.transaction(this.CONVERSATION_STORE, "readwrite");
       const store = transaction.objectStore(this.CONVERSATION_STORE);
-      conversations.forEach((convo) => store.put(convo));
+      conversations.forEach((convo) => {
+        // Ensure is_archived is properly set as a number for robust indexing
+        convo.is_archived = convo.is_archived ? 1 : 0;
+        store.put(convo);
+      });
       return new Promise((resolve, reject) => {
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
@@ -118,7 +122,7 @@ window.ChatGPThistory = (() => {
     /**
      * Updates a single conversation in the database with new properties.
      * @param {string} id - The ID of the conversation to update.
-     * @param {object} changes - An object with properties to update (e.g., { is_archive: 1 }).
+     * @param {object} changes - An object with properties to update (e.g., { is_archived: 1 }).
      */
     async updateConversation(id, changes) {
       const db = await this.openDB();
@@ -183,6 +187,25 @@ window.ChatGPThistory = (() => {
     try {
       let allItems = []; // Fetch both active and archived conversations
       let hasSkip = false;
+      // Fetch chats from projects (gizmos)
+      const response = await fetch(
+        "https://chatgpt.com/backend-api/gizmos/snorlax/sidebar?conversations_per_gizmo=20",
+        { headers: { authorization: `Bearer ${token}` } }
+      );
+      if (!response.ok) {
+        status = false;
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+      const data = await response.json();
+      const data_items = data.items;
+      console.log(data_items);
+      const convoArray = [];
+      data_items.forEach((e) => {
+        const { conversations } = e;
+        const items = conversations.items || [];
+        convoArray.push(...items);
+      });
+      allItems.push(...convoArray);
       for (const isArchived of [false, true]) {
         let offset = 0;
         let hasMore = true;
@@ -213,7 +236,6 @@ window.ChatGPThistory = (() => {
           const data = await response.json();
           const items = data.items || []; // Store the archive status as a number (1 for true, 0 for false) for robust indexing.
 
-          items.forEach((item) => (item.is_archive = isArchived ? 1 : 0));
           allItems.push(...items);
 
           offset += items.length;
@@ -735,12 +757,12 @@ window.ChatGPThistory = (() => {
       case "archive":
         confirmMsg = `Are you sure you want to archive ${targetIds.length} conversation(s)?`;
         payload = { is_archived: true };
-        localChanges = { is_archive: 1 };
+        localChanges = { is_archived: 1 };
         break;
       case "restore":
         confirmMsg = `Are you sure you want to restore ${targetIds.length} conversation(s)?`;
         payload = { is_archived: false };
-        localChanges = { is_archive: 0 };
+        localChanges = { is_archived: 0 };
         break;
       case "delete":
         confirmMsg = `This is IRREVERSIBLE. Are you sure you want to permanently delete ${targetIds.length} conversation(s)?`;
