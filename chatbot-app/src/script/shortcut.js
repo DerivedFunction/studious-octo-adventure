@@ -17,7 +17,7 @@
     // List of tools + shortcuts
     const tools = [
       { name: "Manage history", key: "H" },
-      { name: "Manage labels", key: "L" },
+      // { name: "Manage labels", key: "L" },
       { name: "Print", key: "P" },
       { name: "Save webpage", key: "S" },
       { name: "Open saved prompts", key: "M" },
