@@ -118,7 +118,8 @@ window.ChatGPTExport = (() => {
       replaceCanvas: true,
       saveImages: true, // load images as data-uri
       saveStyles: true, // fetch styles
-    }
+    },
+    targetElement = "#thread div[role='presentation'].composer-parent div:not(header div)"
   ) {
     const jobid = Date.now();
     let buttonsClicked = [];
@@ -154,7 +155,7 @@ window.ChatGPTExport = (() => {
       showStatusBar(jobid, `${action}: Preparing content`, 5, 15);
 
       // 1. Clone the main chat area. This serves as the base for both print and download.
-      const mainArea = document.querySelector("article")?.parentElement;
+      const mainArea = document.querySelector(targetElement);
       if (!mainArea) {
         alert("Could not find chat content to export.");
         showStatusBar(jobid, `${action}: Export Canceled`, 0);
@@ -163,12 +164,12 @@ window.ChatGPTExport = (() => {
       const area = mainArea.cloneNode(true);
       area.classList.add("print-content");
       // remove content script popups
-      area
+      /* area
         .querySelectorAll(
           ".token-count-display,.extra-token-info, .token-status-container, .prompt-token-count"
         )
         .forEach((el) => el.remove());
-
+      */
       if (canceledJobs.has(jobid)) return;
       showStatusBar(jobid, `${action}: Fetching conversation data`, 15, 30);
 
@@ -234,7 +235,10 @@ window.ChatGPTExport = (() => {
             codeEl.setAttribute("textdoc_id", canvas.textdoc_id);
             codeEl.setAttribute("textdoc_version", canvas.version);
 
-            const articleContent = area.querySelector(
+            // Check if the current element alreadt has the data turn id, else select it
+
+            const articleContent = area.getAttribute("data-turn-id") ? area :
+              area.querySelector(
               `article[data-turn-id='${turnId}']`
             );
             if (!articleContent) return;
@@ -591,30 +595,23 @@ window.ChatGPTExport = (() => {
         if (canceledJobs.has(jobid)) return;
         showStatusBar(jobid, `${action}: Preparing print`, 60, 90);
         // 5a.1 Fix code blocks inside articles and add user message borders.
-        const articles = area.querySelectorAll("article");
-        articles.forEach((article) => {
-          const content = article.querySelector("[tabindex]");
-          if (!content) return; // Clean up classes that might interfere with printing
 
-          content.className = "print-article-content";
+        const codeBlocks = area.querySelectorAll("code");
+        codeBlocks.forEach((codeEl) => {
+          if (codeEl.closest("div")) {
+            codeEl.closest("div").style.padding = "12px";
+          } // Apply print-friendly code styling
 
-          const codeBlocks = content.querySelectorAll("code");
-          codeBlocks.forEach((codeEl) => {
-            if (codeEl.closest("div")) {
-              codeEl.closest("div").style.padding = "12px";
-            } // Apply print-friendly code styling
+          codeEl.style.whiteSpace = "pre-wrap";
+          codeEl.style.wordBreak = "break-word";
+          codeEl.style.fontSize = "12px";
+          codeEl.style.lineHeight = "1.4";
 
-            codeEl.style.whiteSpace = "pre-wrap";
-            codeEl.style.wordBreak = "break-word";
-            codeEl.style.fontSize = "12px";
-            codeEl.style.lineHeight = "1.4";
-
-            // Handle nested elements in code blocks
-            const codeChildren = codeEl.querySelectorAll("*");
-            codeChildren.forEach((child) => {
-              child.style.whiteSpace = "pre-wrap";
-              child.style.wordBreak = "break-word";
-            });
+          // Handle nested elements in code blocks
+          const codeChildren = codeEl.querySelectorAll("*");
+          codeChildren.forEach((child) => {
+            child.style.whiteSpace = "pre-wrap";
+            child.style.wordBreak = "break-word";
           });
         });
         // 5a. Create a hidden iframe to build the print content in isolation.
@@ -646,6 +643,14 @@ window.ChatGPTExport = (() => {
             code {
                 white-space: pre-wrap !important;
                 word-break: break-all !important;
+            },
+            /* Hide scroll bars*/
+            ::-webkit-scrollbar {
+              display: none;
+            },
+            * {
+              scrollbar-width: none;
+              -ms-overflow-style: none;
             }
         }
       `;
@@ -1452,6 +1457,45 @@ window.ChatGPTExport = (() => {
     ensureMenu(targetContainer);
     ensureMenu(smallContainer);
   }
+  function addPrintButton() {
+    // Find the target elements that don't have the print button attached:
+    const btn = document.querySelectorAll(
+      '[aria-label="Good response"]:not(.attached)'
+    );
+    if (btn.length > 0) {
+      btn.forEach((btn) => {
+        const parent = btn.parentElement;
+        // attach a print button icon
+        const printBtn = document.createElement("button");
+        printBtn.className =
+          "text-token-text-secondary hover:bg-token-bg-secondary rounded-lg";
+        printBtn.innerHTML = `
+        <span class="flex items-center justify-center touch:w-10 h-8 w-8">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+        </span>
+          `;
+        parent.insertBefore(printBtn, parent.lastChild);
+        const article = parent.closest("article");
+        const id = article.getAttribute("data-turn-id");
+
+        printBtn.addEventListener("click", () => {
+          exportOrPrintHTML(
+            "Print Chat",
+            {
+              user: false,
+              assistant: true,
+              reason: false,
+              replaceCanvas: true,
+              saveImages: false,
+              saveStyles: false,
+            },
+            `article[data-turn-id='${id}']`
+          );
+        });
+        btn.classList.add("attached");
+      });
+    }
+  }
 
   // Override Ctrl+P to use custom print function
   document.addEventListener("keydown", (event) => {
@@ -1484,6 +1528,7 @@ window.ChatGPTExport = (() => {
   const observer = new MutationObserver(() => {
     // A short timeout helps ensure the header is fully rendered after navigation
     setTimeout(addExportMenu, 500);
+    setTimeout(addPrintButton, 500);
   });
 
   observer.observe(document.body, {
@@ -1496,7 +1541,6 @@ window.ChatGPTExport = (() => {
     exportOrPrintHTML,
   };
 })();
-
 
 function guestMode() {
   return (
