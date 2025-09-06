@@ -562,7 +562,11 @@ window.ChatGPTExport = (() => {
         <body style="overflow-y: clip;">
             <div id="header" class="p-2 flex w-full items-center justify-center flex-row" style="background: var(--main-surface-primary);">
               <div class="flex items-center mx-2">
-                <div class="group flex cursor-pointer justify-center items-center gap-1 rounded-lg min-h-9 touch:min-h-10 px-2.5 text-lg hover:bg-token-surface-hover focus-visible:bg-token-surface-hover font-normal whitespace-nowrap focus-visible:outline-none"><a href="https://chatgpt.com/c/${conversationId}">${conversationTitle}</a></div>
+                <div class="group flex cursor-pointer justify-center items-center gap-1 rounded-lg min-h-9 touch:min-h-10 px-2.5 text-lg hover:bg-token-surface-hover focus-visible:bg-token-surface-hover font-normal whitespace-nowrap focus-visible:outline-none"><a href="${
+                  conversationId
+                    ? `https://chatgpt.com/c/${conversationId}`
+                    : "https://chatgpt.com"
+                }">${conversationTitle}</a></div>
               </div>
               <div class="flex-1"></div>
               <div class="flex items-center mx-2 gap-1.5">
@@ -1483,7 +1487,7 @@ window.ChatGPTExport = (() => {
           exportOrPrintHTML(
             "Print Chat",
             {
-              user: false,
+              user: true,
               assistant: true,
               reason: false,
               replaceCanvas: true,
