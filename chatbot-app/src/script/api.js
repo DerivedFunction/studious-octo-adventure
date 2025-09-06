@@ -737,7 +737,7 @@ window.ChatGPT = (() => {
         console.warn("Using fallback data")
         const articles = document.querySelectorAll("article [data-message-id]");
         const messageMapData = new Map();
-        tokenizer.clearTokenUI();
+        // tokenizer.clearTokenUI();
         articles.forEach((article) => {
           const turnId = article.closest("article").getAttribute("data-turn-id");
           const messageId = article.getAttribute("data-message-id");
