@@ -1465,7 +1465,7 @@ window.ChatGPTExport = (() => {
   function addPrintButton() {
     // Find the target elements that don't have the print button attached:
     const btn = document.querySelectorAll(
-      'article [aria-label="Copy"]:not(.attached)'
+      'article .justify-start [aria-label="Copy"]:not(.attached)'
     );
     if (btn.length > 0) {
       btn.forEach((btn) => {
