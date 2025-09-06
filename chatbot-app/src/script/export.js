@@ -638,22 +638,23 @@ window.ChatGPTExport = (() => {
             .token-count-display, .extra-token-info, .token-status-container,
             .prompt-token-count, nav, header, footer, [role="banner"],
             [role="navigation"], [role="complementary"] {
-                display: none !important;
+              display: none !important;
             }
             code {
-                white-space: pre-wrap !important;
-                word-break: break-all !important;
-            },
-            /* Hide scroll bars*/
+              white-space: pre-wrap !important;
+              word-break: break-all !important;
+            }
+            /* Hide scroll bars */
             ::-webkit-scrollbar {
-              display: none;
-            },
+              display: none !important;
+            }
             * {
-              scrollbar-width: none;
-              -ms-overflow-style: none;
+              scrollbar-width: none !important;
+              -ms-overflow-style: none !important;
+              overflow: -moz-scrollbars-none !important;
             }
         }
-      `;
+            `;
         const styleSheet = printDocument.createElement("style");
         styleSheet.textContent = printStyles;
         printDocument.head.appendChild(styleSheet);
